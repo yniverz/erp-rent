@@ -261,7 +261,7 @@ def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[
     story.append(Spacer(1, 14))
 
     story.append(Paragraph(
-        "Diese Überlassungsvereinbarung besteht aus Seite 1 und Seite 2. Die Regelungen auf der Rückseite / "
+        "Diese Überlassungsvereinbarung besteht aus 2 Seiten. Die Regelungen auf der Rückseite / "
         "Seite 2 sind Bestandteil dieser Vereinbarung.",
         normal_small
     ))
