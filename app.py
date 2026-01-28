@@ -626,7 +626,7 @@ def ueberlassungsbestaetigung_pdf(quote_id, with_total=False):
             consignor_info.append(settings.business_name)
         if settings.address_lines:
             consignor_info.extend([line for line in settings.address_lines.split("\n") if line.strip()])
-    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], total_sum=quote.total if with_total else "__________")
+    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], total_sum=float(quote.total) if with_total else "__________")
     
     response = send_file(
         BytesIO(pdf_bytes),
