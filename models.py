@@ -40,7 +40,9 @@ class Quote(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     customer_name = db.Column(db.String(200), nullable=False)
     discount_percent = db.Column(db.Float, default=0.0)  # Discount percentage
-    rental_days = db.Column(db.Integer, default=1)  # Number of rental days
+    rental_days = db.Column(db.Integer, default=1)  # Number of rental days (calculated)
+    start_date = db.Column(db.DateTime, nullable=True)  # Rental start date
+    end_date = db.Column(db.DateTime, nullable=True)  # Rental end date
     status = db.Column(db.String(50), default='draft')  # draft, finalized, paid
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     finalized_at = db.Column(db.DateTime, nullable=True)
@@ -49,6 +51,14 @@ class Quote(db.Model):
     
     # Relationships
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')
+    
+    def calculate_rental_days(self):
+        """Calculate rental days from start and end dates"""
+        if self.start_date and self.end_date:
+            delta = self.end_date - self.start_date
+            # Same day counts as 1 day
+            return max(1, delta.days + 1)
+        return self.rental_days or 1
     
     @property
     def subtotal(self):
@@ -90,4 +100,5 @@ class QuoteItem(db.Model):
     @property
     def total_price(self):
         """Calculate total price for this line item"""
-        return self.quantity * self.rental_price_per_day * self.quote.rental_days
+        days = self.quote.calculate_rental_days()
+        return self.quantity * self.rental_price_per_day * days

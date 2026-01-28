@@ -208,9 +208,9 @@
     <div class="section">
       <div class="block">
         Der Überlasser überlässt dem Nutzer für den Zeitraum
-        <span class="inline-line placeholder">{{START_DATE}}</span>
+        <span class="inline-line">{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '_______________' }}</span>
         &nbsp;-&nbsp;
-        <span class="inline-line placeholder">{{END_DATE}}</span>
+        <span class="inline-line">{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '_______________' }}</span>
       </div>
       <div class="block" style="margin-top: 8px;">
         folgendes Equipment zur Nutzung (angekreuzt):

@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from models import db, Item, Quote, QuoteItem
 from datetime import datetime
+from sqlalchemy import and_, or_
 import os
 
 app = Flask(__name__)
@@ -9,6 +10,48 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///erp_rent.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
+
+
+def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None):
+    """
+    Calculate available quantity for an item during a specific date range.
+    Considers overlapping quotes that are finalized or paid.
+    """
+    item = Item.query.get(item_id)
+    if not item:
+        return 0
+    
+    # Find all overlapping quotes (finalized or paid)
+    overlapping_quotes = Quote.query.filter(
+        Quote.status.in_(['finalized', 'paid']),
+        Quote.start_date.isnot(None),
+        Quote.end_date.isnot(None),
+        or_(
+            # Quote starts during our period
+            and_(Quote.start_date <= end_date, Quote.start_date >= start_date),
+            # Quote ends during our period
+            and_(Quote.end_date <= end_date, Quote.end_date >= start_date),
+            # Quote encompasses our entire period
+            and_(Quote.start_date <= start_date, Quote.end_date >= end_date)
+        )
+    )
+    
+    # Exclude current quote being edited
+    if exclude_quote_id:
+        overlapping_quotes = overlapping_quotes.filter(Quote.id != exclude_quote_id)
+    
+    overlapping_quotes = overlapping_quotes.all()
+    
+    # Calculate total quantity already booked
+    booked_quantity = 0
+    for quote in overlapping_quotes:
+        for quote_item in quote.quote_items:
+            if quote_item.item_id == item_id and not quote_item.is_custom:
+                booked_quantity += quote_item.quantity
+    
+    # Return available quantity
+    available = item.total_quantity - booked_quantity
+    return max(0, available)
 
 
 # Initialize database
@@ -131,11 +174,29 @@ def quote_create():
     if request.method == 'POST':
         try:
             customer_name = request.form.get('customer_name')
-            rental_days = int(request.form.get('rental_days', 1))
+            start_date_str = request.form.get('start_date')
+            end_date_str = request.form.get('end_date')
+            
+            # Parse dates
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+            
+            # Validate dates
+            if start_date and end_date and start_date > end_date:
+                flash('End date must be after or equal to start date!', 'error')
+                return render_template('quotes/create.html')
+            
+            # Calculate rental days
+            rental_days = 1
+            if start_date and end_date:
+                delta = end_date - start_date
+                rental_days = max(1, delta.days + 1)
             
             # Create new quote
             quote = Quote(
                 customer_name=customer_name,
+                start_date=start_date,
+                end_date=end_date,
                 rental_days=rental_days,
                 status='draft'
             )
@@ -165,13 +226,39 @@ def quote_edit(quote_id):
         try:
             if action == 'update_quote':
                 quote.customer_name = request.form.get('customer_name')
-                quote.rental_days = int(request.form.get('rental_days'))
+                start_date_str = request.form.get('start_date')
+                end_date_str = request.form.get('end_date')
+                
+                # Parse dates
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+                
+                # Validate dates
+                if start_date and end_date and start_date > end_date:
+                    flash('End date must be after or equal to start date!', 'error')
+                    return render_template('quotes/edit.html', quote=quote, items=items)
+                
+                quote.start_date = start_date
+                quote.end_date = end_date
+                
+                # Calculate rental days
+                if start_date and end_date:
+                    delta = end_date - start_date
+                    quote.rental_days = max(1, delta.days + 1)
+                else:
+                    quote.rental_days = int(request.form.get('rental_days', 1))
+                
                 quote.discount_percent = float(request.form.get('discount_percent', 0))
                 quote.notes = request.form.get('notes', '')
                 db.session.commit()
                 flash('Quote updated!', 'success')
                 
             elif action == 'update_items':
+                # Check if dates are set
+                if not quote.start_date or not quote.end_date:
+                    flash('Please set start and end dates before adding items!', 'error')
+                    return render_template('quotes/edit.html', quote=quote, items=items)
+                
                 # Update all inventory items
                 errors = []
                 for item in items:
@@ -182,15 +269,24 @@ def quote_edit(quote_id):
                         quantity = int(request.form.get(quantity_key, 0))
                         price = float(request.form.get(price_key, item.default_rental_price_per_day))
                         
-                        # Validate quantity against available stock
-                        if quantity > item.total_quantity:
-                            errors.append(f'{item.name}: Cannot add {quantity} (only {item.total_quantity} available)')
-                            continue
-                        
-                        # Validate rental step
-                        if item.rental_step > 1 and quantity % item.rental_step != 0:
-                            errors.append(f'{item.name}: Quantity must be a multiple of {item.rental_step}')
-                            continue
+                        if quantity > 0:
+                            # Get available quantity for this date range
+                            available = get_available_quantity(
+                                item.id, 
+                                quote.start_date, 
+                                quote.end_date,
+                                exclude_quote_id=quote.id
+                            )
+                            
+                            # Validate quantity against available stock
+                            if quantity > available:
+                                errors.append(f'{item.name}: Only {available} available during this period (total: {item.total_quantity})')
+                                continue
+                            
+                            # Validate rental step
+                            if item.rental_step > 1 and quantity % item.rental_step != 0:
+                                errors.append(f'{item.name}: Quantity must be a multiple of {item.rental_step}')
+                                continue
                         
                         # Find existing quote item
                         existing = QuoteItem.query.filter_by(
@@ -250,6 +346,12 @@ def quote_edit(quote_id):
                     db.session.commit()
                     flash('Item removed from quote!', 'success')
                     
+            elif action == 'update_discount':
+                discount_percent = float(request.form.get('final_discount_percent', 0))
+                quote.discount_percent = discount_percent
+                db.session.commit()
+                flash(f'Pricing updated! Discount: {discount_percent}%', 'success')
+                
             elif action == 'finalize':
                 quote.status = 'finalized'
                 quote.finalized_at = datetime.utcnow()
@@ -261,7 +363,22 @@ def quote_edit(quote_id):
             flash(f'Error: {str(e)}', 'error')
             db.session.rollback()
     
-    return render_template('quotes/edit.html', quote=quote, items=items)
+    # Calculate available quantities for each item
+    item_availability = {}
+    if quote.start_date and quote.end_date:
+        for item in items:
+            item_availability[item.id] = get_available_quantity(
+                item.id,
+                quote.start_date,
+                quote.end_date,
+                exclude_quote_id=quote.id
+            )
+    else:
+        # No dates set, show total quantity
+        for item in items:
+            item_availability[item.id] = item.total_quantity
+    
+    return render_template('quotes/edit.html', quote=quote, items=items, item_availability=item_availability)
 
 
 @app.route('/quotes/<int:quote_id>')
@@ -302,10 +419,17 @@ def quote_mark_paid(quote_id):
             quote.status = 'paid'
             quote.paid_at = datetime.utcnow()
             
+            # Calculate the actual revenue after discount
+            # The discount is distributed proportionally across all items
+            subtotal = quote.subtotal
+            discount_multiplier = (100 - quote.discount_percent) / 100
+            
             # Update revenue for each item (only non-custom items)
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
-                    quote_item.item.total_revenue += quote_item.total_price
+                    # Calculate this item's share of the discounted total
+                    item_revenue = quote_item.total_price * discount_multiplier
+                    quote_item.item.total_revenue += item_revenue
             
             db.session.commit()
             flash('Quote marked as paid and revenue updated!', 'success')
@@ -333,12 +457,48 @@ def quote_german_doc(quote_id):
     return render_template('quotes/german_doc.html', quote=quote)
 
 
-@app.route('/quotes/<int:quote_id>/delete', methods=['POST'])
-def quote_delete(quote_id):
-    """Delete quote"""
+@app.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
+def quote_unpay(quote_id):
+    """Unpay quote and revert revenue"""
     quote = Quote.query.get_or_404(quote_id)
     
     try:
+        if quote.status == 'paid':
+            # Revert the revenue from items
+            discount_multiplier = (100 - quote.discount_percent) / 100
+            for quote_item in quote.quote_items:
+                if not quote_item.is_custom and quote_item.item:
+                    item_revenue = quote_item.total_price * discount_multiplier
+                    quote_item.item.total_revenue -= item_revenue
+            
+            quote.status = 'finalized'
+            quote.paid_at = None
+            db.session.commit()
+            flash('Quote unpaid and revenue reverted!', 'success')
+        else:
+            flash('Quote is not marked as paid.', 'info')
+            
+    except Exception as e:
+        flash(f'Error unpaying quote: {str(e)}', 'error')
+        db.session.rollback()
+    
+    return redirect(url_for('quote_view', quote_id=quote_id))
+
+
+@app.route('/quotes/<int:quote_id>/delete', methods=['POST'])
+def quote_delete(quote_id):
+    """Delete quote and revert revenue if paid"""
+    quote = Quote.query.get_or_404(quote_id)
+    
+    try:
+        # If quote was paid, subtract the revenue from items
+        if quote.status == 'paid':
+            discount_multiplier = (100 - quote.discount_percent) / 100
+            for quote_item in quote.quote_items:
+                if not quote_item.is_custom and quote_item.item:
+                    item_revenue = quote_item.total_price * discount_multiplier
+                    quote_item.item.total_revenue -= item_revenue
+        
         db.session.delete(quote)
         db.session.commit()
         flash('Quote deleted!', 'success')

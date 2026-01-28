@@ -13,16 +13,28 @@
         <input type="text" id="customer_name" name="customer_name" value="{{ quote.customer_name }}" required>
     </div>
     
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
         <div class="form-group">
-            <label for="rental_days">Rental Days:</label>
-            <input type="number" id="rental_days" name="rental_days" value="{{ quote.rental_days }}" required min="1">
+            <label for="start_date">Start Date:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="end_date">End Date:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}" required>
         </div>
         
         <div class="form-group">
             <label for="discount_percent">Discount (%):</label>
             <input type="number" id="discount_percent" name="discount_percent" value="{{ quote.discount_percent }}" step="0.01" min="0" max="100">
         </div>
+    </div>
+    
+    <div style="background: #e8f4f8; padding: 10px; border-radius: 3px; margin: 10px 0;">
+        <strong>Rental Period:</strong> {{ quote.calculate_rental_days() }} day(s)
+        {% if quote.start_date and quote.end_date %}
+        ({{ quote.start_date.strftime('%d.%m.%Y') }} - {{ quote.end_date.strftime('%d.%m.%Y') }})
+        {% endif %}
     </div>
     
     <div class="form-group">
@@ -52,19 +64,27 @@
         <tbody>
             {% for item in items %}
             {% set existing = quote.quote_items|selectattr('item_id', 'equalto', item.id)|selectattr('is_custom', 'equalto', False)|first %}
-            <tr>
+            {% set available = item_availability.get(item.id, item.total_quantity) %}
+            <tr{% if available == 0 %} style="opacity: 0.5;"{% endif %}>
                 <td><strong>{{ item.name }}</strong></td>
-                <td>{{ item.total_quantity }} (step: {{ item.rental_step }})</td>
+                <td>
+                    {{ available }} / {{ item.total_quantity }} 
+                    {% if available < item.total_quantity %}
+                        <span style="color: #dc3545; font-size: 0.9em;">({{ item.total_quantity - available }} booked)</span>
+                    {% endif %}
+                    <br><small style="color: #666;">Step: {{ item.rental_step }}</small>
+                </td>
                 <td>
                     <input type="number" 
                            name="quantity_{{ item.id }}" 
                            id="quantity_{{ item.id }}"
                            value="{{ existing.quantity if existing else 0 }}" 
                            min="0"
-                           max="{{ item.total_quantity }}"
+                           max="{{ available }}"
                            step="{{ item.rental_step }}"
                            style="width: 80px;"
-                           onchange="updateSubtotal({{ item.id }})">
+                           onchange="updateSubtotal({{ item.id }})"
+                           {% if available == 0 %}disabled{% endif %}>
                 </td>
                 <td>
                     <input type="number" 
@@ -98,7 +118,7 @@
 function updateSubtotal(itemId) {
     var quantity = parseFloat(document.getElementById('quantity_' + itemId).value) || 0;
     var price = parseFloat(document.getElementById('price_' + itemId).value) || 0;
-    var rentalDays = {{ quote.rental_days }};
+    var rentalDays = {{ quote.calculate_rental_days() }};
     var subtotal = quantity * price * rentalDays;
     document.getElementById('subtotal_' + itemId).textContent = subtotal.toFixed(2) + '€';
 }
@@ -213,21 +233,84 @@ function updateSubtotal(itemId) {
 <div class="price-summary">
     <div class="price-row">
         <span>Subtotal:</span>
-        <span>{{ "%.2f"|format(quote.subtotal) }}€</span>
+        <span id="subtotal-display">{{ "%.2f"|format(quote.subtotal) }}€</span>
     </div>
     
-    {% if quote.discount_percent > 0 %}
     <div class="price-row">
-        <span>Discount ({{ quote.discount_percent }}%):</span>
-        <span>-{{ "%.2f"|format(quote.discount_amount) }}€</span>
+        <span>Discount:</span>
+        <span>
+            <input type="number" 
+                   id="discount_percent_calc" 
+                   value="{{ quote.discount_percent }}" 
+                   step="0.01" 
+                   min="0" 
+                   max="100"
+                   style="width: 80px;"
+                   onchange="updateTotalFromDiscount()"> %
+            <span id="discount-amount-display" style="margin-left: 10px;">-{{ "%.2f"|format(quote.discount_amount) }}€</span>
+        </span>
     </div>
-    {% endif %}
     
     <div class="price-row total">
         <span>Total:</span>
-        <span>{{ "%.2f"|format(quote.total) }}€</span>
+        <span>
+            <input type="number" 
+                   id="total_price_calc" 
+                   value="{{ "%.2f"|format(quote.total) }}" 
+                   step="0.01" 
+                   min="0"
+                   style="width: 120px; font-size: 1.2em; font-weight: bold;"
+                   onchange="updateDiscountFromTotal()"> €
+        </span>
+    </div>
+    
+    <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+        <em>Tip: Edit either the discount % or the total price - the other will update automatically.</em>
     </div>
 </div>
+
+<script>
+var currentSubtotal = {{ quote.subtotal }};
+
+function updateTotalFromDiscount() {
+    var discountPercent = parseFloat(document.getElementById('discount_percent_calc').value) || 0;
+    var discountAmount = currentSubtotal * (discountPercent / 100);
+    var total = currentSubtotal - discountAmount;
+    
+    document.getElementById('discount-amount-display').textContent = '-' + discountAmount.toFixed(2) + '€';
+    document.getElementById('total_price_calc').value = total.toFixed(2);
+}
+
+function updateDiscountFromTotal() {
+    var total = parseFloat(document.getElementById('total_price_calc').value) || 0;
+    
+    if (total > currentSubtotal) {
+        alert('Total cannot be greater than subtotal!');
+        document.getElementById('total_price_calc').value = currentSubtotal.toFixed(2);
+        total = currentSubtotal;
+    }
+    
+    var discountAmount = currentSubtotal - total;
+    var discountPercent = currentSubtotal > 0 ? (discountAmount / currentSubtotal * 100) : 0;
+    
+    document.getElementById('discount_percent_calc').value = discountPercent.toFixed(2);
+    document.getElementById('discount-amount-display').textContent = '-' + discountAmount.toFixed(2) + '€';
+}
+</script>
+
+<form method="POST" style="margin-top: 20px;" onsubmit="return saveDiscount()">
+    <input type="hidden" name="action" value="update_discount">
+    <input type="hidden" name="final_discount_percent" id="final_discount_percent">
+    <button type="submit" class="btn btn-primary">Save Pricing</button>
+</form>
+
+<script>
+function saveDiscount() {
+    var discountPercent = parseFloat(document.getElementById('discount_percent_calc').value) || 0;
+    document.getElementById('final_discount_percent').value = discountPercent;
+    return true;
+}
+</script>
 
 <form method="POST" style="margin-top: 20px;">
     <input type="hidden" name="action" value="finalize">

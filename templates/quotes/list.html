@@ -12,7 +12,7 @@
         <tr>
             <th>ID</th>
             <th>Customer</th>
-            <th>Rental Days</th>
+            <th>Rental Period</th>
             <th>Total</th>
             <th>Status</th>
             <th>Created</th>
@@ -24,7 +24,12 @@
         <tr>
             <td>#{{ quote.id }}</td>
             <td>{{ quote.customer_name }}</td>
-            <td>{{ quote.rental_days }}</td>
+            <td>
+                {{ quote.calculate_rental_days() }} day(s)
+                {% if quote.start_date and quote.end_date %}
+                <br><small>{{ quote.start_date.strftime('%d.%m.%y') }} - {{ quote.end_date.strftime('%d.%m.%y') }}</small>
+                {% endif %}
+            </td>
             <td>{{ "%.2f"|format(quote.total) }}€</td>
             <td>
                 {% if quote.status == 'draft' %}

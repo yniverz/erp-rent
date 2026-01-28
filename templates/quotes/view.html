@@ -12,8 +12,13 @@
     </div>
     
     <div class="stat-card">
-        <div class="stat-label">Rental Days</div>
-        <div class="stat-value">{{ quote.rental_days }}</div>
+        <div class="stat-label">Rental Period</div>
+        <div class="stat-value">{{ quote.calculate_rental_days() }} day(s)</div>
+        {% if quote.start_date and quote.end_date %}
+        <div style="font-size: 0.8em; margin-top: 5px;">
+            {{ quote.start_date.strftime('%d.%m.%Y') }} - {{ quote.end_date.strftime('%d.%m.%Y') }}
+        </div>
+        {% endif %}
     </div>
     
     <div class="stat-card">
@@ -97,6 +102,16 @@
         </form>
         <form method="POST" action="{{ url_for('quote_unfinalize', quote_id=quote.id) }}" style="display: inline;">
             <button type="submit" class="btn" onclick="return confirm('Are you sure you want to return this quote to draft status?')">Undo Finalization</button>
+        </form>
+    {% endif %}
+        {% if quote.status == 'paid' %}
+        <form method="POST" action="{{ url_for('quote_unpay', quote_id=quote.id) }}" style="display: inline;">
+            <button type="submit" class="btn" onclick="return confirm('Are you sure you want to unpay this quote? This will revert the revenue.')">Unpay Quote</button>
+        </form>
+    {% endif %}
+        {% if quote.status == 'paid' %}
+        <form method="POST" action="{{ url_for('quote_unpay', quote_id=quote.id) }}" style="display: inline;">
+            <button type="submit" class="btn" onclick="return confirm('Are you sure you want to unpay this quote? This will revert the revenue.')">Unpay Quote</button>
         </form>
     {% endif %}
     
