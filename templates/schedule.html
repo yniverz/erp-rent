@@ -3,112 +3,136 @@
 {% block title %}Rental Schedule - ERP Rent{% endblock %}
 
 {% block content %}
+<link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css' rel='stylesheet' />
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+
+<style>
+    #calendar {
+        max-width: 1200px;
+        margin: 20px auto;
+        background: white;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .fc-event {
+        cursor: pointer;
+    }
+    
+    .fc-event-paid {
+        background-color: #28a745 !important;
+        border-color: #28a745 !important;
+    }
+    
+    .fc-event-finalized {
+        background-color: #ffc107 !important;
+        border-color: #ffc107 !important;
+        color: #000 !important;
+    }
+    
+    .event-details {
+        background: white;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        max-width: 400px;
+    }
+</style>
+
 <h1>Rental Schedule</h1>
 
-<div style="margin-bottom: 20px;">
-    <p style="color: #666;">Showing all finalized and paid rentals with scheduled dates</p>
-</div>
+<div id='calendar'></div>
 
-{% if quotes %}
-    <div style="display: flex; flex-direction: column; gap: 15px;">
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    
+    var events = [
         {% for quote in quotes %}
-        <div style="background: {% if quote.status == 'paid' %}#d4edda{% else %}#fff3cd{% endif %}; border-left: 4px solid {% if quote.status == 'paid' %}#28a745{% else %}#ffc107{% endif %}; padding: 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <div style="display: grid; grid-template-columns: 200px 1fr auto; gap: 20px; align-items: start;">
-                <!-- Date Range -->
-                <div>
-                    <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px;">
-                        {{ quote.start_date.strftime('%d.%m.%Y') }}
-                    </div>
-                    <div style="color: #666; font-size: 14px;">
-                        {% if quote.start_date.strftime('%Y-%m-%d') == quote.end_date.strftime('%Y-%m-%d') %}
-                            Same day
-                        {% else %}
-                            to {{ quote.end_date.strftime('%d.%m.%Y') }}
-                        {% endif %}
-                    </div>
-                    <div style="color: #666; font-size: 13px; margin-top: 3px;">
-                        ({{ quote.calculate_rental_days() }} day{% if quote.calculate_rental_days() != 1 %}s{% endif %})
-                    </div>
-                </div>
-                
-                <!-- Quote Details -->
-                <div>
-                    <div style="font-weight: bold; margin-bottom: 5px;">
-                        <a href="{{ url_for('quote_view', quote_id=quote.id) }}" style="color: #333; text-decoration: none;">
-                            Quote #{{ quote.id }} - {{ quote.customer_name }}
-                        </a>
-                    </div>
-                    
-                    {% if quote.quote_items %}
-                    <div style="font-size: 14px; color: #555;">
-                        <strong>Items:</strong>
-                        {% for item in quote.quote_items %}
-                            {{ item.quantity }}x {{ item.display_name }}{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    
-                    {% if quote.notes %}
-                    <div style="font-size: 13px; color: #666; margin-top: 5px; font-style: italic;">
-                        {{ quote.notes[:100] }}{% if quote.notes|length > 100 %}...{% endif %}
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Status and Total -->
-                <div style="text-align: right;">
-                    <div style="margin-bottom: 5px;">
-                        {% if quote.status == 'paid' %}
-                            <span class="badge badge-paid">Paid</span>
-                        {% elif quote.status == 'finalized' %}
-                            <span class="badge badge-finalized">Finalized</span>
-                        {% endif %}
-                    </div>
-                    <div style="font-size: 18px; font-weight: bold; color: #333;">
-                        {{ "%.2f"|format(quote.total) }}€
-                    </div>
-                </div>
-            </div>
-        </div>
+        {
+            id: {{ quote.id }},
+            title: '{{ quote.customer_name }}',
+            start: '{{ quote.start_date.strftime('%Y-%m-%d') }}',
+            end: '{{ (quote.end_date + timedelta(days=1)).strftime('%Y-%m-%d') }}',
+            backgroundColor: '{% if quote.status == "paid" %}#28a745{% else %}#ffc107{% endif %}',
+            borderColor: '{% if quote.status == "paid" %}#28a745{% else %}#ffc107{% endif %}',
+            textColor: '{% if quote.status == "paid" %}#fff{% else %}#000{% endif %}',
+            extendedProps: {
+                customer: '{{ quote.customer_name }}',
+                status: '{{ quote.status }}',
+                total: '{{ "%.2f"|format(quote.total) }}',
+                days: {{ quote.calculate_rental_days() }},
+                items: [
+                    {% for item in quote.quote_items %}
+                    '{{ item.quantity }}x {{ item.display_name }}'{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                notes: '{{ quote.notes|replace("'", "\\'") if quote.notes else "" }}'
+            }
+        }{% if not loop.last %},{% endif %}
         {% endfor %}
-    </div>
+    ];
     
-    <!-- Summary Stats -->
-    <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
-        <h3 style="margin-bottom: 15px;">Summary</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-            <div>
-                <div style="font-size: 14px; color: #666;">Total Rentals</div>
-                <div style="font-size: 24px; font-weight: bold;">{{ quotes|length }}</div>
-            </div>
-            <div>
-                <div style="font-size: 14px; color: #666;">Paid</div>
-                <div style="font-size: 24px; font-weight: bold; color: #28a745;">
-                    {{ quotes|selectattr('status', 'equalto', 'paid')|list|length }}
-                </div>
-            </div>
-            <div>
-                <div style="font-size: 14px; color: #666;">Finalized</div>
-                <div style="font-size: 24px; font-weight: bold; color: #ffc107;">
-                    {{ quotes|selectattr('status', 'equalto', 'finalized')|list|length }}
-                </div>
-            </div>
-            <div>
-                <div style="font-size: 14px; color: #666;">Total Revenue</div>
-                <div style="font-size: 24px; font-weight: bold;">
-                    {{ "%.2f"|format(quotes|selectattr('status', 'equalto', 'paid')|map(attribute='total')|sum) }}€
-                </div>
-            </div>
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,listWeek'
+        },
+        events: events,
+        eventClick: function(info) {
+            var event = info.event;
+            var props = event.extendedProps;
+            
+            var itemsList = props.items.join(', ');
+            var statusBadge = props.status === 'paid' 
+                ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 3px; font-size: 12px;">PAID</span>'
+                : '<span style="background: #ffc107; color: black; padding: 3px 8px; border-radius: 3px; font-size: 12px;">FINALIZED</span>';
+            
+            var details = '<div style="font-size: 14px;">' +
+                '<h3 style="margin: 0 0 10px 0;">Quote #' + event.id + '</h3>' +
+                '<p style="margin: 5px 0;"><strong>Customer:</strong> ' + props.customer + '</p>' +
+                '<p style="margin: 5px 0;"><strong>Status:</strong> ' + statusBadge + '</p>' +
+                '<p style="margin: 5px 0;"><strong>Duration:</strong> ' + props.days + ' day(s)</p>' +
+                '<p style="margin: 5px 0;"><strong>Total:</strong> ' + props.total + '€</p>' +
+                '<p style="margin: 5px 0;"><strong>Items:</strong><br>' + itemsList + '</p>';
+            
+            if (props.notes) {
+                details += '<p style="margin: 5px 0;"><strong>Notes:</strong><br><em>' + props.notes + '</em></p>';
+            }
+            
+            details += '<p style="margin: 15px 0 5px 0;"><a href="/quotes/' + event.id + '" style="color: #007bff; text-decoration: none;">View Quote Details →</a></p>' +
+                '</div>';
+            
+            alert(details.replace(/<[^>]*>/g, function(match) {
+                return '';
+            }) + '\n\nClick OK to close (or visit /quotes/' + event.id + ' to see full details)');
+        },
+        eventDidMount: function(info) {
+            info.el.title = info.event.extendedProps.customer + ' - ' + info.event.extendedProps.total + '€';
+        }
+    });
+    
+    calendar.render();
+});
+</script>
+
+<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+    <h3 style="margin-bottom: 10px;">Legend</h3>
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: #28a745; border-radius: 3px;"></div>
+            <span>Paid</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: #ffc107; border-radius: 3px;"></div>
+            <span>Finalized</span>
         </div>
     </div>
-    
-{% else %}
-    <div style="text-align: center; padding: 40px; color: #666;">
-        <p style="font-size: 18px; margin-bottom: 10px;">No scheduled rentals found</p>
-        <p>Finalized quotes with dates will appear here</p>
-        <a href="{{ url_for('quote_create') }}" class="btn btn-primary" style="margin-top: 15px; display: inline-block;">Create New Quote</a>
-    </div>
-{% endif %}
+    <p style="margin-top: 10px; font-size: 14px; color: #666;">Click on any event to view details</p>
+</div>
 
 <div style="margin-top: 20px;">
     <a href="{{ url_for('quote_list') }}" class="btn">View All Quotes</a>

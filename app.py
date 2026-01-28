@@ -622,6 +622,8 @@ def report_payoff():
 @login_required
 def schedule():
     """View rental schedule/calendar"""
+    from datetime import timedelta
+    
     # Get all quotes with dates (excluding drafts)
     quotes = Quote.query.filter(
         Quote.status.in_(['finalized', 'paid']),
@@ -629,7 +631,7 @@ def schedule():
         Quote.end_date.isnot(None)
     ).order_by(Quote.start_date).all()
     
-    return render_template('schedule.html', quotes=quotes)
+    return render_template('schedule.html', quotes=quotes, timedelta=timedelta)
 
 
 @app.route('/settings', methods=['GET', 'POST'])
