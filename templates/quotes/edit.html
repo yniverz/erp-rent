@@ -60,7 +60,8 @@
                            name="quantity_{{ item.id }}" 
                            id="quantity_{{ item.id }}"
                            value="{{ existing.quantity if existing else 0 }}" 
-                           min="0" 
+                           min="0"
+                           max="{{ item.total_quantity }}"
                            step="{{ item.rental_step }}"
                            style="width: 80px;"
                            onchange="updateSubtotal({{ item.id }})">

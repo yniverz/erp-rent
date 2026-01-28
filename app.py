@@ -173,6 +173,7 @@ def quote_edit(quote_id):
                 
             elif action == 'update_items':
                 # Update all inventory items
+                errors = []
                 for item in items:
                     quantity_key = f'quantity_{item.id}'
                     price_key = f'price_{item.id}'
@@ -180,6 +181,16 @@ def quote_edit(quote_id):
                     if quantity_key in request.form:
                         quantity = int(request.form.get(quantity_key, 0))
                         price = float(request.form.get(price_key, item.default_rental_price_per_day))
+                        
+                        # Validate quantity against available stock
+                        if quantity > item.total_quantity:
+                            errors.append(f'{item.name}: Cannot add {quantity} (only {item.total_quantity} available)')
+                            continue
+                        
+                        # Validate rental step
+                        if item.rental_step > 1 and quantity % item.rental_step != 0:
+                            errors.append(f'{item.name}: Quantity must be a multiple of {item.rental_step}')
+                            continue
                         
                         # Find existing quote item
                         existing = QuoteItem.query.filter_by(
@@ -206,8 +217,12 @@ def quote_edit(quote_id):
                             if existing:
                                 db.session.delete(existing)
                 
-                db.session.commit()
-                flash('Items updated!', 'success')
+                if errors:
+                    flash('Errors: ' + '; '.join(errors), 'error')
+                    db.session.rollback()
+                else:
+                    db.session.commit()
+                    flash('Items updated!', 'success')
                 
             elif action == 'add_custom':
                 custom_name = request.form.get('custom_name')
