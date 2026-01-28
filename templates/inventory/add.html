@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Add Inventory Item - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Add Inventory Item</h1>
+
+<form method="POST">
+    <div class="form-group">
+        <label for="name">Item Name:</label>
+        <input type="text" id="name" name="name" required>
+    </div>
+    
+    <div class="form-group">
+        <label for="total_quantity">Total Quantity (units owned):</label>
+        <input type="number" id="total_quantity" name="total_quantity" required min="1">
+        <small>Example: If you bought 4 lamps, enter 4</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="set_size">Set Size (units per set):</label>
+        <input type="number" id="set_size" name="set_size" value="1" min="1">
+        <small>Example: If lamps come in pairs, enter 2</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="rental_step">Rental Step (minimum rental increment):</label>
+        <input type="number" id="rental_step" name="rental_step" value="1" min="1">
+        <small>Example: If you can only rent in multiples of 2, enter 2</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="total_cost">Total Purchase Cost (€):</label>
+        <input type="number" id="total_cost" name="total_cost" step="0.01" required min="0">
+        <small>Example: If 4 lamps cost 1000€ total, enter 1000</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="default_rental_price">Default Rental Price per Unit per Day (€):</label>
+        <input type="number" id="default_rental_price" name="default_rental_price" step="0.01" required min="0">
+        <small>This is your standard daily rental rate per unit</small>
+    </div>
+    
+    <button type="submit" class="btn btn-success">Add Item</button>
+    <a href="{{ url_for('inventory_list') }}" class="btn">Cancel</a>
+</form>
+{% endblock %}

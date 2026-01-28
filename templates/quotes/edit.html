@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Quote #{{ quote.id }} - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Edit Quote #{{ quote.id }}</h1>
+
+<form method="POST" style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+    <input type="hidden" name="action" value="update_quote">
+    
+    <div class="form-group">
+        <label for="customer_name">Customer Name:</label>
+        <input type="text" id="customer_name" name="customer_name" value="{{ quote.customer_name }}" required>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+        <div class="form-group">
+            <label for="rental_days">Rental Days:</label>
+            <input type="number" id="rental_days" name="rental_days" value="{{ quote.rental_days }}" required min="1">
+        </div>
+        
+        <div class="form-group">
+            <label for="discount_percent">Discount (%):</label>
+            <input type="number" id="discount_percent" name="discount_percent" value="{{ quote.discount_percent }}" step="0.01" min="0" max="100">
+        </div>
+    </div>
+    
+    <div class="form-group">
+        <label for="notes">Notes:</label>
+        <textarea id="notes" name="notes">{{ quote.notes or '' }}</textarea>
+    </div>
+    
+    <button type="submit" class="btn btn-primary">Update Quote Details</button>
+</form>
+
+<h2>Select Items for Quote</h2>
+
+<form method="POST" id="itemsForm">
+    <input type="hidden" name="action" value="update_items">
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Item Name</th>
+                <th>Available</th>
+                <th>Quantity</th>
+                <th>Price/Day (€)</th>
+                <th>Default Price</th>
+                <th>Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            {% set existing = quote.quote_items|selectattr('item_id', 'equalto', item.id)|selectattr('is_custom', 'equalto', False)|first %}
+            <tr>
+                <td><strong>{{ item.name }}</strong></td>
+                <td>{{ item.total_quantity }} (step: {{ item.rental_step }})</td>
+                <td>
+                    <input type="number" 
+                           name="quantity_{{ item.id }}" 
+                           id="quantity_{{ item.id }}"
+                           value="{{ existing.quantity if existing else 0 }}" 
+                           min="0" 
+                           step="{{ item.rental_step }}"
+                           style="width: 80px;"
+                           onchange="updateSubtotal({{ item.id }})">
+                </td>
+                <td>
+                    <input type="number" 
+                           name="price_{{ item.id }}" 
+                           id="price_{{ item.id }}"
+                           value="{{ existing.rental_price_per_day if existing else item.default_rental_price_per_day }}" 
+                           step="0.01" 
+                           min="0"
+                           style="width: 100px;"
+                           onchange="updateSubtotal({{ item.id }})">
+                </td>
+                <td>{{ "%.2f"|format(item.default_rental_price_per_day) }}€</td>
+                <td id="subtotal_{{ item.id }}">
+                    {% if existing %}
+                        {{ "%.2f"|format(existing.quantity * existing.rental_price_per_day * quote.rental_days) }}€
+                    {% else %}
+                        0.00€
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div style="margin-top: 20px;">
+        <button type="submit" class="btn btn-success">Update All Items</button>
+    </div>
+</form>
+
+<script>
+function updateSubtotal(itemId) {
+    var quantity = parseFloat(document.getElementById('quantity_' + itemId).value) || 0;
+    var price = parseFloat(document.getElementById('price_' + itemId).value) || 0;
+    var rentalDays = {{ quote.rental_days }};
+    var subtotal = quantity * price * rentalDays;
+    document.getElementById('subtotal_' + itemId).textContent = subtotal.toFixed(2) + '€';
+}
+</script>
+
+<h2 style="margin-top: 40px;">Add Custom Item</h2>
+
+<form method="POST" style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+    <input type="hidden" name="action" value="add_custom">
+    
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 15px; align-items: end;">
+        <div class="form-group">
+            <label for="custom_name">Item Name:</label>
+            <input type="text" id="custom_name" name="custom_name" placeholder="e.g., Time, Labor, etc." required>
+        </div>
+        
+        <div class="form-group">
+            <label for="custom_quantity">Quantity:</label>
+            <input type="number" id="custom_quantity" name="custom_quantity" value="1" min="1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="custom_price">Price/Day (€):</label>
+            <input type="number" id="custom_price" name="custom_price" step="0.01" min="0" required>
+        </div>
+        
+        <div class="form-group">
+            <button type="submit" class="btn btn-success">Add Custom Item</button>
+        </div>
+    </div>
+</form>
+
+<h2>Current Quote Items</h2>
+
+{% set inventory_items = quote.quote_items|selectattr('is_custom', 'equalto', False)|list %}
+{% set custom_items = quote.quote_items|selectattr('is_custom', 'equalto', True)|list %}
+
+{% if inventory_items or custom_items %}
+
+{% if inventory_items %}
+<h3>Inventory Items</h3>
+<table class="quote-items-table">
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Quantity</th>
+            <th>Price/Day</th>
+            <th>Days</th>
+            <th>Subtotal</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for qi in inventory_items %}
+        <tr>
+            <td>{{ qi.item.name }}</td>
+            <td>{{ qi.quantity }}</td>
+            <td>{{ "%.2f"|format(qi.rental_price_per_day) }}€ 
+                {% if qi.rental_price_per_day != qi.item.default_rental_price_per_day %}
+                    <small>(default: {{ "%.2f"|format(qi.item.default_rental_price_per_day) }}€)</small>
+                {% endif %}
+            </td>
+            <td>{{ quote.rental_days }}</td>
+            <td>{{ "%.2f"|format(qi.total_price) }}€</td>
+            <td>
+                <form method="POST" style="display: inline;">
+                    <input type="hidden" name="action" value="remove_item">
+                    <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
+                    <button type="submit" class="btn btn-small btn-danger">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if custom_items %}
+<h3 style="margin-top: 30px;">Custom Items (Miscellaneous)</h3>
+<table class="quote-items-table">
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Quantity</th>
+            <th>Price/Day</th>
+            <th>Days</th>
+            <th>Subtotal</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for qi in custom_items %}
+        <tr>
+            <td><em>{{ qi.custom_item_name }}</em></td>
+            <td>{{ qi.quantity }}</td>
+            <td>{{ "%.2f"|format(qi.rental_price_per_day) }}€</td>
+            <td>{{ quote.rental_days }}</td>
+            <td>{{ "%.2f"|format(qi.total_price) }}€</td>
+            <td>
+                <form method="POST" style="display: inline;">
+                    <input type="hidden" name="action" value="remove_item">
+                    <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
+                    <button type="submit" class="btn btn-small btn-danger">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<div class="price-summary">
+    <div class="price-row">
+        <span>Subtotal:</span>
+        <span>{{ "%.2f"|format(quote.subtotal) }}€</span>
+    </div>
+    
+    {% if quote.discount_percent > 0 %}
+    <div class="price-row">
+        <span>Discount ({{ quote.discount_percent }}%):</span>
+        <span>-{{ "%.2f"|format(quote.discount_amount) }}€</span>
+    </div>
+    {% endif %}
+    
+    <div class="price-row total">
+        <span>Total:</span>
+        <span>{{ "%.2f"|format(quote.total) }}€</span>
+    </div>
+</div>
+
+<form method="POST" style="margin-top: 20px;">
+    <input type="hidden" name="action" value="finalize">
+    <button type="submit" class="btn btn-success">Finalize Quote</button>
+    <a href="{{ url_for('quote_list') }}" class="btn">Save Draft & Return</a>
+</form>
+
+{% else %}
+<p>No items added to this quote yet. Use the table above to add inventory items or add custom items below.</p>
+<a href="{{ url_for('quote_list') }}" class="btn">Save Draft & Return</a>
+{% endif %}
+
+{% endblock %}

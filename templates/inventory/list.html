@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Inventory</h1>
+
+<a href="{{ url_for('inventory_add') }}" class="btn btn-primary">Add New Item</a>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Quantity</th>
+            <th>Set Size</th>
+            <th>Rental Step</th>
+            <th>Unit Cost</th>
+            <th>Total Cost</th>
+            <th>Default Rental Price/Day</th>
+            <th>Revenue</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.total_quantity }}</td>
+            <td>{{ item.set_size }}</td>
+            <td>{{ item.rental_step }}</td>
+            <td>{{ "%.2f"|format(item.unit_purchase_cost) }}€</td>
+            <td>{{ "%.2f"|format(item.total_purchase_cost) }}€</td>
+            <td>{{ "%.2f"|format(item.default_rental_price_per_day) }}€</td>
+            <td>{{ "%.2f"|format(item.total_revenue) }}€</td>
+            <td>
+                {% if item.is_paid_off %}
+                    <span class="badge badge-success">Paid Off</span>
+                {% else %}
+                    <span class="badge badge-warning">{{ "%.2f"|format(item.remaining_to_payoff) }}€ remaining</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{{ url_for('inventory_edit', item_id=item.id) }}" class="btn btn-small">Edit</a>
+                <form method="POST" action="{{ url_for('inventory_delete', item_id=item.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this item?');">
+                    <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="10" style="text-align: center;">No items in inventory. <a href="{{ url_for('inventory_add') }}">Add your first item</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot style="font-weight: bold; background: #f8f9fa;">
+        <tr>
+            <td colspan="5" style="text-align: right;">TOTALS:</td>
+            <td>{{ "%.2f"|format(items|sum(attribute='total_purchase_cost')) }}€</td>
+            <td></td>
+            <td>{{ "%.2f"|format(items|sum(attribute='total_revenue')) }}€</td>
+            <td colspan="2">
+                {% set net = items|sum(attribute='total_revenue') - items|sum(attribute='total_purchase_cost') %}
+                Net: {{ "%.2f"|format(net) }}€
+                {% if net >= 0 %}
+                    <span class="badge badge-success">Profit</span>
+                {% else %}
+                    <span class="badge badge-warning">Loss</span>
+                {% endif %}
+            </td>
+        </tr>
+    </tfoot>
+</table>
+{% endblock %}

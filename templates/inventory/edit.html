@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ item.name }} - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Edit {{ item.name }}</h1>
+
+<form method="POST">
+    <div class="form-group">
+        <label for="name">Item Name:</label>
+        <input type="text" id="name" name="name" value="{{ item.name }}" required>
+    </div>
+    
+    <div class="form-group">
+        <label for="total_quantity">Total Quantity:</label>
+        <input type="number" id="total_quantity" name="total_quantity" value="{{ item.total_quantity }}" required min="1">
+    </div>
+    
+    <div class="form-group">
+        <label for="set_size">Set Size:</label>
+        <input type="number" id="set_size" name="set_size" value="{{ item.set_size }}" min="1">
+    </div>
+    
+    <div class="form-group">
+        <label for="rental_step">Rental Step:</label>
+        <input type="number" id="rental_step" name="rental_step" value="{{ item.rental_step }}" min="1">
+    </div>
+    
+    <div class="form-group">
+        <label for="total_cost">Total Purchase Cost (€) (optional - leave blank to keep current unit cost):</label>
+        <input type="number" id="total_cost" name="total_cost" step="0.01" placeholder="{{ '%.2f'|format(item.total_purchase_cost) }}" min="0">
+        <small>Current: {{ "%.2f"|format(item.total_purchase_cost) }}€ ({{ "%.2f"|format(item.unit_purchase_cost) }}€ per unit)</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="default_rental_price">Default Rental Price per Unit per Day (€):</label>
+        <input type="number" id="default_rental_price" name="default_rental_price" value="{{ item.default_rental_price_per_day }}" step="0.01" required min="0">
+    </div>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Total Revenue</div>
+            <div class="stat-value">{{ "%.2f"|format(item.total_revenue) }}€</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Payoff Status</div>
+            <div class="stat-value">
+                {% if item.is_paid_off %}
+                    <span class="badge badge-success">Paid Off</span>
+                {% else %}
+                    {{ "%.2f"|format(item.remaining_to_payoff) }}€ remaining
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <button type="submit" class="btn btn-success">Save Changes</button>
+    <a href="{{ url_for('inventory_list') }}" class="btn">Cancel</a>
+</form>
+{% endblock %}

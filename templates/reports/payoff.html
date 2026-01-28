@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Payoff Report - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Equipment Payoff Report</h1>
+
+<p>This report shows which items have been paid off through rental revenue.</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Total Quantity</th>
+            <th>Total Purchase Cost</th>
+            <th>Total Revenue</th>
+            <th>Remaining to Payoff</th>
+            <th>Payoff %</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.total_quantity }}</td>
+            <td>{{ "%.2f"|format(item.total_purchase_cost) }}€</td>
+            <td>{{ "%.2f"|format(item.total_revenue) }}€</td>
+            <td>{{ "%.2f"|format(item.remaining_to_payoff) }}€</td>
+            <td>
+                {% set payoff_percent = (item.total_revenue / item.total_purchase_cost * 100) if item.total_purchase_cost > 0 else 0 %}
+                {{ "%.1f"|format(payoff_percent) }}%
+            </td>
+            <td>
+                {% if item.is_paid_off %}
+                    <span class="badge badge-success">Paid Off</span>
+                {% else %}
+                    <span class="badge badge-warning">In Progress</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="7" style="text-align: center;">No items in inventory.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        {% if misc_revenue > 0 %}
+        <tr style="background: #e8f4f8;">
+            <td colspan="2">Miscellaneous (Custom Items)</td>
+            <td>-</td>
+            <td>{{ "%.2f"|format(misc_revenue) }}€</td>
+            <td>-</td>
+            <td>-</td>
+            <td><span class="badge badge-success">Extra Revenue</span></td>
+        </tr>
+        {% endif %}
+        <tr style="font-weight: bold; background: #f8f9fa;">
+            <td>TOTAL</td>
+            <td>{{ items|sum(attribute='total_quantity') }}</td>
+            <td>{{ "%.2f"|format(items|sum(attribute='total_purchase_cost')) }}€</td>
+            <td>{{ "%.2f"|format(items|sum(attribute='total_revenue') + misc_revenue) }}€</td>
+            <td>{{ "%.2f"|format(items|map(attribute='remaining_to_payoff')|sum) }}€</td>
+            <td>
+                {% set total_cost = items|sum(attribute='total_purchase_cost') %}
+                {% set total_revenue = items|sum(attribute='total_revenue') + misc_revenue %}
+                {% if total_cost > 0 %}
+                    {{ "%.1f"|format(total_revenue / total_cost * 100) }}%
+                {% else %}
+                    0%
+                {% endif %}
+            </td>
+            <td></td>
+        </tr>
+    </tfoot>
+</table>
+
+<div style="margin-top: 30px;">
+    <a href="{{ url_for('index') }}" class="btn">Back to Home</a>
+</div>
+{% endblock %}

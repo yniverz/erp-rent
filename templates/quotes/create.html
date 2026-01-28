@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Create Quote - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Create New Quote</h1>
+
+<form method="POST">
+    <div class="form-group">
+        <label for="customer_name">Customer Name:</label>
+        <input type="text" id="customer_name" name="customer_name" required>
+    </div>
+    
+    <div class="form-group">
+        <label for="rental_days">Rental Days:</label>
+        <input type="number" id="rental_days" name="rental_days" value="1" required min="1">
+    </div>
+    
+    <button type="submit" class="btn btn-success">Create Quote</button>
+    <a href="{{ url_for('quote_list') }}" class="btn">Cancel</a>
+</form>
+{% endblock %}
