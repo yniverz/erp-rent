@@ -33,6 +33,13 @@
             padding: 15px;
             margin: -20px -20px 20px -20px;
             border-radius: 5px 5px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        nav .nav-left {
+            display: flex;
         }
         
         nav a {
@@ -46,6 +53,15 @@
         nav a:hover {
             background: #555;
             border-radius: 3px;
+        }
+        
+        nav .logout-link {
+            background: #dc3545;
+            border-radius: 3px;
+        }
+        
+        nav .logout-link:hover {
+            background: #c82333;
         }
         
         h1, h2, h3 {
@@ -266,10 +282,13 @@
 <body>
     <div class="container">
         <nav>
-            <a href="{{ url_for('index') }}">Home</a>
-            <a href="{{ url_for('inventory_list') }}">Inventory</a>
-            <a href="{{ url_for('quote_list') }}">Quotes</a>
-            <a href="{{ url_for('report_payoff') }}">Payoff Report</a>
+            <div class="nav-left">
+                <a href="{{ url_for('index') }}">Home</a>
+                <a href="{{ url_for('inventory_list') }}">Inventory</a>
+                <a href="{{ url_for('quote_list') }}">Quotes</a>
+                <a href="{{ url_for('report_payoff') }}">Payoff Report</a>
+            </div>
+            <a href="{{ url_for('logout') }}" class="logout-link">Logout</a>
         </nav>
         
         {% with messages = get_flashed_messages(with_categories=true) %}

@@ -1,15 +1,31 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from models import db, Item, Quote, QuoteItem
 from datetime import datetime
 from sqlalchemy import and_, or_
+from functools import wraps
+from dotenv import load_dotenv
 import os
 
+# Load environment variables
+load_dotenv()
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dev-secret-key-change-in-production'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///erp_rent.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
+
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            flash('Please log in to access this page.', 'error')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None):
@@ -59,7 +75,38 @@ with app.app_context():
     db.create_all()
 
 
+# Authentication routes
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        admin_username = os.getenv('ADMIN_USERNAME')
+        admin_password = os.getenv('ADMIN_PASSWORD')
+        
+        if username == admin_username and password == admin_password:
+            session['logged_in'] = True
+            session['username'] = username
+            flash('Login successful!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid credentials. Please try again.', 'error')
+    
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """Logout user"""
+    session.clear()
+    flash('You have been logged out.', 'success')
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def index():
     """Home page"""
     return render_template('index.html')
@@ -68,6 +115,7 @@ def index():
 # ============= INVENTORY MANAGEMENT =============
 
 @app.route('/inventory')
+@login_required
 def inventory_list():
     """List all inventory items"""
     items = Item.query.order_by(Item.name).all()
@@ -75,6 +123,7 @@ def inventory_list():
 
 
 @app.route('/inventory/add', methods=['GET', 'POST'])
+@login_required
 def inventory_add():
     """Add new inventory item"""
     if request.method == 'POST':
@@ -114,6 +163,7 @@ def inventory_add():
 
 
 @app.route('/inventory/<int:item_id>/edit', methods=['GET', 'POST'])
+@login_required
 def inventory_edit(item_id):
     """Edit inventory item"""
     item = Item.query.get_or_404(item_id)
@@ -143,6 +193,7 @@ def inventory_edit(item_id):
 
 
 @app.route('/inventory/<int:item_id>/delete', methods=['POST'])
+@login_required
 def inventory_delete(item_id):
     """Delete inventory item"""
     item = Item.query.get_or_404(item_id)
@@ -162,6 +213,7 @@ def inventory_delete(item_id):
 # ============= QUOTE MANAGEMENT =============
 
 @app.route('/quotes')
+@login_required
 def quote_list():
     """List all quotes"""
     quotes = Quote.query.order_by(Quote.created_at.desc()).all()
@@ -169,6 +221,7 @@ def quote_list():
 
 
 @app.route('/quotes/create', methods=['GET', 'POST'])
+@login_required
 def quote_create():
     """Create new quote"""
     if request.method == 'POST':
@@ -215,6 +268,7 @@ def quote_create():
 
 
 @app.route('/quotes/<int:quote_id>/edit', methods=['GET', 'POST'])
+@login_required
 def quote_edit(quote_id):
     """Edit quote and add items"""
     quote = Quote.query.get_or_404(quote_id)
@@ -382,6 +436,7 @@ def quote_edit(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>')
+@login_required
 def quote_view(quote_id):
     """View quote details"""
     quote = Quote.query.get_or_404(quote_id)
@@ -389,6 +444,7 @@ def quote_view(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>/unfinalize', methods=['POST'])
+@login_required
 def quote_unfinalize(quote_id):
     """Undo finalization of a quote"""
     quote = Quote.query.get_or_404(quote_id)
@@ -410,6 +466,7 @@ def quote_unfinalize(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>/mark_paid', methods=['POST'])
+@login_required
 def quote_mark_paid(quote_id):
     """Mark quote as paid and update item revenue"""
     quote = Quote.query.get_or_404(quote_id)
@@ -444,6 +501,7 @@ def quote_mark_paid(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>/receipt')
+@login_required
 def quote_receipt(quote_id):
     """Generate receipt/insurance document"""
     quote = Quote.query.get_or_404(quote_id)
@@ -451,6 +509,7 @@ def quote_receipt(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>/german-doc')
+@login_required
 def quote_german_doc(quote_id):
     """Generate German Überlassungsbestätigung document"""
     quote = Quote.query.get_or_404(quote_id)
@@ -458,6 +517,7 @@ def quote_german_doc(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
+@login_required
 def quote_unpay(quote_id):
     """Unpay quote and revert revenue"""
     quote = Quote.query.get_or_404(quote_id)
@@ -486,6 +546,7 @@ def quote_unpay(quote_id):
 
 
 @app.route('/quotes/<int:quote_id>/delete', methods=['POST'])
+@login_required
 def quote_delete(quote_id):
     """Delete quote and revert revenue if paid"""
     quote = Quote.query.get_or_404(quote_id)
@@ -512,6 +573,7 @@ def quote_delete(quote_id):
 # ============= REPORTS =============
 
 @app.route('/reports/payoff')
+@login_required
 def report_payoff():
     """Show payoff status for all items"""
     items = Item.query.order_by(Item.name).all()
@@ -528,4 +590,4 @@ def report_payoff():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
