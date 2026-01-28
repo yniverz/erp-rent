@@ -267,7 +267,7 @@ def quote_edit(quote_id):
                     
                     if quantity_key in request.form:
                         quantity = int(request.form.get(quantity_key, 0))
-                        price = float(request.form.get(price_key, item.default_rental_price_per_day))
+                        price = round(float(request.form.get(price_key, item.default_rental_price_per_day)), 2)
                         
                         if quantity > 0:
                             # Get available quantity for this date range
@@ -323,7 +323,7 @@ def quote_edit(quote_id):
             elif action == 'add_custom':
                 custom_name = request.form.get('custom_name')
                 custom_quantity = int(request.form.get('custom_quantity', 1))
-                custom_price = float(request.form.get('custom_price'))
+                custom_price = round(float(request.form.get('custom_price')), 2)
                 
                 if custom_name and custom_price > 0:
                     quote_item = QuoteItem(
@@ -347,7 +347,7 @@ def quote_edit(quote_id):
                     flash('Item removed from quote!', 'success')
                     
             elif action == 'update_discount':
-                discount_percent = float(request.form.get('final_discount_percent', 0))
+                discount_percent = round(float(request.form.get('final_discount_percent', 0)), 2)
                 quote.discount_percent = discount_percent
                 db.session.commit()
                 flash(f'Pricing updated! Discount: {discount_percent}%', 'success')
@@ -428,8 +428,8 @@ def quote_mark_paid(quote_id):
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
                     # Calculate this item's share of the discounted total
-                    item_revenue = quote_item.total_price * discount_multiplier
-                    quote_item.item.total_revenue += item_revenue
+                    item_revenue = round(quote_item.total_price * discount_multiplier, 2)
+                    quote_item.item.total_revenue = round(quote_item.item.total_revenue + item_revenue, 2)
             
             db.session.commit()
             flash('Quote marked as paid and revenue updated!', 'success')
@@ -468,8 +468,8 @@ def quote_unpay(quote_id):
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
-                    item_revenue = quote_item.total_price * discount_multiplier
-                    quote_item.item.total_revenue -= item_revenue
+                    item_revenue = round(quote_item.total_price * discount_multiplier, 2)
+                    quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
             
             quote.status = 'finalized'
             quote.paid_at = None
@@ -496,8 +496,8 @@ def quote_delete(quote_id):
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
-                    item_revenue = quote_item.total_price * discount_multiplier
-                    quote_item.item.total_revenue -= item_revenue
+                    item_revenue = round(quote_item.total_price * discount_multiplier, 2)
+                    quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
         
         db.session.delete(quote)
         db.session.commit()

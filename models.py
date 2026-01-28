@@ -22,7 +22,7 @@ class Item(db.Model):
     @property
     def total_purchase_cost(self):
         """Total amount spent purchasing all units"""
-        return self.total_quantity * self.unit_purchase_cost
+        return round(self.total_quantity * self.unit_purchase_cost, 2)
     
     @property
     def is_paid_off(self):
@@ -32,7 +32,7 @@ class Item(db.Model):
     @property
     def remaining_to_payoff(self):
         """Amount remaining until item is paid off"""
-        return max(0, self.total_purchase_cost - self.total_revenue)
+        return round(max(0, self.total_purchase_cost - self.total_revenue), 2)
 
 
 class Quote(db.Model):
@@ -63,17 +63,17 @@ class Quote(db.Model):
     @property
     def subtotal(self):
         """Calculate subtotal before discount"""
-        return sum(qi.total_price for qi in self.quote_items)
+        return round(sum(qi.total_price for qi in self.quote_items), 2)
     
     @property
     def discount_amount(self):
         """Calculate discount amount"""
-        return self.subtotal * (self.discount_percent / 100)
+        return round(self.subtotal * (self.discount_percent / 100), 2)
     
     @property
     def total(self):
         """Calculate total after discount"""
-        return self.subtotal - self.discount_amount
+        return round(self.subtotal - self.discount_amount, 2)
 
 
 class QuoteItem(db.Model):
@@ -101,4 +101,4 @@ class QuoteItem(db.Model):
     def total_price(self):
         """Calculate total price for this line item"""
         days = self.quote.calculate_rental_days()
-        return self.quantity * self.rental_price_per_day * days
+        return round(self.quantity * self.rental_price_per_day * days, 2)
