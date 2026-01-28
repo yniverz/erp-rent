@@ -408,6 +408,30 @@ def quote_edit(quote_id):
                 flash(f'Pricing updated! Discount: {discount_percent}%', 'success')
                 
             elif action == 'finalize':
+                # Validate all items are still available before finalizing
+                if not quote.start_date or not quote.end_date:
+                    flash('Cannot finalize quote: Start and end dates must be set!', 'error')
+                    return render_template('quotes/edit.html', quote=quote, items=items, item_availability={})
+                
+                validation_errors = []
+                for quote_item in quote.quote_items:
+                    if not quote_item.is_custom and quote_item.item:
+                        available = get_available_quantity(
+                            quote_item.item_id,
+                            quote.start_date,
+                            quote.end_date,
+                            exclude_quote_id=quote.id
+                        )
+                        
+                        if quote_item.quantity > available:
+                            validation_errors.append(
+                                f'{quote_item.item.name}: Only {available} available during this period (quote has {quote_item.quantity})'
+                            )
+                
+                if validation_errors:
+                    flash('Cannot finalize quote due to availability issues: ' + '; '.join(validation_errors), 'error')
+                    return render_template('quotes/edit.html', quote=quote, items=items, item_availability={})
+                
                 quote.status = 'finalized'
                 quote.finalized_at = datetime.utcnow()
                 db.session.commit()
