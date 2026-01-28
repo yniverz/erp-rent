@@ -293,7 +293,7 @@ function updateDiscountFromTotal() {
     var discountAmount = currentSubtotal - total;
     var discountPercent = currentSubtotal > 0 ? (discountAmount / currentSubtotal * 100) : 0;
     
-    document.getElementById('discount_percent_calc').value = discountPercent.toFixed(2);
+    document.getElementById('discount_percent_calc').value = discountPercent;
     document.getElementById('discount-amount-display').textContent = '-' + discountAmount.toFixed(2) + '€';
 }
 </script>
