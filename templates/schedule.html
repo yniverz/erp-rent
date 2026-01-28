@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Rental Schedule - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Rental Schedule</h1>
+
+<div style="margin-bottom: 20px;">
+    <p style="color: #666;">Showing all finalized and paid rentals with scheduled dates</p>
+</div>
+
+{% if quotes %}
+    <div style="display: flex; flex-direction: column; gap: 15px;">
+        {% for quote in quotes %}
+        <div style="background: {% if quote.status == 'paid' %}#d4edda{% else %}#fff3cd{% endif %}; border-left: 4px solid {% if quote.status == 'paid' %}#28a745{% else %}#ffc107{% endif %}; padding: 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="display: grid; grid-template-columns: 200px 1fr auto; gap: 20px; align-items: start;">
+                <!-- Date Range -->
+                <div>
+                    <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px;">
+                        {{ quote.start_date.strftime('%d.%m.%Y') }}
+                    </div>
+                    <div style="color: #666; font-size: 14px;">
+                        {% if quote.start_date.strftime('%Y-%m-%d') == quote.end_date.strftime('%Y-%m-%d') %}
+                            Same day
+                        {% else %}
+                            to {{ quote.end_date.strftime('%d.%m.%Y') }}
+                        {% endif %}
+                    </div>
+                    <div style="color: #666; font-size: 13px; margin-top: 3px;">
+                        ({{ quote.calculate_rental_days() }} day{% if quote.calculate_rental_days() != 1 %}s{% endif %})
+                    </div>
+                </div>
+                
+                <!-- Quote Details -->
+                <div>
+                    <div style="font-weight: bold; margin-bottom: 5px;">
+                        <a href="{{ url_for('quote_view', quote_id=quote.id) }}" style="color: #333; text-decoration: none;">
+                            Quote #{{ quote.id }} - {{ quote.customer_name }}
+                        </a>
+                    </div>
+                    
+                    {% if quote.quote_items %}
+                    <div style="font-size: 14px; color: #555;">
+                        <strong>Items:</strong>
+                        {% for item in quote.quote_items %}
+                            {{ item.quantity }}x {{ item.display_name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    {% if quote.notes %}
+                    <div style="font-size: 13px; color: #666; margin-top: 5px; font-style: italic;">
+                        {{ quote.notes[:100] }}{% if quote.notes|length > 100 %}...{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Status and Total -->
+                <div style="text-align: right;">
+                    <div style="margin-bottom: 5px;">
+                        {% if quote.status == 'paid' %}
+                            <span class="badge badge-paid">Paid</span>
+                        {% elif quote.status == 'finalized' %}
+                            <span class="badge badge-finalized">Finalized</span>
+                        {% endif %}
+                    </div>
+                    <div style="font-size: 18px; font-weight: bold; color: #333;">
+                        {{ "%.2f"|format(quote.total) }}€
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Summary Stats -->
+    <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
+        <h3 style="margin-bottom: 15px;">Summary</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <div style="font-size: 14px; color: #666;">Total Rentals</div>
+                <div style="font-size: 24px; font-weight: bold;">{{ quotes|length }}</div>
+            </div>
+            <div>
+                <div style="font-size: 14px; color: #666;">Paid</div>
+                <div style="font-size: 24px; font-weight: bold; color: #28a745;">
+                    {{ quotes|selectattr('status', 'equalto', 'paid')|list|length }}
+                </div>
+            </div>
+            <div>
+                <div style="font-size: 14px; color: #666;">Finalized</div>
+                <div style="font-size: 24px; font-weight: bold; color: #ffc107;">
+                    {{ quotes|selectattr('status', 'equalto', 'finalized')|list|length }}
+                </div>
+            </div>
+            <div>
+                <div style="font-size: 14px; color: #666;">Total Revenue</div>
+                <div style="font-size: 24px; font-weight: bold;">
+                    {{ "%.2f"|format(quotes|selectattr('status', 'equalto', 'paid')|map(attribute='total')|sum) }}€
+                </div>
+            </div>
+        </div>
+    </div>
+    
+{% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <p style="font-size: 18px; margin-bottom: 10px;">No scheduled rentals found</p>
+        <p>Finalized quotes with dates will appear here</p>
+        <a href="{{ url_for('quote_create') }}" class="btn btn-primary" style="margin-top: 15px; display: inline-block;">Create New Quote</a>
+    </div>
+{% endif %}
+
+<div style="margin-top: 20px;">
+    <a href="{{ url_for('quote_list') }}" class="btn">View All Quotes</a>
+</div>
+
+{% endblock %}

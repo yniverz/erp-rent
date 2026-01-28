@@ -618,6 +618,20 @@ def report_payoff():
     return render_template('reports/payoff.html', items=items, misc_revenue=misc_revenue)
 
 
+@app.route('/schedule')
+@login_required
+def schedule():
+    """View rental schedule/calendar"""
+    # Get all quotes with dates (excluding drafts)
+    quotes = Quote.query.filter(
+        Quote.status.in_(['finalized', 'paid']),
+        Quote.start_date.isnot(None),
+        Quote.end_date.isnot(None)
+    ).order_by(Quote.start_date).all()
+    
+    return render_template('schedule.html', quotes=quotes)
+
+
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():

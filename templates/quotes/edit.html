@@ -13,7 +13,7 @@
         <input type="text" id="customer_name" name="customer_name" value="{{ quote.customer_name }}" required>
     </div>
     
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
         <div class="form-group">
             <label for="start_date">Start Date:</label>
             <input type="date" id="start_date" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}" required>
@@ -24,10 +24,10 @@
             <input type="date" id="end_date" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}" required>
         </div>
         
-        <div class="form-group">
+        <!-- <div class="form-group">
             <label for="discount_percent">Discount (%):</label>
             <input type="number" id="discount_percent" name="discount_percent" value="{{ quote.discount_percent }}" step="0.01" min="0" max="100">
-        </div>
+        </div> -->
     </div>
     
     <div style="background: #e8f4f8; padding: 10px; border-radius: 3px; margin: 10px 0;">
