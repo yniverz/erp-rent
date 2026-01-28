@@ -402,10 +402,10 @@ def quote_edit(quote_id):
                     flash('Item removed from quote!', 'success')
                     
             elif action == 'update_discount':
-                discount_percent = round(float(request.form.get('final_discount_percent', 0)), 2)
+                discount_percent = float(request.form.get('final_discount_percent', 0))
                 quote.discount_percent = discount_percent
                 db.session.commit()
-                flash(f'Pricing updated! Discount: {discount_percent}%', 'success')
+                flash(f'Pricing updated! Discount: {discount_percent:.4f}%', 'success')
                 
             elif action == 'finalize':
                 # Validate all items are still available before finalizing
