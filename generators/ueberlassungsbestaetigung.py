@@ -41,7 +41,7 @@ class HLine(Flowable):
         self.canv.restoreState()
 
 
-def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[str]) -> bytes:
+def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[str], total_sum = "__________", *args, **kwargs) -> bytes:
     buf = BytesIO()
 
     page_w, page_h = A4
@@ -322,7 +322,7 @@ def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[
          "Überlassungsdauer bedarf der schriftlichen Vereinbarung. Verzögert sich die Rückgabe durch schuldhaftes Verhalten "
          "des Nutzers, verlängert sich die Überlassung automatisch um 24 Stunden. Hierdurch entstehende Mehrkosten trägt der Nutzer."),
         ("§3 Kosten",
-         "Die Überlassung erfolgt unentgeltlich. Etwaige Kosten für Transport, Reinigung, Reparatur, Ersatz oder sonstige "
+         f"Die Überlassung erfolgt grundsätzlich unentgeltlich. Der Überlassende ist jedoch berechtigt, eine angemessene Aufwands- und Kostenbeteiligung in Höhe von {total_sum:.2f} Euro zu erheben. Etwaige Kosten für Transport, Reinigung, Reparatur, Ersatz oder sonstige "
          "Aufwendungen, die durch die Nutzung entstehen, trägt der Nutzer, soweit er diese zu vertreten hat."),
         ("§4 Weitergabe und Haftung",
          "Eine Weitergabe oder Unterüberlassung an Dritte ist nicht zulässig. Der Nutzer haftet für Beschädigung, Verlust oder "
@@ -395,3 +395,34 @@ def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[
     doc.build(story)
 
     return buf.getvalue()
+
+
+def file():
+    pdf_bytes = _build_pdf_bytes(consignor_info=[
+        "Firma XYZ GmbH",
+        "Musterstraße 1",
+        "12345 Musterstadt",
+        "Telefon: 01234 567890",
+        "E-Mail: info@firma-xyz.de",
+    ], timeframe_str="01.01.2024 - 31.01.2024", items=[
+        "Lichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model X",
+        "Tonanlage DEF Model Y",
+        "Mikrofon GHI Model Z",
+        "Nebelmaschine JKL Model W",
+        "Stromverteiler MNO Model V",
+    ])
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="ueberlassungsbestaetigung.pdf",
+        max_age=0,
+    )
+
+
+if __name__ == "__main__":
+    from flask import Flask, send_file
+    app = Flask(__name__)
+    app.add_url_rule("/", "file", file)
+    # pip install flask reportlab
+    app.run(debug=True, host="0.0.0.0", port=5001)

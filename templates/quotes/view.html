@@ -95,6 +95,7 @@
     <a href="{{ url_for('quote_list') }}" class="btn">Back to Quotes</a>
     <a href="{{ url_for('quote_receipt', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">View Receipt</a>
     <a href="{{ url_for('ueberlassungsbestaetigung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">View Überlassungsbestätigung</a>
+    <a href="{{ url_for('ueberlassungsbestaetigung_pdf', quote_id=quote.id, with_total=True) }}" class="btn btn-primary" target="_blank">View Überlassungsbestätigung (with Total)</a>
     
     {% if quote.status == 'finalized' %}
         <form method="POST" action="{{ url_for('quote_mark_paid', quote_id=quote.id) }}" style="display: inline;">

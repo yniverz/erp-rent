@@ -7,7 +7,15 @@ db = SQLAlchemy()
 class Settings(db.Model):
     """Application settings"""
     id = db.Column(db.Integer, primary_key=True)
-    business_details = db.Column(db.Text, nullable=True)  # Free text field for business details
+    # Deprecated field - kept for migration
+    business_details = db.Column(db.Text, nullable=True)
+    
+    # New structured fields
+    business_name = db.Column(db.String(200), nullable=True)
+    address_lines = db.Column(db.Text, nullable=True)  # Free text, multi-line
+    contact_lines = db.Column(db.Text, nullable=True)  # Free text, multi-line
+    bank_lines = db.Column(db.Text, nullable=True)  # Free text, multi-line
+    
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -38,14 +46,17 @@ class Item(db.Model):
     
     @property
     def remaining_to_payoff(self):
-        """Amount remaining until item is paid off"""
-        return round(max(0, self.total_purchase_cost - self.total_revenue), 2)
+        """Calculate remaining amount to pay off this item"""
+        remaining = self.total_purchase_cost - self.total_revenue
+        return round(max(0, remaining), 2)
 
 
 class Quote(db.Model):
-    """Customer quote/rental order"""
+    """Quote/rental agreement model"""
     id = db.Column(db.Integer, primary_key=True)
     customer_name = db.Column(db.String(200), nullable=False)
+    recipient_lines = db.Column(db.Text, nullable=True)  # Free text for recipient address
+    reference_number = db.Column(db.String(50), nullable=True)  # Auto-generated reference
     discount_percent = db.Column(db.Float, default=0.0)  # Discount percentage
     rental_days = db.Column(db.Integer, default=1)  # Number of rental days (calculated)
     start_date = db.Column(db.DateTime, nullable=True)  # Rental start date
@@ -58,6 +69,12 @@ class Quote(db.Model):
     
     # Relationships
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')
+    
+    def generate_reference_number(self):
+        """Generate reference number in format RE{YEAR}{MONTH}{DAY}{ID}"""
+        if not self.reference_number:
+            date_part = self.created_at.strftime('%Y%m%d')
+            self.reference_number = f"RE{date_part}{self.id:04d}"
     
     def calculate_rental_days(self):
         """Calculate rental days from start and end dates"""

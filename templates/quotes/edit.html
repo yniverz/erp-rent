@@ -3,7 +3,7 @@
 {% block title %}Edit Quote #{{ quote.id }} - ERP Rent{% endblock %}
 
 {% block content %}
-<h1>Edit Quote #{{ quote.id }}</h1>
+<h1>Edit Quote #{{ quote.id }} <small style="color: #666;">(Ref: {{ quote.reference_number }})</small></h1>
 
 <form method="POST" style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
     <input type="hidden" name="action" value="update_quote">
@@ -11,6 +11,12 @@
     <div class="form-group">
         <label for="customer_name">Customer Name:</label>
         <input type="text" id="customer_name" name="customer_name" value="{{ quote.customer_name }}" required>
+    </div>
+    
+    <div class="form-group">
+        <label for="recipient_lines">Recipient Address Lines (for invoices):</label>
+        <textarea id="recipient_lines" name="recipient_lines" rows="4" style="width: 100%; padding: 8px; font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 3px;" placeholder="Customer Name&#10;Street Address&#10;Postal Code City&#10;Country">{{ quote.recipient_lines or '' }}</textarea>
+        <small style="color: #666; display: block; margin-top: 3px;">If left empty, will use customer name only</small>
     </div>
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">

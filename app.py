@@ -74,6 +74,55 @@ def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None)
 # Initialize database
 with app.app_context():
     db.create_all()
+    
+    # Run migrations automatically
+    import sqlite3
+    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'erp_rent.db')
+    
+    if os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Check and add new settings fields
+        cursor.execute("PRAGMA table_info(settings)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'business_name' not in columns:
+            print("Running migration: Adding new settings fields...")
+            cursor.execute("ALTER TABLE settings ADD COLUMN business_name VARCHAR(200)")
+            cursor.execute("ALTER TABLE settings ADD COLUMN address_lines TEXT")
+            cursor.execute("ALTER TABLE settings ADD COLUMN contact_lines TEXT")
+            cursor.execute("ALTER TABLE settings ADD COLUMN bank_lines TEXT")
+            conn.commit()
+            print("Migration completed: Settings fields added")
+        
+        # Check and add quote fields
+        cursor.execute("PRAGMA table_info(quote)")
+        quote_columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'recipient_lines' not in quote_columns:
+            print("Running migration: Adding recipient_lines to quote...")
+            cursor.execute("ALTER TABLE quote ADD COLUMN recipient_lines TEXT")
+            conn.commit()
+            print("Migration completed: recipient_lines added")
+        
+        if 'reference_number' not in quote_columns:
+            print("Running migration: Adding reference_number to quote...")
+            cursor.execute("ALTER TABLE quote ADD COLUMN reference_number VARCHAR(50)")
+            conn.commit()
+            
+            # Generate reference numbers for existing quotes
+            cursor.execute("SELECT id, created_at FROM quote WHERE reference_number IS NULL")
+            quotes = cursor.fetchall()
+            for quote_id, created_at in quotes:
+                # Parse created_at (format: YYYY-MM-DD HH:MM:SS.mmmmmm)
+                date_part = created_at[:10].replace('-', '')
+                ref_no = f"RE{date_part}{quote_id:04d}"
+                cursor.execute("UPDATE quote SET reference_number = ? WHERE id = ?", (ref_no, quote_id))
+            conn.commit()
+            print(f"Migration completed: Generated reference numbers for {len(quotes)} existing quotes")
+        
+        conn.close()
 
 
 # Authentication routes
@@ -258,6 +307,10 @@ def quote_create():
             db.session.add(quote)
             db.session.commit()
             
+            # Generate reference number after commit (needs ID)
+            quote.generate_reference_number()
+            db.session.commit()
+            
             flash(f'Quote created for {customer_name}!', 'success')
             return redirect(url_for('quote_edit', quote_id=quote.id))
             
@@ -304,6 +357,7 @@ def quote_edit(quote_id):
                     quote.rental_days = int(request.form.get('rental_days', 1))
                 
                 quote.discount_percent = float(request.form.get('discount_percent', 0))
+                quote.recipient_lines = request.form.get('recipient_lines', '')
                 quote.notes = request.form.get('notes', '')
                 db.session.commit()
                 flash('Quote updated!', 'success')
@@ -549,7 +603,7 @@ def quote_receipt(quote_id):
 
 @app.get("/quotes/<int:quote_id>/ueberlassungsbestaetigung.pdf")
 @login_required
-def ueberlassungsbestaetigung_pdf(quote_id):
+def ueberlassungsbestaetigung_pdf(quote_id, with_total=False):
     from generators.ueberlassungsbestaetigung import _build_pdf_bytes
     quote = Quote.query.get_or_404(quote_id)
     timeframe_str = ""
@@ -565,7 +619,14 @@ def ueberlassungsbestaetigung_pdf(quote_id):
     f = timeframe_str
 
     settings = Settings.query.first()
-    pdf_bytes = _build_pdf_bytes(consignor_info=[line for line in (settings.business_details if settings else "").split("\n")], timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items])
+    # Build consignor info from structured settings fields
+    consignor_info = []
+    if settings:
+        if settings.business_name:
+            consignor_info.append(settings.business_name)
+        if settings.address_lines:
+            consignor_info.extend([line for line in settings.address_lines.split("\n") if line.strip()])
+    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], total_sum=quote.total if with_total else "__________")
     
     response = send_file(
         BytesIO(pdf_bytes),
@@ -678,13 +739,16 @@ def settings():
     # Get or create settings record
     settings_record = Settings.query.first()
     if not settings_record:
-        settings_record = Settings(business_details='')
+        settings_record = Settings()
         db.session.add(settings_record)
         db.session.commit()
     
     if request.method == 'POST':
         try:
-            settings_record.business_details = request.form.get('business_details', '')
+            settings_record.business_name = request.form.get('business_name', '')
+            settings_record.address_lines = request.form.get('address_lines', '')
+            settings_record.contact_lines = request.form.get('contact_lines', '')
+            settings_record.bank_lines = request.form.get('bank_lines', '')
             settings_record.updated_at = datetime.utcnow()
             db.session.commit()
             flash('Settings saved successfully!', 'success')
@@ -693,6 +757,61 @@ def settings():
             db.session.rollback()
     
     return render_template('settings.html', settings=settings_record)
+
+
+@app.route('/quotes/<int:quote_id>/kostenbeteiligung.pdf')
+@login_required
+def kostenbeteiligung_pdf(quote_id):
+    """Generate Kostenbeteiligung/Rechnung PDF"""
+    from generators.kostenbeteiligung import build_rechnung_pdf_bytes
+    
+    quote = Quote.query.get_or_404(quote_id)
+    settings_record = Settings.query.first()
+    
+    # Prepare date range
+    if quote.start_date and quote.end_date:
+        start_str = quote.start_date.strftime("%d.%m.%Y")
+        end_str = quote.end_date.strftime("%d.%m.%Y")
+        bereitstellungszeitraum = (start_str, end_str)
+    else:
+        bereitstellungszeitraum = ("XX.XX.20XX", "XX.XX.20XX")
+    
+    # Get settings or use defaults
+    issuer_name = settings_record.business_name if settings_record and settings_record.business_name else "Your Business"
+    address_lines = settings_record.address_lines.split('\n') if settings_record and settings_record.address_lines else []
+    contact_lines = settings_record.contact_lines.split('\n') if settings_record and settings_record.contact_lines else []
+    bank_lines = settings_record.bank_lines.split('\n') if settings_record and settings_record.bank_lines else []
+    
+    # Get recipient lines from quote
+    recipient_lines = quote.recipient_lines.split('\n') if quote.recipient_lines else [quote.customer_name]
+    
+    # Generate PDF
+    pdf_bytes = build_rechnung_pdf_bytes(
+        issuer_name=issuer_name,
+        issuer_address_lines=[line.strip() for line in address_lines if line.strip()],
+        issuer_contact_lines=[line.strip() for line in contact_lines if line.strip()],
+        bank_lines=[line.strip() for line in bank_lines if line.strip()],
+        recipient_lines=[line.strip() for line in recipient_lines if line.strip()],
+        reference_no=quote.reference_number or f"RE{quote.id:04d}",
+        bereitstellungszeitraum=bereitstellungszeitraum,
+        rechnungsbetrag_eur=float(quote.total),
+        rechnungsdatum=quote.finalized_at.strftime("%d.%m.%Y") if quote.finalized_at else datetime.now().strftime("%d.%m.%Y")
+    )
+    
+    response = send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"rechnung_{quote.reference_number}.pdf",
+        max_age=0,
+    )
+    
+    # Prevent caching
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
 
 
 if __name__ == '__main__':
