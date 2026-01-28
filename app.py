@@ -411,7 +411,11 @@ def quote_edit(quote_id):
                 # Validate all items are still available before finalizing
                 if not quote.start_date or not quote.end_date:
                     flash('Cannot finalize quote: Start and end dates must be set!', 'error')
-                    return render_template('quotes/edit.html', quote=quote, items=items, item_availability={})
+                    # Recalculate availability for display
+                    item_availability = {}
+                    for item in items:
+                        item_availability[item.id] = item.total_quantity
+                    return render_template('quotes/edit.html', quote=quote, items=items, item_availability=item_availability)
                 
                 validation_errors = []
                 for quote_item in quote.quote_items:
@@ -430,7 +434,16 @@ def quote_edit(quote_id):
                 
                 if validation_errors:
                     flash('Cannot finalize quote due to availability issues: ' + '; '.join(validation_errors), 'error')
-                    return render_template('quotes/edit.html', quote=quote, items=items, item_availability={})
+                    # Recalculate availability for all items to show proper greying out
+                    item_availability = {}
+                    for item in items:
+                        item_availability[item.id] = get_available_quantity(
+                            item.id,
+                            quote.start_date,
+                            quote.end_date,
+                            exclude_quote_id=quote.id
+                        )
+                    return render_template('quotes/edit.html', quote=quote, items=items, item_availability=item_availability)
                 
                 quote.status = 'finalized'
                 quote.finalized_at = datetime.utcnow()
