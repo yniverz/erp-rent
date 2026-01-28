@@ -529,13 +529,21 @@ def ueberlassungsbestaetigung_pdf(quote_id):
 
     settings = Settings.query.first()
     pdf_bytes = _build_pdf_bytes(consignor_info=[line for line in (settings.business_details if settings else "").split("\n")], timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items])
-    return send_file(
+    
+    response = send_file(
         BytesIO(pdf_bytes),
         mimetype="application/pdf",
         as_attachment=False,
         download_name="ueberlassungsbestaetigung.pdf",
         max_age=0,
     )
+    
+    # Prevent caching
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
 
 @app.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
 @login_required
