@@ -104,12 +104,7 @@
             <button type="submit" class="btn" onclick="return confirm('Are you sure you want to return this quote to draft status?')">Undo Finalization</button>
         </form>
     {% endif %}
-        {% if quote.status == 'paid' %}
-        <form method="POST" action="{{ url_for('quote_unpay', quote_id=quote.id) }}" style="display: inline;">
-            <button type="submit" class="btn" onclick="return confirm('Are you sure you want to unpay this quote? This will revert the revenue.')">Unpay Quote</button>
-        </form>
-    {% endif %}
-        {% if quote.status == 'paid' %}
+    {% if quote.status == 'paid' %}
         <form method="POST" action="{{ url_for('quote_unpay', quote_id=quote.id) }}" style="display: inline;">
             <button type="submit" class="btn" onclick="return confirm('Are you sure you want to unpay this quote? This will revert the revenue.')">Unpay Quote</button>
         </form>
