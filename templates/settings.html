@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - ERP Rent{% endblock %}
+
+{% block content %}
+<h1>Settings</h1>
+
+<form method="POST">
+    <div style="margin-bottom: 20px;">
+        <label for="business_details" style="display: block; margin-bottom: 5px; font-weight: bold;">
+            Business Details
+            <span style="font-weight: normal; color: #666; font-size: 0.9em;">(will appear on receipts and documents)</span>
+        </label>
+        <textarea 
+            id="business_details" 
+            name="business_details" 
+            rows="8" 
+            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-family: monospace; font-size: 14px;"
+            placeholder="Example:&#10;John Doe&#10;Main Street 123&#10;12345 City&#10;&#10;Phone: +1 234 567890&#10;Email: info@example.com"
+>{{ settings.business_details if settings.business_details else '' }}</textarea>
+        <div style="margin-top: 5px; color: #666; font-size: 0.9em;">
+            Enter your business or personal details as you want them to appear on receipts and documents.
+        </div>
+    </div>
+    
+    <div>
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+        <a href="{{ url_for('index') }}" class="btn">Cancel</a>
+    </div>
+</form>
+
+{% if settings.updated_at %}
+<div style="margin-top: 20px; color: #666; font-size: 0.9em;">
+    Last updated: {{ settings.updated_at.strftime('%Y-%m-%d %H:%M') }}
+</div>
+{% endif %}
+
+{% endblock %}

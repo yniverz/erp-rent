@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from models import db, Item, Quote, QuoteItem
+from io import BytesIO
+from flask import Flask, render_template, request, redirect, send_file, url_for, flash, session
+from models import db, Item, Quote, QuoteItem, Settings
 from datetime import datetime
 from sqlalchemy import and_, or_
 from functools import wraps
@@ -505,16 +506,36 @@ def quote_mark_paid(quote_id):
 def quote_receipt(quote_id):
     """Generate receipt/insurance document"""
     quote = Quote.query.get_or_404(quote_id)
-    return render_template('quotes/receipt.html', quote=quote)
+    settings = Settings.query.first()
+    return render_template('quotes/receipt.html', quote=quote, settings=settings)
 
 
-@app.route('/quotes/<int:quote_id>/german-doc')
+@app.get("/quotes/<int:quote_id>/ueberlassungsbestaetigung.pdf")
 @login_required
-def quote_german_doc(quote_id):
-    """Generate German Überlassungsbestätigung document"""
+def ueberlassungsbestaetigung_pdf(quote_id):
+    from generators.ueberlassungsbestaetigung import _build_pdf_bytes
     quote = Quote.query.get_or_404(quote_id)
-    return render_template('quotes/german_doc.html', quote=quote)
+    timeframe_str = ""
+    if quote.start_date and quote.end_date:
+        f = quote.start_date.strftime("%d.%m.%Y")
+        t = quote.end_date.strftime("%d.%m.%Y")
+        if f == t:
+            timeframe_str = f
+        else:
+            timeframe_str = f"{f} - {t}"
+    else:
+        timeframe_str = "#Datum nicht festgelegt#"
+    f = timeframe_str
 
+    settings = Settings.query.first()
+    pdf_bytes = _build_pdf_bytes(consignor_info=[line for line in (settings.business_details if settings else "").split("\n")], timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items])
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="ueberlassungsbestaetigung.pdf",
+        max_age=0,
+    )
 
 @app.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
 @login_required
@@ -587,6 +608,30 @@ def report_payoff():
     ).scalar() or 0.0
     
     return render_template('reports/payoff.html', items=items, misc_revenue=misc_revenue)
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    """Application settings"""
+    # Get or create settings record
+    settings_record = Settings.query.first()
+    if not settings_record:
+        settings_record = Settings(business_details='')
+        db.session.add(settings_record)
+        db.session.commit()
+    
+    if request.method == 'POST':
+        try:
+            settings_record.business_details = request.form.get('business_details', '')
+            settings_record.updated_at = datetime.utcnow()
+            db.session.commit()
+            flash('Settings saved successfully!', 'success')
+        except Exception as e:
+            flash(f'Error saving settings: {str(e)}', 'error')
+            db.session.rollback()
+    
+    return render_template('settings.html', settings=settings_record)
 
 
 if __name__ == '__main__':

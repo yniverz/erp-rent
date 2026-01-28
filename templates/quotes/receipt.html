@@ -11,30 +11,43 @@
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
         <div>
-            <h3>Customer Information</h3>
-            <p><strong>Name:</strong> {{ quote.customer_name }}</p>
-            <p><strong>Date:</strong> {{ quote.created_at.strftime('%Y-%m-%d') }}</p>
-            {% if quote.finalized_at %}
-            <p><strong>Finalized:</strong> {{ quote.finalized_at.strftime('%Y-%m-%d') }}</p>
+            <h3>From</h3>
+            {% if settings and settings.business_details %}
+            <p style="white-space: pre-line;">{{ settings.business_details }}</p>
+            {% else %}
+            <p style="color: #999; font-style: italic;">No business details set<br><a href="{{ url_for('settings') }}">Add in Settings</a></p>
             {% endif %}
         </div>
         
         <div>
-            <h3>Rental Details</h3>
-            <p><strong>Rental Period:</strong> {{ quote.rental_days }} day(s)</p>
-            <p><strong>Status:</strong> 
-                {% if quote.status == 'paid' %}
-                    PAID
-                {% elif quote.status == 'finalized' %}
-                    FINALIZED
-                {% else %}
-                    DRAFT
-                {% endif %}
-            </p>
-            {% if quote.paid_at %}
-            <p><strong>Payment Date:</strong> {{ quote.paid_at.strftime('%Y-%m-%d') }}</p>
+            <h3>To</h3>
+            <p><strong>{{ quote.customer_name }}</strong></p>
+            <p style="margin-top: 10px;">Date: {{ quote.created_at.strftime('%Y-%m-%d') }}</p>
+            {% if quote.finalized_at %}
+            <p>Finalized: {{ quote.finalized_at.strftime('%Y-%m-%d') }}</p>
             {% endif %}
         </div>
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <h3>Rental Details</h3>
+        <p><strong>Rental Period:</strong> {{ quote.calculate_rental_days() }} day(s)
+        {% if quote.start_date and quote.end_date %}
+        ({{ quote.start_date.strftime('%d.%m.%Y') }} - {{ quote.end_date.strftime('%d.%m.%Y') }})
+        {% endif %}
+        </p>
+        <p><strong>Status:</strong> 
+            {% if quote.status == 'paid' %}
+                PAID
+            {% elif quote.status == 'finalized' %}
+                FINALIZED
+            {% else %}
+                DRAFT
+            {% endif %}
+        </p>
+        {% if quote.paid_at %}
+        <p><strong>Payment Date:</strong> {{ quote.paid_at.strftime('%Y-%m-%d') }}</p>
+        {% endif %}
     </div>
     
     <h2>Rented Items</h2>

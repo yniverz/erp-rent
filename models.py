@@ -4,6 +4,13 @@ from datetime import datetime
 db = SQLAlchemy()
 
 
+class Settings(db.Model):
+    """Application settings"""
+    id = db.Column(db.Integer, primary_key=True)
+    business_details = db.Column(db.Text, nullable=True)  # Free text field for business details
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Item(db.Model):
     """Inventory item model"""
     id = db.Column(db.Integer, primary_key=True)

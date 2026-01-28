@@ -13,9 +13,3 @@ services:
     volumes:
       - ./instance:/app/instance
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
