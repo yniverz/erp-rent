@@ -13,7 +13,8 @@
     
     <div class="form-group">
         <label for="total_quantity">Total Quantity:</label>
-        <input type="number" id="total_quantity" name="total_quantity" value="{{ item.total_quantity }}" required min="1">
+        <input type="number" id="total_quantity" name="total_quantity" value="{{ item.total_quantity }}" required min="-1">
+        <small>Enter <strong>-1</strong> for unlimited quantity (e.g., hours worked, kilometers driven)</small>
     </div>
     
     <div class="form-group">

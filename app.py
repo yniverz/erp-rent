@@ -33,10 +33,15 @@ def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None)
     """
     Calculate available quantity for an item during a specific date range.
     Considers overlapping quotes that are finalized or paid.
+    Returns -1 for unlimited items (items with total_quantity = -1).
     """
     item = Item.query.get(item_id)
     if not item:
         return 0
+    
+    # If item has unlimited quantity, return -1 to indicate unlimited
+    if item.total_quantity == -1:
+        return -1
     
     # Find all overlapping quotes (finalized or paid)
     overlapping_quotes = Quote.query.filter(
@@ -186,8 +191,8 @@ def inventory_add():
             total_cost = float(request.form.get('total_cost'))
             default_rental_price = float(request.form.get('default_rental_price'))
             
-            # Calculate unit purchase cost
-            unit_purchase_cost = total_cost / total_quantity
+            # Calculate unit purchase cost (unlimited items have 0 cost)
+            unit_purchase_cost = 0 if total_quantity == -1 else total_cost / total_quantity
             
             # Create new item
             item = Item(
@@ -229,7 +234,8 @@ def inventory_edit(item_id):
             # Recalculate unit cost if total cost is provided
             if 'total_cost' in request.form and request.form.get('total_cost'):
                 total_cost = float(request.form.get('total_cost'))
-                item.unit_purchase_cost = total_cost / item.total_quantity
+                # Unlimited items have 0 cost
+                item.unit_purchase_cost = 0 if item.total_quantity == -1 else total_cost / item.total_quantity
             
             db.session.commit()
             flash(f'Successfully updated {item.name}!', 'success')
@@ -387,8 +393,8 @@ def quote_edit(quote_id):
                                 exclude_quote_id=quote.id
                             )
                             
-                            # Validate quantity against available stock
-                            if quantity > available:
+                            # Validate quantity against available stock (skip for unlimited items)
+                            if available != -1 and quantity > available:
                                 errors.append(f'{item.name}: Only {available} available during this period (total: {item.total_quantity})')
                                 continue
                             
@@ -481,7 +487,8 @@ def quote_edit(quote_id):
                             exclude_quote_id=quote.id
                         )
                         
-                        if quote_item.quantity > available:
+                        # Skip validation for unlimited items (available == -1)
+                        if available != -1 and quote_item.quantity > available:
                             validation_errors.append(
                                 f'{quote_item.item.name}: Only {available} available during this period (quote has {quote_item.quantity})'
                             )

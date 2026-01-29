@@ -71,12 +71,17 @@
             {% for item in items %}
             {% set existing = quote.quote_items|selectattr('item_id', 'equalto', item.id)|selectattr('is_custom', 'equalto', False)|first %}
             {% set available = item_availability.get(item.id, item.total_quantity) %}
-            <tr{% if available == 0 %} style="opacity: 0.5;"{% endif %}>
+            {% set is_unlimited = (item.total_quantity == -1) %}
+            <tr{% if available == 0 and not is_unlimited %} style="opacity: 0.5;"{% endif %}>
                 <td><strong>{{ item.name }}</strong></td>
                 <td>
-                    {{ available }} / {{ item.total_quantity }} 
-                    {% if available < item.total_quantity %}
-                        <span style="color: #dc3545; font-size: 0.9em;">({{ item.total_quantity - available }} booked)</span>
+                    {% if is_unlimited %}
+                        <strong style="color: #28a745;">Unlimited</strong>
+                    {% else %}
+                        {{ available }} / {{ item.total_quantity }} 
+                        {% if available < item.total_quantity %}
+                            <span style="color: #dc3545; font-size: 0.9em;">({{ item.total_quantity - available }} booked)</span>
+                        {% endif %}
                     {% endif %}
                     <br><small style="color: #666;">Step: {{ item.rental_step }}</small>
                 </td>
@@ -86,11 +91,11 @@
                            id="quantity_{{ item.id }}"
                            value="{{ existing.quantity if existing else 0 }}" 
                            min="0"
-                           max="{{ available }}"
+                           {% if not is_unlimited %}max="{{ available }}"{% endif %}
                            step="{{ item.rental_step }}"
                            style="width: 80px;"
                            onchange="updateSubtotal({{ item.id }})"
-                           {% if available == 0 %}disabled{% endif %}>
+                           {% if available == 0 and not is_unlimited %}disabled{% endif %}>
                 </td>
                 <td>
                     <input type="number" 

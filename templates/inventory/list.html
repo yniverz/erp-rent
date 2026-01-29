@@ -26,7 +26,7 @@
         {% for item in items %}
         <tr>
             <td>{{ item.name }}</td>
-            <td>{{ item.total_quantity }}</td>
+            <td>{% if item.total_quantity == -1 %}<strong>Unlimited</strong>{% else %}{{ item.total_quantity }}{% endif %}</td>
             <td>{{ item.set_size }}</td>
             <td>{{ item.rental_step }}</td>
             <td>{{ "%.2f"|format(item.unit_purchase_cost) }}€</td>

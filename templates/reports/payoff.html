@@ -23,7 +23,7 @@
         {% for item in items %}
         <tr>
             <td>{{ item.name }}</td>
-            <td>{{ item.total_quantity }}</td>
+            <td>{% if item.total_quantity == -1 %}<strong>Unlimited</strong>{% else %}{{ item.total_quantity }}{% endif %}</td>
             <td>{{ "%.2f"|format(item.total_purchase_cost) }}€</td>
             <td>{{ "%.2f"|format(item.total_revenue) }}€</td>
             <td>{{ "%.2f"|format(item.remaining_to_payoff) }}€</td>
@@ -58,7 +58,7 @@
         {% endif %}
         <tr style="font-weight: bold; background: #f8f9fa;">
             <td>TOTAL</td>
-            <td>{{ items|sum(attribute='total_quantity') }}</td>
+            <td>{{ items|rejectattr('total_quantity', 'equalto', -1)|sum(attribute='total_quantity') }} <small>(excl. unlimited)</small></td>
             <td>{{ "%.2f"|format(items|sum(attribute='total_purchase_cost')) }}€</td>
             <td>{{ "%.2f"|format(items|sum(attribute='total_revenue') + misc_revenue) }}€</td>
             <td>{{ "%.2f"|format(items|map(attribute='remaining_to_payoff')|sum) }}€</td>
