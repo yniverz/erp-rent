@@ -592,64 +592,6 @@ def quote_mark_paid(quote_id):
     return redirect(url_for('quote_view', quote_id=quote_id))
 
 
-@app.route('/quotes/<int:quote_id>/receipt')
-@login_required
-def quote_receipt(quote_id):
-    """Generate receipt/insurance document"""
-    quote = Quote.query.get_or_404(quote_id)
-    settings = Settings.query.first()
-    return render_template('quotes/receipt.html', quote=quote, settings=settings)
-
-
-@app.get("/quotes/<int:quote_id>/ueberlassungsbestaetigung.pdf")
-@login_required
-def ueberlassungsbestaetigung_pdf(quote_id):
-    # get get parameter "with_quote_total"
-    with_quote_total = request.args.get("with_quote_total", "false").lower() == "true"
-
-    from generators.ueberlassungsbestaetigung import _build_pdf_bytes
-    quote = Quote.query.get_or_404(quote_id)
-    timeframe_str = ""
-    if quote.start_date and quote.end_date:
-        f = quote.start_date.strftime("%d.%m.%Y")
-        t = quote.end_date.strftime("%d.%m.%Y")
-        if f == t:
-            timeframe_str = f
-        else:
-            timeframe_str = f"{f} - {t}"
-    else:
-        timeframe_str = "#Datum nicht festgelegt#"
-    f = timeframe_str
-
-    settings = Settings.query.first()
-    # Build consignor info from structured settings fields
-    consignor_info = []
-    if settings:
-        if settings.business_name:
-            consignor_info.append(settings.business_name)
-        if settings.address_lines:
-            consignor_info.extend([line for line in settings.address_lines.split("\n") if line.strip()])
-
-    kwargs = {}
-    if with_quote_total:
-        kwargs["total_sum"] = quote.total
-    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], **kwargs)
-    
-    response = send_file(
-        BytesIO(pdf_bytes),
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name="ueberlassungsbestaetigung.pdf",
-        max_age=0,
-    )
-    
-    # Prevent caching
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    
-    return response
-
 @app.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
 @login_required
 def quote_unpay(quote_id):
@@ -766,7 +708,67 @@ def settings():
     return render_template('settings.html', settings=settings_record)
 
 
-@app.route('/quotes/<int:quote_id>/kostenbeteiligung.pdf')
+# @app.route('/quotes/<int:quote_id>/receipt')
+# @login_required
+# def quote_receipt(quote_id):
+#     """Generate receipt/insurance document"""
+#     quote = Quote.query.get_or_404(quote_id)
+#     settings = Settings.query.first()
+#     return render_template('quotes/receipt.html', quote=quote, settings=settings)
+
+
+@app.get("/quotes/<int:quote_id>/ueberlassungsbestaetigung.pdf")
+@login_required
+def ueberlassungsbestaetigung_pdf(quote_id):
+    # get get parameter "with_quote_total"
+    with_quote_total = request.args.get("with_quote_total", "false").lower() == "true"
+
+    from generators.ueberlassungsbestaetigung import _build_pdf_bytes
+    quote = Quote.query.get_or_404(quote_id)
+    timeframe_str = ""
+    if quote.start_date and quote.end_date:
+        f = quote.start_date.strftime("%d.%m.%Y")
+        t = quote.end_date.strftime("%d.%m.%Y")
+        if f == t:
+            timeframe_str = f
+        else:
+            timeframe_str = f"{f} - {t}"
+    else:
+        timeframe_str = "#Datum nicht festgelegt#"
+    f = timeframe_str
+
+    settings = Settings.query.first()
+    # Build consignor info from structured settings fields
+    consignor_info = []
+    if settings:
+        if settings.business_name:
+            consignor_info.append(settings.business_name)
+        if settings.address_lines:
+            consignor_info.extend([line for line in settings.address_lines.split("\n") if line.strip()])
+
+    kwargs = {}
+    if with_quote_total:
+        kwargs["total_sum"] = quote.total
+    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], **kwargs)
+    
+    response = send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="ueberlassungsbestaetigung.pdf",
+        max_age=0,
+    )
+    
+    # Prevent caching
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+
+
+# @app.route('/quotes/<int:quote_id>/kostenbeteiligung.pdf')
+@app.route('/quotes/<int:quote_id>/receipt')
 @login_required
 def kostenbeteiligung_pdf(quote_id):
     """Generate Kostenbeteiligung/Rechnung PDF"""
