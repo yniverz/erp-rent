@@ -269,7 +269,7 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("Bemerkungen:", normal))
-    story.append(Spacer(1, 4))
+    story.append(Spacer(1, 15))
     story.append(HLine(width=page_w - left - right, thickness=0.9, space_before=0, space_after=20))
     story.append(HLine(width=page_w - left - right, thickness=0.9, space_before=0, space_after=20))
     story.append(HLine(width=page_w - left - right, thickness=0.9, space_before=0, space_after=40))
