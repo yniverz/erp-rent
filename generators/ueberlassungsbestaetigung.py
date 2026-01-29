@@ -41,7 +41,7 @@ class HLine(Flowable):
         self.canv.restoreState()
 
 
-def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[str], total_sum = "__________", *args, **kwargs) -> bytes:
+def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[str], total_sum: float = None, *args, **kwargs) -> bytes:
     buf = BytesIO()
 
     page_w, page_h = A4
@@ -322,7 +322,7 @@ def _build_pdf_bytes(consignor_info: list[str], timeframe_str: str, items: list[
          "Überlassungsdauer bedarf der schriftlichen Vereinbarung. Verzögert sich die Rückgabe durch schuldhaftes Verhalten "
          "des Nutzers, verlängert sich die Überlassung automatisch um 24 Stunden. Hierdurch entstehende Mehrkosten trägt der Nutzer."),
         ("§3 Kosten",
-         "Die Überlassung erfolgt grundsätzlich unentgeltlich. Der Überlassende ist jedoch berechtigt, eine angemessene Aufwands- und Kostenbeteiligung in Höhe von " + (f"{total_sum:.2f} Euro" if isinstance(total_sum, (int, float)) else str(total_sum)) + " zu erheben. Etwaige Kosten für Transport, Reinigung, Reparatur, Ersatz oder sonstige "
+         "Die Überlassung erfolgt grundsätzlich unentgeltlich. Der Überlassende ist jedoch berechtigt, eine angemessene Aufwands- und Kostenbeteiligung " + (f"in Höhe von {total_sum:.2f} Euro" if total_sum is not None else "") + " zu erheben. Etwaige Kosten für Transport, Reinigung, Reparatur, Ersatz oder sonstige "
          "Aufwendungen, die durch die Nutzung entstehen, trägt der Nutzer, soweit er diese zu vertreten hat."),
         ("§4 Weitergabe und Haftung",
          "Eine Weitergabe oder Unterüberlassung an Dritte ist nicht zulässig. Der Nutzer haftet für Beschädigung, Verlust oder "
