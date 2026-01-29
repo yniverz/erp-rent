@@ -749,7 +749,12 @@ def ueberlassungsbestaetigung_pdf(quote_id):
     kwargs = {}
     if with_quote_total:
         kwargs["total_sum"] = quote.total
-    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], **kwargs)
+    pdf_bytes = _build_pdf_bytes(
+        consignor_info=consignor_info, 
+        recipient_info=[line for line in (quote.recipient_lines or quote.customer_name).split("\n") if line.strip()],
+        timeframe_str=timeframe_str, 
+        items=[q.display_name for q in quote.quote_items], 
+        **kwargs)
     
     response = send_file(
         BytesIO(pdf_bytes),
