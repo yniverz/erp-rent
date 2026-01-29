@@ -189,15 +189,6 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
         ueberlasser_content.append(Paragraph(line, bold))
     ueberlasser_content.append(Paragraph("(Überlasser)", normal))
     
-    # Build Nutzer column content
-    # nutzer_content = [
-    #     Spacer(1, 10),
-    #     HLine(width=col_width - 10, thickness=0.9, space_before=0, space_after=20),
-    #     HLine(width=col_width - 10, thickness=0.9, space_before=0, space_after=20),
-    #     HLine(width=col_width - 10, thickness=0.9, space_before=0, space_after=20),
-    #     HLine(width=col_width - 10, thickness=0.9, space_before=0, space_after=6),
-    #     Paragraph("(Nutzer)", normal),
-    # ]
 
     nutzer_content = []
     for line in recipient_info:
