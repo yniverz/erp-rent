@@ -603,7 +603,10 @@ def quote_receipt(quote_id):
 
 @app.get("/quotes/<int:quote_id>/ueberlassungsbestaetigung.pdf")
 @login_required
-def ueberlassungsbestaetigung_pdf(quote_id, with_total=False):
+def ueberlassungsbestaetigung_pdf(quote_id):
+    # get get parameter "with_quote_total"
+    with_quote_total = request.args.get("with_quote_total", "false").lower() == "true"
+
     from generators.ueberlassungsbestaetigung import _build_pdf_bytes
     quote = Quote.query.get_or_404(quote_id)
     timeframe_str = ""
@@ -626,7 +629,11 @@ def ueberlassungsbestaetigung_pdf(quote_id, with_total=False):
             consignor_info.append(settings.business_name)
         if settings.address_lines:
             consignor_info.extend([line for line in settings.address_lines.split("\n") if line.strip()])
-    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], total_sum=float(quote.total) if with_total else "__________")
+
+    kwargs = {}
+    if with_quote_total:
+        kwargs["total_sum"] = quote.total
+    pdf_bytes = _build_pdf_bytes(consignor_info=consignor_info, timeframe_str=timeframe_str, items=[q.display_name for q in quote.quote_items], **kwargs)
     
     response = send_file(
         BytesIO(pdf_bytes),
