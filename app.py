@@ -767,10 +767,9 @@ def ueberlassungsbestaetigung_pdf(quote_id):
     return response
 
 
-# @app.route('/quotes/<int:quote_id>/kostenbeteiligung.pdf')
-@app.route('/quotes/<int:quote_id>/receipt')
+@app.route('/quotes/<int:quote_id>/kostenbeteiligung.pdf')
 @login_required
-def kostenbeteiligung_pdf(quote_id):
+def quote_receipt(quote_id):
     """Generate Kostenbeteiligung/Rechnung PDF"""
     from generators.kostenbeteiligung import build_rechnung_pdf_bytes
     
