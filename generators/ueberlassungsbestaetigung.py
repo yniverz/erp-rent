@@ -41,7 +41,7 @@ class HLine(Flowable):
         self.canv.restoreState()
 
 
-def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timeframe_str: str, items: list[str], total_sum: float = None, *args, **kwargs) -> bytes:
+def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timeframe_str: str, items: list[(int, str)], total_sum: float = None, *args, **kwargs) -> bytes:
     buf = BytesIO()
 
     page_w, page_h = A4
@@ -227,12 +227,13 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
         spaceAfter=0,
     )
     
-    data = [["Nr.", "Bezeichnung", "Kommentar"]]
+    data = [["Nr.", "Menge", "Bezeichnung", "Kommentar"]]
 
     # Wrap text in Paragraph objects to enable line breaking
-    for i, name in enumerate(items, start=1):
+    for i, (quantity, name) in enumerate(items, start=1):
         data.append([
             str(i),
+            Paragraph(str(quantity), table_cell_style),
             Paragraph(name, table_cell_style),
             Paragraph("", table_cell_style)
         ])
@@ -401,11 +402,11 @@ def file():
         "Telefon: 01234 567890",
         "E-Mail: info@firma-xyz.de",
     ], timeframe_str="01.01.2024 - 31.01.2024", items=[
-        "Lichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model X",
-        "Tonanlage DEF Model Y",
-        "Mikrofon GHI Model Z",
-        "Nebelmaschine JKL Model W",
-        "Stromverteiler MNO Model V",
+        (1, "Lichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model XLichtanlage ABC Model X"),
+        (1, "Tonanlage DEF Model Y"),
+        (1, "Mikrofon GHI Model Z"),
+        (1, "Nebelmaschine JKL Model W"),
+        (1, "Stromverteiler MNO Model V"),
     ])
     return send_file(
         BytesIO(pdf_bytes),

@@ -759,7 +759,7 @@ def ueberlassungsbestaetigung_pdf(quote_id):
         consignor_info=consignor_info, 
         recipient_info=[line for line in (quote.recipient_lines or quote.customer_name).split("\n") if line.strip()],
         timeframe_str=timeframe_str, 
-        items=[q.display_name for q in quote.quote_items], 
+        items=[(q.quantity, q.display_name) for q in quote.quote_items], 
         **kwargs)
     
     response = send_file(
