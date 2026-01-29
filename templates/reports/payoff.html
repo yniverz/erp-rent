@@ -58,7 +58,7 @@
         {% endif %}
         <tr style="font-weight: bold; background: #f8f9fa;">
             <td>TOTAL</td>
-            <td>{{ items|rejectattr('total_quantity', 'equalto', -1)|sum(attribute='total_quantity') }} <small>(excl. unlimited)</small></td>
+            <td></td>
             <td>{{ "%.2f"|format(items|sum(attribute='total_purchase_cost')) }}€</td>
             <td>{{ "%.2f"|format(items|sum(attribute='total_revenue') + misc_revenue) }}€</td>
             <td>{{ "%.2f"|format(items|map(attribute='remaining_to_payoff')|sum) }}€</td>

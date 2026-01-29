@@ -678,9 +678,8 @@ def schedule():
     """View rental schedule/calendar"""
     from datetime import timedelta
     
-    # Get all quotes with dates (excluding drafts)
+    # Get all quotes with dates (including drafts)
     quotes = Quote.query.filter(
-        Quote.status.in_(['finalized', 'paid']),
         Quote.start_date.isnot(None),
         Quote.end_date.isnot(None)
     ).order_by(Quote.start_date).all()

@@ -31,6 +31,12 @@
         color: #000 !important;
     }
     
+    .fc-event-draft {
+        background-color: #d3d3d3 !important;
+        border-color: #a9a9a9 !important;
+        color: #666 !important;
+    }
+    
     .event-details {
         background: white;
         padding: 15px;
@@ -55,9 +61,9 @@ document.addEventListener('DOMContentLoaded', function() {
             title: '{{ quote.customer_name }}',
             start: '{{ quote.start_date.strftime('%Y-%m-%d') }}',
             end: '{{ (quote.end_date + timedelta(days=1)).strftime('%Y-%m-%d') }}',
-            backgroundColor: '{% if quote.status == "paid" %}#28a745{% else %}#ffc107{% endif %}',
-            borderColor: '{% if quote.status == "paid" %}#28a745{% else %}#ffc107{% endif %}',
-            textColor: '{% if quote.status == "paid" %}#fff{% else %}#000{% endif %}',
+            backgroundColor: '{% if quote.status == "paid" %}#28a745{% elif quote.status == "finalized" %}#ffc107{% else %}#d3d3d3{% endif %}',
+            borderColor: '{% if quote.status == "paid" %}#28a745{% elif quote.status == "finalized" %}#ffc107{% else %}#a9a9a9{% endif %}',
+            textColor: '{% if quote.status == "paid" %}#fff{% elif quote.status == "finalized" %}#000{% else %}#666{% endif %}',
             extendedProps: {
                 customer: '{{ quote.customer_name }}',
                 status: '{{ quote.status }}',
@@ -89,7 +95,9 @@ document.addEventListener('DOMContentLoaded', function() {
             var itemsList = props.items.join(', ');
             var statusBadge = props.status === 'paid' 
                 ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 3px; font-size: 12px;">PAID</span>'
-                : '<span style="background: #ffc107; color: black; padding: 3px 8px; border-radius: 3px; font-size: 12px;">FINALIZED</span>';
+                : props.status === 'finalized'
+                ? '<span style="background: #ffc107; color: black; padding: 3px 8px; border-radius: 3px; font-size: 12px;">FINALIZED</span>'
+                : '<span style="background: #d3d3d3; color: #666; padding: 3px 8px; border-radius: 3px; font-size: 12px;">DRAFT</span>';
             
             var details = '<div style="font-size: 14px;">' +
                 '<h3 style="margin: 0 0 10px 0;">Quote #' + event.id + '</h3>' +
@@ -129,6 +137,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <div style="display: flex; align-items: center; gap: 8px;">
             <div style="width: 20px; height: 20px; background: #ffc107; border-radius: 3px;"></div>
             <span>Finalized</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: #d3d3d3; border: 1px solid #a9a9a9; border-radius: 3px;"></div>
+            <span>Draft</span>
         </div>
     </div>
     <p style="margin-top: 10px; font-size: 14px; color: #666;">Click on any event to view details</p>
