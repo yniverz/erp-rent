@@ -356,7 +356,7 @@ def quote_edit(quote_id):
                 else:
                     quote.rental_days = int(request.form.get('rental_days', 1))
                 
-                quote.discount_percent = float(request.form.get('discount_percent', 0))
+                # quote.discount_percent = float(request.form.get('discount_percent', 0))
                 quote.recipient_lines = request.form.get('recipient_lines', '')
                 quote.notes = request.form.get('notes', '')
                 db.session.commit()
