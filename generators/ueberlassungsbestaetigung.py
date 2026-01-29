@@ -240,7 +240,7 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
 
     table = Table(
         data,
-        colWidths=[10 * mm, 120 * mm, (page_w - left - right) - (10 * mm + 120 * mm)],
+        colWidths=[10 * mm, 10 * mm, 120 * mm, (page_w - left - right) - (10 * mm + 120 * mm)],
         hAlign="LEFT",
     )
     table.setStyle(TableStyle([
