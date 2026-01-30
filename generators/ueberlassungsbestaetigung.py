@@ -188,7 +188,7 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     story.append(Paragraph("Überlassungsbestätigung", title_style))
     story.append(Spacer(1, 6))
 
-    # Two-column layout for Überlasser and Nutzer
+    # Two-column layout for Überlasser and Mieter
     col_width = (page_w - left - right - 20) / 2
     
     # Build Überlasser column content
@@ -198,14 +198,14 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     ueberlasser_content.append(Paragraph("(Überlasser)", normal))
     
 
-    nutzer_content = []
+    mieter_content = []
     for line in recipient_info:
-        nutzer_content.append(Paragraph(line, bold))
-    nutzer_content.append(Paragraph("(Nutzer)", normal))
+        mieter_content.append(Paragraph(line, bold))
+    mieter_content.append(Paragraph("(Mieter)", normal))
     
     # Create two-column table
     parties_table = Table(
-        [[ueberlasser_content, nutzer_content]],
+        [[ueberlasser_content, mieter_content]],
         colWidths=[col_width, col_width],
         hAlign="LEFT",
     )
@@ -219,10 +219,10 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     story.append(parties_table)
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph("Zwischen Überlasser und Nutzer wird folgende Vereinbarung getroffen:", normal_small))
+    story.append(Paragraph("Zwischen Überlasser und Mieter wird folgende Vereinbarung getroffen:", normal_small))
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph(f"Der Überlasser überlässt dem Nutzer für den Zeitraum {timeframe_str} folgendes Equipment zur Nutzung:", normal_small))
+    story.append(Paragraph(f"Der Überlasser überlässt dem Mieter für den Zeitraum {timeframe_str} folgendes Equipment zur Nutzung:", normal_small))
     story.append(Spacer(1, 8))
 
     # Equipment table
@@ -271,7 +271,7 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
         normal_small
     ))
     story.append(Paragraph(
-        "Der Nutzer bestätigt mit seiner Unterschrift, beide Seiten dieser Vereinbarung gelesen und akzeptiert zu "
+        "Der Mieter bestätigt mit seiner Unterschrift, beide Seiten dieser Vereinbarung gelesen und akzeptiert zu "
         "haben.",
         normal_small
     ))
@@ -289,8 +289,8 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
         [
             [HLine(sig_line_w, thickness=0.9, space_before=0, space_after=2),
              HLine(sig_line_w, thickness=0.9, space_before=0, space_after=2)],
-            [Paragraph("Ort, Datum Nutzer", small),
-             Paragraph("Unterschrift Nutzer", small)],
+            [Paragraph("Ort, Datum Mieter", small),
+             Paragraph("Unterschrift Mieter", small)],
             [Spacer(1, 25), Spacer(1, 25)],
             [HLine(sig_line_w, thickness=0.9, space_before=0, space_after=2),
              HLine(sig_line_w, thickness=0.9, space_before=0, space_after=2)],
@@ -393,10 +393,10 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     # Signature lines on page 2 appear at the end of the right column in the source.
     # (In two-column flow, they'll naturally end up in the right column once the text flows.)
     story.append(HLine(width=70 * mm, thickness=0.9, space_before=0, space_after=2))
-    story.append(Paragraph("Ort, Datum Nutzer", small))
+    story.append(Paragraph("Ort, Datum Mieter", small))
     story.append(Spacer(1, 20))
     story.append(HLine(width=70 * mm, thickness=0.9, space_before=0, space_after=2))
-    story.append(Paragraph("Unterschrift Nutzer", small))
+    story.append(Paragraph("Unterschrift Mieter", small))
     story.append(Spacer(1, 30))
     story.append(HLine(width=70 * mm, thickness=0.9, space_before=0, space_after=2))
     story.append(Paragraph("Ort, Datum Überlasser", small))
