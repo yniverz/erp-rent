@@ -105,12 +105,12 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     )
 
     # Footer (blue "Seite X von Y")
-    footer_blue = colors.HexColor("#1f4e79")
+    # footer_blue = colors.HexColor("#1f4e79")
 
     def on_page(canvas, doc):
         canvas.saveState()
         canvas.setFont("Helvetica", 11)
-        canvas.setFillColor(footer_blue)
+        # canvas.setFillColor(footer_blue)
         page_no = canvas.getPageNumber()
         canvas.drawRightString(page_w - right, bottom / 2.2, f"Seite {page_no} von 2")
         canvas.restoreState()
