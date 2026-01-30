@@ -89,6 +89,14 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
         spaceAfter=4,
     )
 
+    very_small = ParagraphStyle(
+        "VerySmallCustom",
+        parent=normal,
+        fontSize=6,
+        leading=10,
+        spaceAfter=3,
+    )
+
     bold = ParagraphStyle(
         "BoldCustom",
         parent=normal,
@@ -309,68 +317,150 @@ def _build_pdf_bytes(consignor_info: list[str], recipient_info: list[str], timef
     story.append(Spacer(1, 6))
 
     # Two-column legal text
+    # sections = [
+    #     ("§1 Überlassungsgegenstand",
+    #      "Der Überlassende überlässt dem Nutzer die in der Materialliste aufgeführten beweglichen Sachen unentgeltlich und zeitlich begrenzt zur Nutzung. "
+    #      "Die überlassenen Gegenstände bleiben uneingeschränkt Eigentum des Überlassenden. "
+    #      "Der Zustand der überlassenen Sachen ist gebraucht. "
+    #      "Vorschäden sind vor Übergabe zu dokumentieren."),
+    #     # ("§2 Dauer der Überlassung",
+    #     #  "Die Überlassung beginnt und endet zu dem oben genannten Zeitraum. Eine Verlängerung oder Verkürzung der "
+    #     #  "Überlassungsdauer bedarf der schriftlichen Vereinbarung. Verzögert sich die Rückgabe durch schuldhaftes Verhalten "
+    #     #  "des Nutzers, verlängert sich die Überlassung automatisch um 24 Stunden. Hierdurch entstehende Mehrkosten trägt der Nutzer."),
+    #     ("§2 Dauer der Überlassung",
+    #      "Die Überlassung beginnt und endet zu dem oben genannten Zeitraum. "
+    #      "Eine Verlängerung oder Verkürzung der Überlassungsdauer bedarf der schriftlichen Vereinbarung. "
+    #      "Der Nutzer gerät bei verspäteter Rückgabe in Erinnerung in Verzug und haftet für daraus entstehende Schäden."),
+    #     ("§3 Kosten",
+    #      "Die Überlassung erfolgt grundsätzlich unentgeltlich. "
+    #      "Der Überlassende ist jedoch berechtigt, eine angemessene Aufwands- und Kostenbeteiligung " + (f"in Höhe von {total_sum:.2f} Euro" if total_sum is not None else "") + " zu erheben. "
+    #      "Etwaige Kosten für Transport, Reinigung, Reparatur, Ersatz oder sonstige Aufwendungen, die durch die Nutzung entstehen, trägt der Nutzer, soweit er diese zu vertreten hat."),
+    #     ("§4 Weitergabe und Haftung",
+    #      "Eine Weitergabe oder Unterüberlassung an Dritte ist nicht zulässig. "
+    #      "Der Nutzer haftet für Beschädigung, Verlust oder Diebstahl der überlassenen Sachen, auch wenn diese durch Dritte verursacht werden. "
+    #      "Die überlassenen Gegenstände dürfen weder veräußert, verpfändet noch sicherungsübereignet werden."),
+    #     ("§5 Nutzungspflichten",
+    #      "Die Nutzung hat ausschließlich gemäß den gesetzlichen Vorschriften, insbesondere der Versammlungsstättenverordnung, zu erfolgen. "
+    #      "Für Schäden, Sanktionen, Geldbußen oder sonstige Nachteile, die dem Überlassenden durch unsachgemäßen, fahrlässigen oder gesetzeswidrigen Gebrauch entstehen, haftet der Nutzer in vollem Umfang. "
+    #      "Es wird ausdrücklich darauf hingewiesen, dass die Geräte nicht versichert sind. "
+    #      "Der Nutzer ist für die sachgerechte Bedienung selbst verantwortlich. "
+    #      "Der Überlassende schuldet keine Einweisung oder technische Betreuung. "
+    #      "Dies gilt nicht, wenn der Überlassende vorsätzlich oder grob fahrlässig ungeeignete oder erkennbar mangelhafte Geräte überlässt."),
+    #     ("§6 Schäden, Reparatur und Ersatz",
+    #      "Der Nutzer haftet für Schäden, die durch schuldhafte Verletzung seiner Pflicht zur schonenden Behandlung, sorgfältigen Pflege, gesicherten Transportes und ordnungsgemäßen Lagerung entstehen. "
+    #      "Der Überlassende ist berechtigt, nach eigener Wahl: eine fachgerechte Reparatur durchführen zu lassen oder Ersatz zum Wiederbeschaffungswert zu verlangen, sofern eine Reparatur technisch unmöglich oder wirtschaftlich nicht sinnvoll ist. "
+    #      "Ein Abzug „neu für alt“ bleibt ausdrücklich vorbehalten."
+    #      "<br/><br/>"
+    #      "Zu den haftungsrelevanten Schäden zählen insbesondere Feuer-, Wasser- und Transportschäden sowie Diebstahl. "
+    #      "Das Verschulden von Erfüllungsgehilfen, Beauftragten oder sonstigen Dritten wird dem Nutzer zugerechnet. "
+    #      "Schäden sind dem Überlassenden unverzüglich anzuzeigen. "
+    #      "Während der Überlassungsdauer dürfen Mängel ausschließlich durch den Überlassenden oder eine von ihm beauftragte Person behoben werden."
+    #      "<br/><br/>"
+    #      "Das Öffnen von Geräten oder das Herausschrauben aus Racks ist untersagt. "
+    #      "Hiervon ausgenommen sind der Überlassende sowie von ihm ausdrücklich beauftragte Personen."),
+    #     # ("§7 Haftung des Überlassenden",
+    #     #  "Der Überlassende haftet – soweit gesetzlich zulässig – nicht für Schäden, die durch Ausfall oder Mängel der überlassenen Sachen entstehen, es sei denn, diese beruhen auf Vorsatz oder grober Fahrlässigkeit."),
+    #     # ("§8 Technische Ausfälle",
+    #     #  "Technische Ausfälle liegen im Bereich des Möglichen und begründen keine Ansprüche auf Schadensersatz oder sonstige Ersatzleistungen."),
+    #     ("§7 Haftung des Überlassenden",
+    #      "Der Überlassende haftet für Schäden des Nutzers nur bei Vorsatz oder grober Fahrlässigkeit. "
+    #      "Bei einfacher Fahrlässigkeit haftet der Überlassende nur bei Verletzung wesentlicher Vertragspflichten (Kardinalpflichten) und begrenzt auf den vertragstypischen, vorhersehbaren Schaden. "
+    #      "Die Haftung für Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit bleibt unberührt. "
+    #      "Eine Haftung für technische Ausfälle oder Mängel der überlassenen Gegenstände besteht nicht, soweit diese nicht auf vorsätzlichem oder grob fahrlässigem Verhalten des Überlassenden beruhen."),
+    #     ("§9 Rechte Dritter",
+    #      "Alle Forderungen der GEMA sowie Ansprüche Dritter (z. B. aus Urheberrechtsverletzungen oder Lizenzverstößen) trägt der Nutzer allein."),
+    #     ("§10 Rückgabe",
+    #      "Die Rückgabe darf ausschließlich an den Überlassenden oder dessen Beauftragte erfolgen. "
+    #      "Eine vorzeitige Rückgabe begründet keinen Anspruch auf Kostenerstattung."),
+    #     ("§11 Übergabebestätigung",
+    #      "Der Nutzer bestätigt mit seiner Unterschrift, dass ihm die überlassenen Gegenstände zu beginn des oben genanten Zeitraumes im in §1 beschriebenen Zustand übergeben wurden."),
+    #     ("§12 Kaution",
+    #      "Es wird eine Kaution in Höhe von __________ Euro vereinbart. Diese ist vor Übergabe in bar zu leisten und wird nach ordnungsgemäßer Rückgabe erstattet, sofern keine Schäden oder Pflichtverletzungen vorliegen."),
+    #     ("§13 Kündigung",
+    #      "Verstößt der Nutzer wesentlich gegen seine Pflichten, ist der Überlassende zur fristlosen Beendigung der Überlassung berechtigt. "
+    #      "Dies gilt insbesondere bei Zahlungsverzug von Schadensersatzforderungen oder bei Verdacht der Zahlungsunfähigkeit."),
+    #     ("§14 Salvatorische Klausel",
+    #      "Sollten einzelne Bestimmungen dieser Vereinbarung ganz oder teilweise unwirksam, nichtig oder undurchführbar sein oder werden, "
+    #      "bleibt die Wirksamkeit der übrigen Regelungen hiervon unberührt."
+    #      "<br/><br/>"
+    #      "Anstelle der unwirksamen, nichtigen oder undurchführbaren Bestimmung gilt eine solche Regelung als vereinbart, die dem wirtschaftlichen Zweck der ursprünglichen Bestimmung in rechtlich zulässiger Weise am nächsten kommt. "
+    #      "Entsprechendes gilt für etwaige Vertragslücken."),
+    #     ("§15 Gerichtsstand",
+    #      "Gerichtsstand für alle Streitigkeiten aus oder im Zusammenhang mit dieser Vereinbarung ist – soweit gesetzlich zulässig – Waiblingen."),
+    # ]
+
     sections = [
-        ("§1 Überlassungsgegenstand",
-         "Der Überlassende überlässt dem Nutzer die in der Materialliste aufgeführten beweglichen Sachen unentgeltlich "
-         "und zeitlich begrenzt zur Nutzung. Die überlassenen Gegenstände bleiben uneingeschränkt Eigentum des "
-         "Überlassenden. Der Zustand der überlassenen Sachen ist gebraucht. Vorschäden sind vor Übergabe zu dokumentieren."),
-        ("§2 Dauer der Überlassung",
-         "Die Überlassung beginnt und endet zu dem oben genannten Zeitraum. Eine Verlängerung oder Verkürzung der "
-         "Überlassungsdauer bedarf der schriftlichen Vereinbarung. Verzögert sich die Rückgabe durch schuldhaftes Verhalten "
-         "des Nutzers, verlängert sich die Überlassung automatisch um 24 Stunden. Hierdurch entstehende Mehrkosten trägt der Nutzer."),
-        ("§3 Kosten",
-         "Die Überlassung erfolgt grundsätzlich unentgeltlich. Der Überlassende ist jedoch berechtigt, eine angemessene Aufwands- und Kostenbeteiligung " + (f"in Höhe von {total_sum:.2f} Euro" if total_sum is not None else "") + " zu erheben. Etwaige Kosten für Transport, Reinigung, Reparatur, Ersatz oder sonstige "
-         "Aufwendungen, die durch die Nutzung entstehen, trägt der Nutzer, soweit er diese zu vertreten hat."),
-        ("§4 Weitergabe und Haftung",
-         "Eine Weitergabe oder Unterüberlassung an Dritte ist nicht zulässig. Der Nutzer haftet für Beschädigung, Verlust oder "
-         "Diebstahl der überlassenen Sachen, auch wenn diese durch Dritte verursacht werden. Die überlassenen Gegenstände "
-         "dürfen weder veräußert, verpfändet noch sicherungsübereignet werden."),
+        ("§1 Mietgegenstand",
+            ("Der Vermieter überlässt dem Mieter die in der Materialliste aufgeführten beweglichen Sachen zeitlich befristet zur Nutzung.",
+            "Die Mietgegenstände bleiben uneingeschränkt Eigentum des Vermieters.",
+            "Der Zustand der Mietgegenstände ist gebraucht. Vorschäden sind vor Übergabe zu dokumentieren.")),
+
+        ("§2 Mietdauer",
+            ("Die Mietzeit beginnt und endet zu dem vereinbarten Zeitraum. Eine Verlängerung oder Verkürzung der Mietdauer bedarf der schriftlichen Vereinbarung.",
+            "Gibt der Mieter die Mietgegenstände nicht rechtzeitig zurück, gerät er ohne weitere Mahnung in Verzug und haftet für daraus entstehende Schäden.")),
+
+        ("§3 Miete und Kosten",
+            # ("Für die Überlassung wird eine Miete in Höhe von " + (f"{total_sum:.2f} Euro" if total_sum is not None else "__________ Euro") + " vereinbart.",
+            ("Der Überlassende ist berechtigt, eine angemessene Aufwands- und Kostenbeteiligung " + (f"in Höhe von {total_sum:.2f} Euro" if total_sum is not None else "") + " zu erheben. Ein teilweise oder ganzer Verzicht auf die Geltendmachung begründet keinen Rechtsanspruch für zukünftige Mietverhältnisse.",
+            "Die Miete stellt einen pauschalen Abnutzungs- und Kostenbeitrag dar.",
+            "Kosten für Transport, Auf- und Abbau, Reinigung, Reparatur, Ersatz oder sonstige Aufwendungen, die durch die Nutzung entstehen, trägt der Mieter, soweit er diese zu vertreten hat.",
+            "Der Vermieter trägt die Instandhaltung für normalen Verschleiß; der Mieter nur bei von ihm zu vertretenden Schäden.")),
+
+        ("§4 Obhutspflicht und Weitergabe",
+            ("Der Mieter ist verpflichtet, die Mietgegenstände pfleglich zu behandeln und vor Verlust, Beschädigung und Zugriff Dritter zu schützen.",
+            "Eine Weitergabe oder Untervermietung an Dritte ist ohne ausdrückliche Zustimmung des Vermieters unzulässig.",
+            "Die Mietgegenstände dürfen weder veräußert, verpfändet noch sicherungsübereignet werden.")),
+
         ("§5 Nutzungspflichten",
-         "Die Nutzung hat ausschließlich gemäß den gesetzlichen Vorschriften, insbesondere der Versammlungsstättenverordnung, "
-         "zu erfolgen. Für Schäden, Sanktionen, Geldbußen oder sonstige Nachteile, die dem Überlassenden durch unsachgemäßen, "
-         "fahrlässigen oder gesetzeswidrigen Gebrauch entstehen, haftet der Nutzer in vollem Umfang. Es wird ausdrücklich "
-         "darauf hingewiesen, dass die Geräte nicht versichert sind. Eine Einweisung in die Bedienung findet nicht statt."),
-        ("§6 Schäden, Reparatur und Ersatz",
-         "Der Nutzer haftet für Schäden, die durch schuldhafte Verletzung seiner Pflicht zur schonenden Behandlung, sorgfältigen "
-         "Pflege, gesicherten Transportes und ordnungsgemäßen Lagerung entstehen. Der Überlassende ist berechtigt, nach eigener "
-         "Wahl: eine fachgerechte Reparatur durchführen zu lassen oder Ersatz zum Wiederbeschaffungswert zu verlangen, sofern "
-         "eine Reparatur technisch unmöglich oder wirtschaftlich nicht sinnvoll ist. Ein Abzug „neu für alt“ bleibt ausdrücklich "
-         "vorbehalten.<br/><br/>Zu den haftungsrelevanten Schäden zählen insbesondere Feuer-, Wasser- und Transportschäden sowie "
-         "Diebstahl. Das Verschulden von Erfüllungsgehilfen, Beauftragten oder sonstigen Dritten wird dem Nutzer zugerechnet. "
-         "Schäden sind dem Überlassenden unverzüglich anzuzeigen. Während der Überlassungsdauer dürfen Mängel ausschließlich "
-         "durch den Überlassenden oder eine von ihm beauftragte Person behoben werden.<br/><br/>Das Öffnen von Geräten oder das "
-         "Herausschrauben aus Racks ist untersagt. Hiervon ausgenommen sind der Überlassende sowie von ihm ausdrücklich beauftragte Personen."),
-        ("§7 Haftung des Überlassenden",
-         "Der Überlassende haftet – soweit gesetzlich zulässig – nicht für Schäden, die durch Ausfall oder Mängel der überlassenen "
-         "Sachen entstehen, es sei denn, diese beruhen auf Vorsatz oder grober Fahrlässigkeit."),
-        ("§8 Technische Ausfälle",
-         "Technische Ausfälle liegen im Bereich des Möglichen und begründen keine Ansprüche auf Schadensersatz oder sonstige Ersatzleistungen."),
-        ("§9 Rechte Dritter",
-         "Alle Forderungen der GEMA sowie Ansprüche Dritter (z. B. aus Urheberrechtsverletzungen oder Lizenzverstößen) trägt der Nutzer allein."),
-        ("§10 Rückgabe",
-         "Die Rückgabe darf ausschließlich an den Überlassenden oder dessen Beauftragte erfolgen. Eine vorzeitige Rückgabe begründet "
-         "keinen Anspruch auf Kostenerstattung."),
-        ("§11 Übergabebestätigung",
-         "Der Nutzer bestätigt mit seiner Unterschrift, dass ihm die überlassenen Gegenstände zu beginn des oben genanten Zeitraumes "
-         "im in §1 beschriebenen Zustand übergeben wurden."),
+            ("Der Mieter prüft bei Übergabe auf offensichtliche Mängel und zeigt diese unverzüglich an."
+            "Die Nutzung hat ausschließlich gemäß den gesetzlichen Vorschriften und anerkannten technischen Regeln zu erfolgen.",
+            "Der Mieter ist für die sachgerechte Bedienung selbst verantwortlich. Der Vermieter schuldet keine Einweisung oder technische Betreuung.",
+            "Dies gilt nicht, wenn der Vermieter vorsätzlich oder grob fahrlässig ungeeignete oder erkennbar mangelhafte Geräte überlässt.")),
+
+        ("§6 Haftung des Mieters für Schäden",
+            ("Der Mieter haftet für Verlust und Schäden an den Mietgegenständen, soweit diese auf einer schuldhaften Pflichtverletzung des Mieters oder der Personen beruhen, derer er sich zur Nutzung bedient.",
+            "Schäden sind dem Vermieter unverzüglich anzuzeigen. Reparaturen oder Eingriffe dürfen nur durch den Vermieter oder durch von ihm beauftragte Personen erfolgen.",
+            "Das Öffnen von Geräten oder der Ausbau aus Racks ist untersagt.")),
+
+        ("§7 Schäden, Reparatur und Ersatzpflicht",
+            ("(1) Der Mieter trägt während der Mietdauer die Gefahr der zufälligen Verschlechterung oder des zufälligen Untergangs der Mietgegenstände. Zufällige Schäden sind solche, die ohne Verschulden einer Partei eintreten, z. B. durch Naturgewalten wie Blitzschlag, Sturm, Überschwemmung, Wasser, Feuer oder ähnliche unvorhersehbare Ereignisse.",
+            "(2) Soweit für den Mieter oder den Vermieter eine Versicherung möglich und marktüblich ist, verpflichtet sich der Mieter, für die Dauer der Mietzeit eine angemessene Versicherung gegen zufällige Schäden (z. B. pauschale Sachversicherung) abzuschließen und dem Vermieter auf Verlangen den Nachweis hierüber vorzulegen. Eine solche Versicherung soll insbesondere Risiken wie Diebstahl, Feuer, Wasser, Blitzschlag oder Transport-/Bewegungsschäden abdecken, soweit sie versicherbar sind.",
+            "(3) Kommt der Mieter dieser Versicherungspflicht trotz Aufforderung nicht nach, verbleibt die Gefahr der zufälligen Schäden beim Mieter, ohne Rückgriff auf den Vermieter. Der Vermieter haftet nicht für zufällige Schäden an den Mietgegenständen, es sei denn, der Vermieter hat diese durch vorsätzliches oder grob fahrlässiges Verhalten verursacht.",
+            "(4) Leistungen einer bestehenden Versicherung werden auf mögliche Ersatzansprüche des Vermieters angerechnet; übersteigende Leistungen stehen dem Mieter zu, soweit sie ihm vertraglich oder gesetzlich zustehen.")),
+
+        ("§8 Reparatur und Ersatz",
+            ("Der Vermieter ist im Schadensfall berechtigt, nach eigener Wahl eine fachgerechte Reparatur durchführen zu lassen oder Ersatz zum Wiederbeschaffungswert zu verlangen, sofern eine Reparatur technisch unmöglich oder wirtschaftlich nicht sinnvoll ist.",
+            "Ein Abzug „neu für alt“ bleibt vorbehalten.",
+            "Leistungen einer Versicherung werden auf den Ersatzanspruch angerechnet.")),
+
+        ("§9 Haftung des Vermieters",
+            ("Der Vermieter haftet für Schäden des Mieters nur bei Vorsatz oder grober Fahrlässigkeit.",
+            "Bei einfacher Fahrlässigkeit haftet der Vermieter nur bei Verletzung wesentlicher Vertragspflichten (Kardinalpflichten) und begrenzt auf den vertragstypischen, vorhersehbaren Schaden.",
+            "Die Haftung für Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit bleibt unberührt.")),
+
+        ("§10 Rechte Dritter",
+            ("Alle Gebühren und Ansprüche Dritter, insbesondere GEMA-Forderungen oder Ansprüche aus Urheberrechts- und Lizenzverstößen im Zusammenhang mit der Nutzung, trägt der Mieter.",)),
+
+        ("§11 Rückgabe",
+            ("Die Rückgabe hat vollständig, funktionsfähig und in gereinigtem Zustand an den Vermieter oder dessen Beauftragte zu erfolgen.",
+            "Eine vorzeitige Rückgabe begründet keinen Anspruch auf Rückerstattung der Miete.")),
         ("§12 Kaution",
-         "Es wird eine Kaution in Höhe von __________ Euro vereinbart. Diese ist vor Übergabe in bar zu leisten und wird nach "
-         "ordnungsgemäßer Rückgabe erstattet, sofern keine Schäden oder Pflichtverletzungen vorliegen."),
+            ("Es wird eine Kaution in Höhe von __________ Euro vereinbart. Diese ist vor Übergabe zu leisten und wird nach ordnungsgemäßer Rückgabe erstattet, sofern keine Schäden oder offenen Forderungen bestehen.",)),
+
         ("§13 Kündigung",
-         "Verstößt der Nutzer wesentlich gegen seine Pflichten, ist der Überlassende zur fristlosen Beendigung der Überlassung berechtigt. "
-         "Dies gilt insbesondere bei Zahlungsverzug von Schadensersatzforderungen oder bei Verdacht der Zahlungsunfähigkeit."),
+            ("Verstößt der Mieter wesentlich gegen seine Vertragspflichten, ist der Vermieter zur fristlosen Kündigung berechtigt.",)),
+
         ("§14 Salvatorische Klausel",
-         "Sollten einzelne Bestimmungen dieser Vereinbarung ganz oder teilweise unwirksam, nichtig oder undurchführbar sein oder werden, "
-         "bleibt die Wirksamkeit der übrigen Regelungen hiervon unberührt.<br/><br/>Anstelle der unwirksamen, nichtigen oder undurchführbaren "
-         "Bestimmung gilt eine solche Regelung als vereinbart, die dem wirtschaftlichen Zweck der ursprünglichen Bestimmung in rechtlich zulässiger "
-         "Weise am nächsten kommt. Entsprechendes gilt für etwaige Vertragslücken."),
+            ("Sollten einzelne Bestimmungen dieses Vertrags unwirksam sein oder werden, bleibt die Wirksamkeit der übrigen Regelungen unberührt.",)),
+
         ("§15 Gerichtsstand",
-         "Gerichtsstand für alle Streitigkeiten aus oder im Zusammenhang mit dieser Vereinbarung ist – soweit gesetzlich zulässig – Waiblingen."),
+            ("Gerichtsstand für alle Streitigkeiten aus diesem Vertrag ist – soweit gesetzlich zulässig – Waiblingen.",))
     ]
+
 
     for head, body in sections:
         story.append(Paragraph(head, normal_small))
-        story.append(Paragraph(body, small))
+        story.append(Paragraph("<br/>".join(body), very_small))
 
     story.append(Spacer(1, 30))
 
