@@ -92,8 +92,8 @@
             <input type="hidden" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
             <input type="hidden" name="recipient_lines" value="{{ quote.recipient_lines or '' }}">
             <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
-            <span style="color:#6b7280;">Mietzeitraum: {{ quote.date_based_rental_days() }} Tag{{ 'e' if quote.date_based_rental_days() != 1 }} (Datum)</span>
             <div style="display: flex; gap: 6px; align-items: center;">
+                <span style="color:#6b7280;">Mietzeitraum: {{ quote.date_based_rental_days() }} Tag{{ 'e' if quote.date_based_rental_days() != 1 }} (Datum)</span>
                 <label style="color:#6b7280; font-size: 0.9em; margin:0;">Überschreiben:</label>
                 <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" style="width: 80px;" placeholder="—">
                 <span style="color:#6b7280; font-size: 0.9em;">Tage</span>
