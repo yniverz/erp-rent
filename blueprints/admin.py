@@ -18,7 +18,7 @@ def admin_required(f):
     @login_required
     def decorated_function(*args, **kwargs):
         if not current_user.is_admin:
-            flash('Admin access required.', 'error')
+            flash('Admin-Zugang erforderlich.', 'error')
             return redirect(url_for('admin.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
@@ -66,14 +66,14 @@ def categories():
                     cat = Category(name=name, display_order=order)
                     db.session.add(cat)
                     db.session.commit()
-                    flash(f'Category "{name}" created.', 'success')
+                    flash(f'Kategorie "{name}" erstellt.', 'success')
             elif action == 'edit':
                 cat_id = request.form.get('category_id', type=int)
                 cat = Category.query.get_or_404(cat_id)
                 cat.name = request.form.get('name', '').strip()
                 cat.display_order = request.form.get('display_order', 0, type=int)
                 db.session.commit()
-                flash(f'Category "{cat.name}" updated.', 'success')
+                flash(f'Kategorie "{cat.name}" aktualisiert.', 'success')
             elif action == 'delete':
                 cat_id = request.form.get('category_id', type=int)
                 cat = Category.query.get_or_404(cat_id)
@@ -81,10 +81,10 @@ def categories():
                 Item.query.filter_by(category_id=cat_id).update({'category_id': None})
                 db.session.delete(cat)
                 db.session.commit()
-                flash('Category deleted.', 'success')
+                flash('Kategorie gelöscht.', 'success')
         except Exception as e:
             db.session.rollback()
-            flash(f'Error: {str(e)}', 'error')
+            flash(f'Fehler: {str(e)}', 'error')
 
     cats = Category.query.order_by(Category.display_order, Category.name).all()
     return render_template('admin/categories.html', categories=cats)
@@ -154,12 +154,12 @@ def inventory_add():
             )
             db.session.add(item)
             db.session.commit()
-            flash(f'Successfully added {name}!', 'success')
+            flash(f'{name} erfolgreich hinzugefügt!', 'success')
             return redirect(url_for('admin.inventory_list'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error adding item: {str(e)}', 'error')
+            flash(f'Fehler beim Hinzufügen des Artikels: {str(e)}', 'error')
 
     return render_template('admin/inventory_form.html',
                            item=None,
@@ -176,7 +176,7 @@ def inventory_edit(item_id):
     users = User.query.filter_by(active=True).order_by(User.username).all()
 
     if not current_user.can_edit_item(item):
-        flash('You do not have permission to edit this item.', 'error')
+        flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
         return redirect(url_for('admin.inventory_list'))
 
     if request.method == 'POST':
@@ -219,12 +219,12 @@ def inventory_edit(item_id):
                 item.image_filename = None
 
             db.session.commit()
-            flash(f'Successfully updated {item.name}!', 'success')
+            flash(f'{item.name} erfolgreich aktualisiert!', 'success')
             return redirect(url_for('admin.inventory_list'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error updating item: {str(e)}', 'error')
+            flash(f'Fehler beim Aktualisieren des Artikels: {str(e)}', 'error')
 
     return render_template('admin/inventory_form.html',
                            item=item,
@@ -239,7 +239,7 @@ def inventory_delete(item_id):
     item = Item.query.get_or_404(item_id)
 
     if not current_user.can_edit_item(item):
-        flash('You do not have permission to delete this item.', 'error')
+        flash('Sie haben keine Berechtigung, diesen Artikel zu löschen.', 'error')
         return redirect(url_for('admin.inventory_list'))
 
     try:
@@ -251,10 +251,10 @@ def inventory_delete(item_id):
         name = item.name
         db.session.delete(item)
         db.session.commit()
-        flash(f'Successfully deleted {name}!', 'success')
+        flash(f'{name} erfolgreich gelöscht!', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting item: {str(e)}', 'error')
+        flash(f'Fehler beim Löschen des Artikels: {str(e)}', 'error')
 
     return redirect(url_for('admin.inventory_list'))
 
@@ -283,7 +283,7 @@ def quote_create():
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
 
             if start_date and end_date and start_date > end_date:
-                flash('End date must be after or equal to start date!', 'error')
+                flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
                 return render_template('admin/quote_create.html')
 
             rental_days = 1
@@ -305,12 +305,12 @@ def quote_create():
             quote.generate_reference_number()
             db.session.commit()
 
-            flash(f'Quote created for {customer_name}!', 'success')
+            flash(f'Angebot für {customer_name} erstellt!', 'success')
             return redirect(url_for('admin.quote_edit', quote_id=quote.id))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error creating quote: {str(e)}', 'error')
+            flash(f'Fehler beim Erstellen des Angebots: {str(e)}', 'error')
 
     return render_template('admin/quote_create.html')
 
@@ -335,7 +335,7 @@ def quote_edit(quote_id):
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
 
                 if start_date and end_date and start_date > end_date:
-                    flash('End date must be after or equal to start date!', 'error')
+                    flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
 
@@ -351,11 +351,11 @@ def quote_edit(quote_id):
                 quote.recipient_lines = request.form.get('recipient_lines', '')
                 quote.notes = request.form.get('notes', '')
                 db.session.commit()
-                flash('Quote updated!', 'success')
+                flash('Angebot aktualisiert!', 'success')
 
             elif action == 'update_items':
                 if not quote.start_date or not quote.end_date:
-                    flash('Please set start and end dates before adding items!', 'error')
+                    flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
 
@@ -377,11 +377,11 @@ def quote_edit(quote_id):
                             )
 
                             if available != -1 and quantity > available:
-                                errors.append(f'{item.name}: Only {available} available (total: {item.total_quantity})')
+                                errors.append(f'{item.name}: Nur {available} verfügbar (gesamt: {item.total_quantity})')
                                 continue
 
                             if item.rental_step > 1 and quantity % item.rental_step != 0:
-                                errors.append(f'{item.name}: Quantity must be a multiple of {item.rental_step}')
+                                errors.append(f'{item.name}: Menge muss ein Vielfaches von {item.rental_step} sein')
                                 continue
 
                         existing = QuoteItem.query.filter_by(
@@ -408,11 +408,11 @@ def quote_edit(quote_id):
                                 db.session.delete(existing)
 
                 if errors:
-                    flash('Errors: ' + '; '.join(errors), 'error')
+                    flash('Fehler: ' + '; '.join(errors), 'error')
                     db.session.rollback()
                 else:
                     db.session.commit()
-                    flash('Items updated!', 'success')
+                    flash('Artikel aktualisiert!', 'success')
 
             elif action == 'add_custom':
                 custom_name = request.form.get('custom_name', '').strip()
@@ -430,7 +430,7 @@ def quote_edit(quote_id):
                     )
                     db.session.add(quote_item)
                     db.session.commit()
-                    flash(f'Custom item "{custom_name}" added!', 'success')
+                    flash(f'Eigene Position "{custom_name}" hinzugefügt!', 'success')
 
             elif action == 'remove_item':
                 quote_item_id = int(request.form.get('quote_item_id'))
@@ -438,17 +438,17 @@ def quote_edit(quote_id):
                 if quote_item and quote_item.quote_id == quote.id:
                     db.session.delete(quote_item)
                     db.session.commit()
-                    flash('Item removed from quote!', 'success')
+                    flash('Artikel aus Angebot entfernt!', 'success')
 
             elif action == 'update_discount':
                 discount_percent = float(request.form.get('final_discount_percent', 0))
                 quote.discount_percent = discount_percent
                 db.session.commit()
-                flash(f'Discount updated to {discount_percent:.4f}%', 'success')
+                flash(f'Rabatt auf {discount_percent:.4f}% aktualisiert', 'success')
 
             elif action == 'finalize':
                 if not quote.start_date or not quote.end_date:
-                    flash('Cannot finalize: Start and end dates must be set!', 'error')
+                    flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
 
@@ -463,11 +463,11 @@ def quote_edit(quote_id):
                         )
                         if available != -1 and quote_item.quantity > available:
                             validation_errors.append(
-                                f'{quote_item.item.name}: Only {available} available (quote has {quote_item.quantity})'
+                                f'{quote_item.item.name}: Nur {available} verfügbar (Angebot hat {quote_item.quantity})'
                             )
 
                 if validation_errors:
-                    flash('Cannot finalize: ' + '; '.join(validation_errors), 'error')
+                    flash('Kann nicht finalisiert werden: ' + '; '.join(validation_errors), 'error')
                     item_availability = {}
                     for item in items:
                         item_availability[item.id] = get_available_quantity(
@@ -477,12 +477,12 @@ def quote_edit(quote_id):
                 quote.status = 'finalized'
                 quote.finalized_at = datetime.utcnow()
                 db.session.commit()
-                flash('Quote finalized!', 'success')
+                flash('Angebot finalisiert!', 'success')
                 return redirect(url_for('admin.quote_view', quote_id=quote.id))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error: {str(e)}', 'error')
+            flash(f'Fehler: {str(e)}', 'error')
 
     # Calculate availability
     item_availability = {}
@@ -514,12 +514,12 @@ def quote_unfinalize(quote_id):
             quote.status = 'draft'
             quote.finalized_at = None
             db.session.commit()
-            flash('Quote returned to draft status!', 'success')
+            flash('Angebot zurück in den Entwurf versetzt!', 'success')
         else:
-            flash('Quote is not finalized.', 'info')
+            flash('Angebot ist nicht finalisiert.', 'info')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {str(e)}', 'error')
+        flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.quote_edit', quote_id=quote_id))
 
 
@@ -540,12 +540,12 @@ def quote_mark_paid(quote_id):
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue + item_revenue, 2)
 
             db.session.commit()
-            flash('Quote marked as paid and revenue updated!', 'success')
+            flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
         else:
-            flash('Quote is already marked as paid.', 'info')
+            flash('Angebot ist bereits als bezahlt markiert.', 'info')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {str(e)}', 'error')
+        flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
 
@@ -565,12 +565,12 @@ def quote_unpay(quote_id):
             quote.status = 'finalized'
             quote.paid_at = None
             db.session.commit()
-            flash('Quote unpaid and revenue reverted!', 'success')
+            flash('Zahlung aufgehoben und Umsatz zurückerstattet!', 'success')
         else:
-            flash('Quote is not marked as paid.', 'info')
+            flash('Angebot ist nicht als bezahlt markiert.', 'info')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {str(e)}', 'error')
+        flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
 
@@ -589,10 +589,10 @@ def quote_delete(quote_id):
 
         db.session.delete(quote)
         db.session.commit()
-        flash('Quote deleted!', 'success')
+        flash('Angebot gelöscht!', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {str(e)}', 'error')
+        flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.quote_list'))
 
 
@@ -623,7 +623,7 @@ def inquiry_update_status(inquiry_id):
     if new_status in ['new', 'contacted', 'converted', 'closed']:
         inquiry.status = new_status
         db.session.commit()
-        flash(f'Inquiry status updated to {new_status}.', 'success')
+        flash(f'Anfragestatus auf {new_status} aktualisiert.', 'success')
     return redirect(url_for('admin.inquiry_view', inquiry_id=inquiry_id))
 
 
@@ -642,8 +642,8 @@ def inquiry_convert(inquiry_id):
             rental_days=1,
             status='draft',
             inquiry_id=inquiry.id,
-            notes=f"Converted from inquiry. Email: {inquiry.customer_email}"
-                  + (f", Phone: {inquiry.customer_phone}" if inquiry.customer_phone else "")
+            notes=f"Aus Anfrage umgewandelt. E-Mail: {inquiry.customer_email}"
+                  + (f", Telefon: {inquiry.customer_phone}" if inquiry.customer_phone else "")
                   + (f"\n{inquiry.message}" if inquiry.message else "")
         )
         if quote.start_date and quote.end_date:
@@ -671,12 +671,12 @@ def inquiry_convert(inquiry_id):
         inquiry.status = 'converted'
         db.session.commit()
 
-        flash(f'Quote created from inquiry!', 'success')
+        flash(f'Angebot aus Anfrage erstellt!', 'success')
         return redirect(url_for('admin.quote_edit', quote_id=quote.id))
 
     except Exception as e:
         db.session.rollback()
-        flash(f'Error converting inquiry: {str(e)}', 'error')
+        flash(f'Fehler beim Umwandeln der Anfrage: {str(e)}', 'error')
         return redirect(url_for('admin.inquiry_view', inquiry_id=inquiry_id))
 
 
@@ -688,10 +688,10 @@ def inquiry_delete(inquiry_id):
     try:
         db.session.delete(inquiry)
         db.session.commit()
-        flash('Inquiry deleted.', 'success')
+        flash('Anfrage gelöscht.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {str(e)}', 'error')
+        flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.inquiry_list'))
 
 
@@ -719,11 +719,11 @@ def user_add():
             can_edit_all = request.form.get('can_edit_all') == 'on'
 
             if not username or not password:
-                flash('Username and password are required.', 'error')
+                flash('Benutzername und Passwort sind erforderlich.', 'error')
                 return render_template('admin/user_form.html', user=None)
 
             if User.query.filter_by(username=username).first():
-                flash('Username already exists.', 'error')
+                flash('Benutzername existiert bereits.', 'error')
                 return render_template('admin/user_form.html', user=None)
 
             user = User(
@@ -737,12 +737,12 @@ def user_add():
             db.session.add(user)
             db.session.commit()
 
-            flash(f'User "{username}" created.', 'success')
+            flash(f'Benutzer "{username}" erstellt.', 'success')
             return redirect(url_for('admin.user_list'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error: {str(e)}', 'error')
+            flash(f'Fehler: {str(e)}', 'error')
 
     return render_template('admin/user_form.html', user=None)
 
@@ -768,15 +768,15 @@ def user_edit(user_id):
             # Prevent removing own admin status
             if user.id == 1 and not user.is_admin:
                 user.is_admin = True
-                flash('Cannot remove admin status from the primary admin account.', 'info')
+                flash('Admin-Status des primären Admin-Kontos kann nicht entfernt werden.', 'info')
 
             db.session.commit()
-            flash(f'User "{user.username}" updated.', 'success')
+            flash(f'Benutzer "{user.username}" aktualisiert.', 'success')
             return redirect(url_for('admin.user_list'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error: {str(e)}', 'error')
+            flash(f'Fehler: {str(e)}', 'error')
 
     return render_template('admin/user_form.html', user=user)
 
@@ -786,7 +786,7 @@ def user_edit(user_id):
 def user_delete(user_id):
     """Delete user (admin only)"""
     if user_id == current_user.id:
-        flash('Cannot delete your own account.', 'error')
+        flash('Eigenes Konto kann nicht gelöscht werden.', 'error')
         return redirect(url_for('admin.user_list'))
 
     user = User.query.get_or_404(user_id)
@@ -795,10 +795,10 @@ def user_delete(user_id):
         Item.query.filter_by(owner_id=user.id).update({'owner_id': current_user.id})
         db.session.delete(user)
         db.session.commit()
-        flash(f'User "{user.username}" deleted. Items reassigned to you.', 'success')
+        flash(f'Benutzer "{user.username}" gelöscht. Artikel wurden Ihnen zugewiesen.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error: {str(e)}', 'error')
+        flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.user_list'))
 
 
@@ -826,10 +826,10 @@ def settings():
             settings_record.notification_email = request.form.get('notification_email', '').strip()
             settings_record.updated_at = datetime.utcnow()
             db.session.commit()
-            flash('Settings saved!', 'success')
+            flash('Einstellungen gespeichert!', 'success')
         except Exception as e:
             db.session.rollback()
-            flash(f'Error: {str(e)}', 'error')
+            flash(f'Fehler: {str(e)}', 'error')
 
     return render_template('admin/settings.html', settings=settings_record)
 
@@ -931,7 +931,7 @@ def quote_receipt(quote_id):
     else:
         bereitstellungszeitraum = ("XX.XX.20XX", "XX.XX.20XX")
 
-    issuer_name = site_settings.business_name if site_settings and site_settings.business_name else "Your Business"
+    issuer_name = site_settings.business_name if site_settings and site_settings.business_name else "Ihr Unternehmen"
     address_lines = site_settings.address_lines.split('\n') if site_settings and site_settings.address_lines else []
     contact_lines = site_settings.contact_lines.split('\n') if site_settings and site_settings.contact_lines else []
     bank_lines = site_settings.bank_lines.split('\n') if site_settings and site_settings.bank_lines else []

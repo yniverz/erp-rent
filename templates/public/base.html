@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}{{ site_settings.business_name or 'Rental Shop' }}{% endblock %}</title>
+    <title>{% block title %}{{ site_settings.business_name or 'Verleih' }}{% endblock %}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; background: #f8f9fa; color: #333; }
@@ -62,14 +62,14 @@
 <body>
     <header>
         <div class="header-inner">
-            <a href="{{ url_for('public.catalog') }}" class="logo">{{ site_settings.business_name or 'Rental Shop' }}</a>
+            <a href="{{ url_for('public.catalog') }}" class="logo">{{ site_settings.business_name or 'Verleih' }}</a>
             <div class="header-nav">
-                <a href="{{ url_for('public.catalog') }}">Catalog</a>
+                <a href="{{ url_for('public.catalog') }}">Katalog</a>
                 <a href="{{ url_for('public.cart') }}" class="cart-link">
-                    &#128722; Cart
+                    &#128722; Warenkorb
                     <span class="cart-badge" id="cart-badge">{{ cart_count|default(0) }}</span>
                 </a>
-                <a href="{{ url_for('auth.login') }}" style="background:rgba(255,255,255,0.1); padding:8px 16px; border-radius:6px;">Login</a>
+                <a href="{{ url_for('auth.login') }}" style="background:rgba(255,255,255,0.1); padding:8px 16px; border-radius:6px;">Anmelden</a>
             </div>
         </div>
     </header>
@@ -90,13 +90,13 @@
         <div class="footer-inner">
             <div class="footer-links">
                 {% if site_settings and site_settings.imprint_url %}
-                    <a href="{{ site_settings.imprint_url }}" target="_blank" rel="noopener">Imprint</a>
+                    <a href="{{ site_settings.imprint_url }}" target="_blank" rel="noopener">Impressum</a>
                 {% endif %}
                 {% if site_settings and site_settings.privacy_url %}
-                    <a href="{{ site_settings.privacy_url }}" target="_blank" rel="noopener">Data Protection</a>
+                    <a href="{{ site_settings.privacy_url }}" target="_blank" rel="noopener">Datenschutz</a>
                 {% endif %}
             </div>
-            <div>&copy; {{ site_settings.business_name or 'Rental Shop' }}</div>
+            <div>&copy; {{ site_settings.business_name or 'Verleih' }}</div>
         </div>
     </footer>
 

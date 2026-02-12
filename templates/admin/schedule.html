@@ -1,6 +1,6 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Schedule - Admin{% endblock %}
+{% block title %}Zeitplan - Verwaltung{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -13,18 +13,18 @@
 {% endblock %}
 
 {% block content %}
-<h1>Rental Schedule</h1>
+<h1>Mietplan</h1>
 
 <table class="schedule-table">
     <thead>
         <tr>
-            <th>Ref #</th>
-            <th>Customer</th>
+            <th>Ref.-Nr.</th>
+            <th>Kunde</th>
             <th>Start</th>
-            <th>End</th>
-            <th>Days</th>
+            <th>Ende</th>
+            <th>Tage</th>
             <th>Status</th>
-            <th>Items</th>
+            <th>Artikel</th>
             <th></th>
         </tr>
     </thead>
@@ -42,20 +42,20 @@
                     {{ qi.display_name }}{% if not loop.last %}, {% endif %}
                 {% endfor %}
                 {% if quote.quote_items|length > 3 %}
-                    + {{ quote.quote_items|length - 3 }} more
+                    + {{ quote.quote_items|length - 3 }} weitere
                 {% endif %}
             </td>
             <td>
                 {% if quote.status == 'draft' %}
-                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Edit</a>
+                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
                 {% else %}
-                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">View</a>
+                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
                 {% endif %}
             </td>
         </tr>
         {% endfor %}
         {% if not quotes %}
-        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">No scheduled rentals.</td></tr>
+        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">Keine geplanten Vermietungen.</td></tr>
         {% endif %}
     </tbody>
 </table>

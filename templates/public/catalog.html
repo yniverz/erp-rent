@@ -1,6 +1,6 @@
 {% extends "public/base.html" %}
 
-{% block title %}{{ site_settings.business_name or 'Rental Shop' }} - Catalog{% endblock %}
+{% block title %}{{ site_settings.business_name or 'Verleih' }} - Katalog{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -53,20 +53,20 @@
 
 {% block content %}
 <div class="catalog-header">
-    <h1>Equipment Rental</h1>
+    <h1>Geräte mieten</h1>
     {% if site_settings and site_settings.shop_description %}
         <p>{{ site_settings.shop_description }}</p>
     {% else %}
-        <p>Browse our selection of professional event technology available for rent.</p>
+        <p>Stöbern Sie in unserer Auswahl an professioneller Veranstaltungstechnik zum Mieten.</p>
     {% endif %}
 </div>
 
 <div class="catalog-layout">
     {% if categories %}
     <div class="sidebar">
-        <h3>Categories</h3>
+        <h3>Kategorien</h3>
         <ul class="category-list">
-            <li><a href="{{ url_for('public.catalog') }}" class="{{ 'active' if not selected_category }}">All Items</a></li>
+            <li><a href="{{ url_for('public.catalog') }}" class="{{ 'active' if not selected_category }}">Alle Artikel</a></li>
             {% for cat in categories %}
                 <li><a href="{{ url_for('public.catalog', category=cat.id) }}" class="{{ 'active' if selected_category == cat.id }}">{{ cat.name }}</a></li>
             {% endfor %}
@@ -94,22 +94,22 @@
                         <div class="item-description">{{ item.description[:120] }}{% if item.description|length > 120 %}...{% endif %}</div>
                     {% endif %}
                     {% if item.show_price_publicly %}
-                        <div class="item-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / day</div>
+                        <div class="item-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</div>
                     {% else %}
-                        <div class="item-price on-request">Price on request</div>
+                        <div class="item-price on-request">Preis auf Anfrage</div>
                     {% endif %}
                     <form class="add-to-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
                         <input type="hidden" name="item_id" value="{{ item.id }}">
                         <input type="number" name="quantity" value="1" min="1" step="{{ item.rental_step }}">
-                        <button type="submit" class="btn btn-primary btn-sm">Add to Cart</button>
+                        <button type="submit" class="btn btn-primary btn-sm">In den Warenkorb</button>
                     </form>
                 </div>
             </div>
             {% endfor %}
         {% else %}
             <div class="no-items">
-                <h2>No items found</h2>
-                <p>{% if selected_category %}No items in this category yet.{% else %}No items available at the moment.{% endif %}</p>
+                <h2>Keine Artikel gefunden</h2>
+                <p>{% if selected_category %}Noch keine Artikel in dieser Kategorie.{% else %}Momentan keine Artikel verfügbar.{% endif %}</p>
             </div>
         {% endif %}
     </div>
@@ -124,7 +124,7 @@ document.querySelectorAll('[data-ajax-cart]').forEach(form => {
         const formData = new FormData(this);
         const btn = this.querySelector('button');
         const origText = btn.textContent;
-        btn.textContent = 'Added!';
+        btn.textContent = 'Hinzugefügt!';
         btn.style.background = '#059669';
         setTimeout(() => { btn.textContent = origText; btn.style.background = ''; }, 1200);
 

@@ -1,23 +1,23 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Categories - Admin{% endblock %}
+{% block title %}Kategorien - Verwaltung{% endblock %}
 
 {% block content %}
-<h1>Categories</h1>
+<h1>Kategorien</h1>
 
 <div class="card" style="margin-bottom: 24px;">
-    <h3>Add Category</h3>
+    <h3>Kategorie hinzufügen</h3>
     <form method="POST" style="display: flex; gap: 12px; align-items: end;">
         <input type="hidden" name="action" value="add">
         <div class="form-group" style="margin:0; flex:1;">
             <label>Name</label>
-            <input type="text" name="name" required placeholder="e.g. Lighting">
+            <input type="text" name="name" required placeholder="z.B. Beleuchtung">
         </div>
         <div class="form-group" style="margin:0; width:120px;">
-            <label>Order</label>
+            <label>Reihenfolge</label>
             <input type="number" name="display_order" value="0">
         </div>
-        <button type="submit" class="btn btn-primary">Add</button>
+        <button type="submit" class="btn btn-primary">Hinzufügen</button>
     </form>
 </div>
 
@@ -25,9 +25,9 @@
     <thead>
         <tr>
             <th>Name</th>
-            <th>Display Order</th>
-            <th>Items</th>
-            <th>Actions</th>
+            <th>Reihenfolge</th>
+            <th>Artikel</th>
+            <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
@@ -45,17 +45,17 @@
             </td>
             <td>{{ cat.items.count() }}</td>
             <td>
-                <button type="submit" form="edit-form-{{ cat.id }}" class="btn btn-sm btn-outline">Save</button>
-                <form method="POST" style="display:inline;" onsubmit="return confirm('Delete category {{ cat.name }}? Items will be unassigned.');">
+                <button type="submit" form="edit-form-{{ cat.id }}" class="btn btn-sm btn-outline">Speichern</button>
+                <form method="POST" style="display:inline;" onsubmit="return confirm('Kategorie {{ cat.name }} löschen? Artikel werden abgetrennt.');">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
-                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                 </form>
             </td>
         </tr>
         {% endfor %}
         {% if not categories %}
-        <tr><td colspan="4" style="text-align:center; color:#6b7280; padding:20px;">No categories yet.</td></tr>
+        <tr><td colspan="4" style="text-align:center; color:#6b7280; padding:20px;">Noch keine Kategorien.</td></tr>
         {% endif %}
     </tbody>
 </table>

@@ -15,11 +15,11 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password) and user.active:
             login_user(user)
-            flash('Login successful!', 'success')
+            flash('Anmeldung erfolgreich!', 'success')
             next_page = request.args.get('next')
             return redirect(next_page or url_for('admin.dashboard'))
         else:
-            flash('Invalid credentials or account disabled.', 'error')
+            flash('Ungültige Anmeldedaten oder Konto deaktiviert.', 'error')
 
     return render_template('auth/login.html')
 
@@ -29,5 +29,5 @@ def login():
 def logout():
     """Logout user"""
     logout_user()
-    flash('You have been logged out.', 'success')
+    flash('Sie wurden abgemeldet.', 'success')
     return redirect(url_for('public.catalog'))

@@ -1,24 +1,24 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Users - Admin{% endblock %}
+{% block title %}Benutzer - Verwaltung{% endblock %}
 
 {% block content %}
 <div class="actions-bar">
-    <h1 style="margin:0; flex:1;">User Management</h1>
-    <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
+    <h1 style="margin:0; flex:1;">Benutzerverwaltung</h1>
+    <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Benutzer hinzufügen</a>
 </div>
 
 <table>
     <thead>
         <tr>
-            <th>Username</th>
-            <th>Display Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Items</th>
-            <th>Active</th>
-            <th>Created</th>
-            <th>Actions</th>
+            <th>Benutzername</th>
+            <th>Anzeigename</th>
+            <th>E-Mail</th>
+            <th>Rolle</th>
+            <th>Artikel</th>
+            <th>Aktiv</th>
+            <th>Erstellt</th>
+            <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
@@ -31,9 +31,9 @@
                 {% if user.is_admin %}
                     <span class="badge badge-paid">Admin</span>
                 {% elif user.can_edit_all %}
-                    <span class="badge badge-finalized">Editor</span>
+                    <span class="badge badge-finalized">Bearbeiter</span>
                 {% else %}
-                    <span class="badge badge-draft">Member</span>
+                    <span class="badge badge-draft">Mitglied</span>
                 {% endif %}
             </td>
             <td>{{ user.items.count() }}</td>
@@ -46,10 +46,10 @@
             </td>
             <td>{{ user.created_at.strftime('%d.%m.%Y') }}</td>
             <td>
-                <a href="{{ url_for('admin.user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline">Edit</a>
+                <a href="{{ url_for('admin.user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
                 {% if user.id != current_user.id %}
-                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" style="display:inline;" onsubmit="return confirm('Delete user {{ user.username }}? Items will be reassigned to you.');">
-                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" style="display:inline;" onsubmit="return confirm('Benutzer {{ user.username }} löschen? Artikel werden Ihnen zugewiesen.');">
+                        <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                     </form>
                 {% endif %}
             </td>

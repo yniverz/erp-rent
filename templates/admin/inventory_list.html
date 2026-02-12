@@ -1,25 +1,25 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Inventory - Admin{% endblock %}
+{% block title %}Inventar - Verwaltung{% endblock %}
 
 {% block content %}
 <div class="actions-bar">
-    <h1 style="margin:0; flex:1;">Inventory</h1>
-    <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">+ Add Item</a>
+    <h1 style="margin:0; flex:1;">Inventar</h1>
+    <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">+ Artikel hinzufügen</a>
 </div>
 
 <table>
     <thead>
         <tr>
             <th>Name</th>
-            <th>Category</th>
-            <th>Owner</th>
-            <th>Qty</th>
-            <th>Price/Day</th>
-            <th>Public Price</th>
-            <th>Visible</th>
-            <th>Revenue</th>
-            <th>Actions</th>
+            <th>Kategorie</th>
+            <th>Eigentümer</th>
+            <th>Menge</th>
+            <th>Preis/Tag</th>
+            <th>Öffentl. Preis</th>
+            <th>Sichtbar</th>
+            <th>Umsatz</th>
+            <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
@@ -37,9 +37,9 @@
             <td>&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }}</td>
             <td>
                 {% if item.show_price_publicly %}
-                    <span class="badge badge-success">Shown</span>
+                    <span class="badge badge-success">Angezeigt</span>
                 {% else %}
-                    <span class="badge badge-warning">On Request</span>
+                    <span class="badge badge-warning">Auf Anfrage</span>
                 {% endif %}
             </td>
             <td>
@@ -52,18 +52,18 @@
             <td>&euro;{{ "%.2f"|format(item.total_revenue) }}</td>
             <td>
                 {% if current_user.can_edit_item(item) %}
-                    <a href="{{ url_for('admin.inventory_edit', item_id=item.id) }}" class="btn btn-sm btn-outline">Edit</a>
-                    <form method="POST" action="{{ url_for('admin.inventory_delete', item_id=item.id) }}" style="display:inline;" onsubmit="return confirm('Delete {{ item.name }}?');">
-                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    <a href="{{ url_for('admin.inventory_edit', item_id=item.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
+                    <form method="POST" action="{{ url_for('admin.inventory_delete', item_id=item.id) }}" style="display:inline;" onsubmit="return confirm('{{ item.name }} löschen?');">
+                        <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                     </form>
                 {% else %}
-                    <span style="color:#9ca3af; font-size:0.85em;">View only</span>
+                    <span style="color:#9ca3af; font-size:0.85em;">Nur ansehen</span>
                 {% endif %}
             </td>
         </tr>
         {% endfor %}
         {% if not items %}
-        <tr><td colspan="9" style="text-align:center; color:#6b7280; padding:30px;">No items yet. <a href="{{ url_for('admin.inventory_add') }}">Add your first item</a>.</td></tr>
+        <tr><td colspan="9" style="text-align:center; color:#6b7280; padding:30px;">Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.</td></tr>
         {% endif %}
     </tbody>
 </table>

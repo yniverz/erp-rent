@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -103,27 +103,27 @@
 <body>
     <nav>
         <div class="nav-inner">
-            <a href="{{ url_for('admin.dashboard') }}" class="nav-brand">{{ site_settings.business_name or 'ERP Rent' }} Admin</a>
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-brand">{{ site_settings.business_name or 'ERP Rent' }} Verwaltung</a>
             <div class="nav-links">
                 <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint == 'admin.dashboard' }}">Dashboard</a>
-                <a href="{{ url_for('admin.inventory_list') }}" class="{{ 'active' if 'inventory' in request.endpoint }}">Inventory</a>
-                <a href="{{ url_for('admin.categories') }}" class="{{ 'active' if request.endpoint == 'admin.categories' }}">Categories</a>
-                <a href="{{ url_for('admin.quote_list') }}" class="{{ 'active' if 'quote' in request.endpoint }}">Quotes</a>
+                <a href="{{ url_for('admin.inventory_list') }}" class="{{ 'active' if 'inventory' in request.endpoint }}">Inventar</a>
+                <a href="{{ url_for('admin.categories') }}" class="{{ 'active' if request.endpoint == 'admin.categories' }}">Kategorien</a>
+                <a href="{{ url_for('admin.quote_list') }}" class="{{ 'active' if 'quote' in request.endpoint }}">Angebote</a>
                 <a href="{{ url_for('admin.inquiry_list') }}" class="{{ 'active' if 'inquiry' in request.endpoint }}">
-                    Inquiries
+                    Anfragen
                     {% set new_count = inquiry_count if inquiry_count is defined else 0 %}
                 </a>
-                <a href="{{ url_for('admin.schedule') }}" class="{{ 'active' if request.endpoint == 'admin.schedule' }}">Schedule</a>
-                <a href="{{ url_for('admin.report_payoff') }}" class="{{ 'active' if request.endpoint == 'admin.report_payoff' }}">Payoff</a>
+                <a href="{{ url_for('admin.schedule') }}" class="{{ 'active' if request.endpoint == 'admin.schedule' }}">Zeitplan</a>
+                <a href="{{ url_for('admin.report_payoff') }}" class="{{ 'active' if request.endpoint == 'admin.report_payoff' }}">Abrechnung</a>
                 {% if current_user.is_admin %}
-                <a href="{{ url_for('admin.user_list') }}" class="{{ 'active' if 'user' in request.endpoint }}">Users</a>
-                <a href="{{ url_for('admin.settings') }}" class="{{ 'active' if request.endpoint == 'admin.settings' }}">Settings</a>
+                <a href="{{ url_for('admin.user_list') }}" class="{{ 'active' if 'user' in request.endpoint }}">Benutzer</a>
+                <a href="{{ url_for('admin.settings') }}" class="{{ 'active' if request.endpoint == 'admin.settings' }}">Einstellungen</a>
                 {% endif %}
             </div>
             <div class="nav-right">
                 <span class="nav-user">{{ current_user.display_name or current_user.username }}</span>
                 <a href="{{ url_for('public.catalog') }}" class="btn btn-sm btn-outline" style="color:white;border-color:rgba(255,255,255,0.3);">Shop</a>
-                <a href="{{ url_for('auth.logout') }}" class="nav-logout">Logout</a>
+                <a href="{{ url_for('auth.logout') }}" class="nav-logout">Abmelden</a>
             </div>
         </div>
     </nav>

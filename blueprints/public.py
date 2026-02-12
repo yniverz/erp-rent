@@ -69,14 +69,14 @@ def cart_add():
     if not item_id or quantity < 1:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'error': 'Invalid request'}), 400
-        flash('Invalid request.', 'error')
+        flash('Ungültige Anfrage.', 'error')
         return redirect(url_for('public.catalog'))
 
     item = Item.query.get(item_id)
     if not item or not item.visible_in_shop:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'error': 'Item not found'}), 404
-        flash('Item not found.', 'error')
+        flash('Artikel nicht gefunden.', 'error')
         return redirect(url_for('public.catalog'))
 
     cart = session.get('cart', {})
@@ -90,7 +90,7 @@ def cart_add():
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({'success': True, 'cart_count': cart_count})
 
-    flash(f'{item.name} added to cart!', 'success')
+    flash(f'{item.name} zum Warenkorb hinzugefügt!', 'success')
     return redirect(url_for('public.catalog'))
 
 
@@ -109,7 +109,7 @@ def cart_update():
 
     session['cart'] = cart
     session.modified = True
-    flash('Cart updated.', 'success')
+    flash('Warenkorb aktualisiert.', 'success')
     return redirect(url_for('public.cart'))
 
 
@@ -126,7 +126,7 @@ def cart_remove(item_id):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({'success': True, 'cart_count': sum(cart.values())})
 
-    flash('Item removed from cart.', 'success')
+    flash('Artikel aus dem Warenkorb entfernt.', 'success')
     return redirect(url_for('public.cart'))
 
 
@@ -135,7 +135,7 @@ def cart_clear():
     """Clear entire cart"""
     session.pop('cart', None)
     session.modified = True
-    flash('Cart cleared.', 'success')
+    flash('Warenkorb geleert.', 'success')
     return redirect(url_for('public.cart'))
 
 
@@ -144,7 +144,7 @@ def submit_inquiry():
     """Submit cart as customer inquiry"""
     cart_data = session.get('cart', {})
     if not cart_data:
-        flash('Your cart is empty.', 'error')
+        flash('Ihr Warenkorb ist leer.', 'error')
         return redirect(url_for('public.cart'))
 
     customer_name = request.form.get('customer_name', '').strip()
@@ -155,7 +155,7 @@ def submit_inquiry():
     end_date_str = request.form.get('end_date', '')
 
     if not customer_name or not customer_email:
-        flash('Name and email are required.', 'error')
+        flash('Name und E-Mail sind erforderlich.', 'error')
         return redirect(url_for('public.cart'))
 
     try:
@@ -203,7 +203,7 @@ def submit_inquiry():
 
     except Exception as e:
         db.session.rollback()
-        flash(f'Error submitting inquiry: {str(e)}', 'error')
+        flash(f'Fehler beim Senden der Anfrage: {str(e)}', 'error')
         return redirect(url_for('public.cart'))
 
 

@@ -1,21 +1,21 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Inquiries - Admin{% endblock %}
+{% block title %}Anfragen - Verwaltung{% endblock %}
 
 {% block content %}
-<h1>Customer Inquiries</h1>
+<h1>Kundenanfragen</h1>
 
 <table>
     <thead>
         <tr>
             <th>#</th>
-            <th>Customer</th>
-            <th>Email</th>
-            <th>Desired Period</th>
-            <th>Items</th>
+            <th>Kunde</th>
+            <th>E-Mail</th>
+            <th>Gewünschter Zeitraum</th>
+            <th>Artikel</th>
             <th>Status</th>
-            <th>Received</th>
-            <th>Actions</th>
+            <th>Eingegangen</th>
+            <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
@@ -28,19 +28,19 @@
                 {% if inq.desired_start_date and inq.desired_end_date %}
                     {{ inq.desired_start_date.strftime('%d.%m.%Y') }} – {{ inq.desired_end_date.strftime('%d.%m.%Y') }}
                 {% else %}
-                    <span style="color:#6b7280;">Not specified</span>
+                    <span style="color:#6b7280;">Nicht angegeben</span>
                 {% endif %}
             </td>
             <td>{{ inq.items|length }}</td>
             <td><span class="badge badge-{{ inq.status }}">{{ inq.status|capitalize }}</span></td>
             <td>{{ inq.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
             <td>
-                <a href="{{ url_for('admin.inquiry_view', inquiry_id=inq.id) }}" class="btn btn-sm btn-outline">View</a>
+                <a href="{{ url_for('admin.inquiry_view', inquiry_id=inq.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
             </td>
         </tr>
         {% endfor %}
         {% if not inquiries %}
-        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">No inquiries yet.</td></tr>
+        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">Noch keine Anfragen.</td></tr>
         {% endif %}
     </tbody>
 </table>

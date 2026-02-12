@@ -18,7 +18,7 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
-login_manager.login_message = 'Please log in to access this page.'
+login_manager.login_message = 'Bitte melden Sie sich an, um auf diese Seite zuzugreifen.'
 login_manager.login_message_category = 'error'
 
 
@@ -69,7 +69,7 @@ with app.app_context():
 
     # Create default site settings if none exist
     if SiteSettings.query.count() == 0:
-        settings = SiteSettings(business_name='My Rental Company')
+        settings = SiteSettings(business_name='Mein Verleih')
         db.session.add(settings)
         db.session.commit()
         print("Created default site settings")

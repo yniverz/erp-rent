@@ -75,39 +75,39 @@ def send_inquiry_notification(inquiry, settings):
     item_lines = []
     for inq_item in inquiry.items:
         if inq_item.price_snapshot is not None:
-            item_lines.append(f"  - {inq_item.quantity}x {inq_item.item_name_snapshot} @ €{inq_item.price_snapshot:.2f}/day")
+            item_lines.append(f"  - {inq_item.quantity}x {inq_item.item_name_snapshot} @ €{inq_item.price_snapshot:.2f}/Tag")
         else:
-            item_lines.append(f"  - {inq_item.quantity}x {inq_item.item_name_snapshot} (price on request)")
-    items_text = '\n'.join(item_lines) if item_lines else '  (no items)'
+            item_lines.append(f"  - {inq_item.quantity}x {inq_item.item_name_snapshot} (Preis auf Anfrage)")
+    items_text = '\n'.join(item_lines) if item_lines else '  (keine Artikel)'
 
     dates_text = ''
     if inquiry.desired_start_date and inquiry.desired_end_date:
         dates_text = f"{inquiry.desired_start_date.strftime('%d.%m.%Y')} - {inquiry.desired_end_date.strftime('%d.%m.%Y')}"
     else:
-        dates_text = 'Not specified'
+        dates_text = 'Nicht angegeben'
 
-    body = f"""New rental inquiry received!
+    body = f"""Neue Mietanfrage eingegangen!
 
-Customer: {inquiry.customer_name}
-Email: {inquiry.customer_email}
-Phone: {inquiry.customer_phone or 'Not provided'}
+Kunde: {inquiry.customer_name}
+E-Mail: {inquiry.customer_email}
+Telefon: {inquiry.customer_phone or 'Nicht angegeben'}
 
-Desired Period: {dates_text}
+Gewünschter Zeitraum: {dates_text}
 
-Items:
+Artikel:
 {items_text}
 
-Message:
-{inquiry.message or '(no message)'}
+Nachricht:
+{inquiry.message or '(keine Nachricht)'}
 
 ---
-View this inquiry in the admin panel.
+Diese Anfrage im Verwaltungsbereich ansehen.
 """
 
     msg = MIMEMultipart()
     msg['From'] = smtp_from
     msg['To'] = recipient
-    msg['Subject'] = f'[{business_name}] New Rental Inquiry from {inquiry.customer_name}'
+    msg['Subject'] = f'[{business_name}] Neue Mietanfrage von {inquiry.customer_name}'
     msg.attach(MIMEText(body, 'plain'))
 
     try:

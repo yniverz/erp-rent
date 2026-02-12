@@ -1,24 +1,24 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Quotes - Admin{% endblock %}
+{% block title %}Angebote - Verwaltung{% endblock %}
 
 {% block content %}
 <div class="actions-bar">
-    <h1 style="margin:0; flex:1;">Quotes</h1>
-    <a href="{{ url_for('admin.quote_create') }}" class="btn btn-success">+ Create Quote</a>
+    <h1 style="margin:0; flex:1;">Angebote</h1>
+    <a href="{{ url_for('admin.quote_create') }}" class="btn btn-success">+ Angebot erstellen</a>
 </div>
 
 <table>
     <thead>
         <tr>
-            <th>Ref #</th>
-            <th>Customer</th>
-            <th>Period</th>
-            <th>Items</th>
-            <th>Total</th>
+            <th>Ref.-Nr.</th>
+            <th>Kunde</th>
+            <th>Zeitraum</th>
+            <th>Artikel</th>
+            <th>Summe</th>
             <th>Status</th>
-            <th>Created By</th>
-            <th>Actions</th>
+            <th>Erstellt von</th>
+            <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
@@ -29,9 +29,9 @@
             <td>
                 {% if quote.start_date and quote.end_date %}
                     {{ quote.start_date.strftime('%d.%m.%Y') }} – {{ quote.end_date.strftime('%d.%m.%Y') }}
-                    <br><small style="color:#6b7280;">{{ quote.calculate_rental_days() }} day{{ 's' if quote.calculate_rental_days() != 1 }}</small>
+                    <br><small style="color:#6b7280;">{{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}</small>
                 {% else %}
-                    <span style="color:#6b7280;">Not set</span>
+                    <span style="color:#6b7280;">Nicht gesetzt</span>
                 {% endif %}
             </td>
             <td>{{ quote.quote_items|length }}</td>
@@ -40,15 +40,15 @@
             <td>{{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</td>
             <td>
                 {% if quote.status == 'draft' %}
-                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Edit</a>
+                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
                 {% else %}
-                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">View</a>
+                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
                 {% endif %}
             </td>
         </tr>
         {% endfor %}
         {% if not quotes %}
-        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">No quotes yet. <a href="{{ url_for('admin.quote_create') }}">Create your first quote</a>.</td></tr>
+        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">Noch keine Angebote. <a href="{{ url_for('admin.quote_create') }}">Erstes Angebot erstellen</a>.</td></tr>
         {% endif %}
     </tbody>
 </table>

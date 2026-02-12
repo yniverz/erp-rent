@@ -1,6 +1,6 @@
 {% extends "public/base.html" %}
 
-{% block title %}Cart - {{ site_settings.business_name or 'Rental Shop' }}{% endblock %}
+{% block title %}Warenkorb - {{ site_settings.business_name or 'Verleih' }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -37,23 +37,23 @@
 
 {% block content %}
 <div class="cart-page">
-    <h1>Your Cart</h1>
+    <h1>Ihr Warenkorb</h1>
 
     {% if not cart_items %}
         <div class="cart-empty">
-            <h2>Your cart is empty</h2>
-            <p>Browse our catalog to find equipment for your event.</p>
-            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary" style="margin-top: 16px;">Browse Catalog</a>
+            <h2>Ihr Warenkorb ist leer</h2>
+            <p>Stöbern Sie in unserem Katalog, um Geräte für Ihre Veranstaltung zu finden.</p>
+            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary" style="margin-top: 16px;">Katalog durchstöbern</a>
         </div>
     {% else %}
         <form method="POST" action="{{ url_for('public.cart_update') }}">
             <table class="cart-table">
                 <thead>
                     <tr>
-                        <th>Item</th>
-                        <th>Price / Day</th>
-                        <th>Qty</th>
-                        <th>Line Total / Day</th>
+                        <th>Artikel</th>
+                        <th>Preis / Tag</th>
+                        <th>Menge</th>
+                        <th>Summe / Tag</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -85,7 +85,7 @@
                             {% if ci.line_total is not none %}
                                 &euro;{{ "%.2f"|format(ci.line_total) }}
                             {% else %}
-                                <span class="on-request-text">On request</span>
+                                <span class="on-request-text">Auf Anfrage</span>
                             {% endif %}
                         </td>
                         <td>
@@ -97,40 +97,40 @@
             </table>
 
             <div class="cart-actions">
-                <button type="submit" class="btn btn-outline btn-sm">Update Quantities</button>
-                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm" style="background:#6b7280;">Continue Browsing</a>
+                <button type="submit" class="btn btn-outline btn-sm">Mengen aktualisieren</button>
+                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm" style="background:#6b7280;">Weiter stöbern</a>
             </div>
         </form>
 
         <div class="cart-summary">
             <div class="summary-row total">
-                <span>Subtotal per day</span>
+                <span>Zwischensumme pro Tag</span>
                 <span>&euro;{{ "%.2f"|format(subtotal) }}</span>
             </div>
             {% if has_on_request %}
-                <div class="summary-note">&#9888; Some items are marked "price on request". The final price will be communicated after your inquiry.</div>
+                <div class="summary-note">&#9888; Einige Artikel sind mit "Preis auf Anfrage" gekennzeichnet. Der endgültige Preis wird nach Ihrer Anfrage mitgeteilt.</div>
             {% endif %}
-            <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Final total depends on the rental period and will be confirmed after review.</p>
+            <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Die Endsumme hängt vom Mietzeitraum ab und wird nach Prüfung bestätigt.</p>
         </div>
 
         <div class="inquiry-form">
-            <h2>Send Rental Inquiry</h2>
-            <p style="color: #6b7280; margin-bottom: 20px; font-size: 0.95em;">Fill in your details and desired dates. We'll get back to you with availability and a quote.</p>
+            <h2>Mietanfrage senden</h2>
+            <p style="color: #6b7280; margin-bottom: 20px; font-size: 0.95em;">Geben Sie Ihre Daten und gewünschten Termine ein. Wir melden uns mit Verfügbarkeit und einem Angebot bei Ihnen.</p>
 
             <form method="POST" action="{{ url_for('public.submit_inquiry') }}">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Your Name *</label>
+                        <label>Ihr Name *</label>
                         <input type="text" name="customer_name" required>
                     </div>
                     <div class="form-group">
-                        <label>Email Address *</label>
+                        <label>E-Mail-Adresse *</label>
                         <input type="email" name="customer_email" required>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Phone Number</label>
+                        <label>Telefonnummer</label>
                         <input type="tel" name="customer_phone">
                     </div>
                     <div class="form-group">
@@ -139,19 +139,19 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Desired Start Date</label>
+                        <label>Gewünschtes Startdatum</label>
                         <input type="date" name="start_date">
                     </div>
                     <div class="form-group">
-                        <label>Desired End Date</label>
+                        <label>Gewünschtes Enddatum</label>
                         <input type="date" name="end_date">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Message / Additional Info</label>
-                    <textarea name="message" placeholder="Tell us about your event, venue, specific requirements..."></textarea>
+                    <label>Nachricht / Zusätzliche Infos</label>
+                    <textarea name="message" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
                 </div>
-                <button type="submit" class="btn btn-success" style="font-size: 1.05em; padding: 14px 32px;">Submit Inquiry</button>
+                <button type="submit" class="btn btn-success" style="font-size: 1.05em; padding: 14px 32px;">Anfrage absenden</button>
             </form>
         </div>
     {% endif %}
