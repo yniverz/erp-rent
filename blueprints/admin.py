@@ -166,6 +166,11 @@ def inventory_add():
                 visible_in_shop=visible,
                 image_filename=image_filename
             )
+
+            # Handle subcategories
+            subcategory_ids = request.form.getlist('subcategory_ids', type=int)
+            item.subcategories = Category.query.filter(Category.id.in_(subcategory_ids)).all() if subcategory_ids else []
+
             db.session.add(item)
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -237,6 +242,10 @@ def inventory_edit(item_id):
                 if os.path.exists(old_path):
                     os.remove(old_path)
                 item.image_filename = None
+
+            # Handle subcategories
+            subcategory_ids = request.form.getlist('subcategory_ids', type=int)
+            item.subcategories = Category.query.filter(Category.id.in_(subcategory_ids)).all() if subcategory_ids else []
 
             db.session.commit()
             flash(f'{item.name} erfolgreich aktualisiert!', 'success')

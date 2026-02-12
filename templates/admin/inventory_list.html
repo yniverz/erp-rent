@@ -44,7 +44,12 @@
                     <span class="badge" style="background:#8b5cf6; color:white; font-size:0.7em; vertical-align:middle;">Extern</span>
                 {% endif %}
             </td>
-            <td>{{ item.category.name if item.category else '—' }}</td>
+            <td>
+                {{ item.category.name if item.category else '—' }}
+                {% if item.subcategories %}
+                    <br><small style="color:#6b7280;">+ {{ item.subcategories|map(attribute='name')|join(', ') }}</small>
+                {% endif %}
+            </td>
             <td>{{ item.owner.display_name or item.owner.username }}</td>
             <td>{{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
             <td>&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }}</td>

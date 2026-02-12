@@ -145,6 +145,19 @@ with app.app_context():
                 )
             """)
 
+        # Item subcategories association table migration
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='item_subcategories'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE item_subcategories (
+                    item_id INTEGER NOT NULL,
+                    category_id INTEGER NOT NULL,
+                    PRIMARY KEY (item_id, category_id),
+                    FOREIGN KEY (item_id) REFERENCES item(id),
+                    FOREIGN KEY (category_id) REFERENCES category(id)
+                )
+            """)
+
         conn.commit()
         conn.close()
 

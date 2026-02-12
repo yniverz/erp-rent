@@ -21,6 +21,15 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="form-group">
+                <label>Unterkategorien</label>
+                <select name="subcategory_ids" multiple style="min-height: 100px;">
+                    {% for cat in categories %}
+                        <option value="{{ cat.id }}" {{ 'selected' if item and cat in item.subcategories }}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+                <small style="color:#6b7280;">Artikel erscheint auch unter diesen Kategorien beim Filtern (Strg/Cmd + Klick für Mehrfachauswahl)</small>
+            </div>
         </div>
 
         {% if current_user.is_admin %}

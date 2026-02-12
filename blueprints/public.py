@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
-from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings
+from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings, item_subcategories
 from helpers import send_inquiry_notification, get_upload_path
 from datetime import datetime, date
 import os
@@ -11,14 +11,27 @@ public_bp = Blueprint('public', __name__)
 @public_bp.route('/')
 def catalog():
     """Public storefront catalog"""
+    # Show categories that have at least one visible item (via main category or subcategory)
     categories = Category.query.filter(
-        Category.items.any(Item.visible_in_shop == True)
+        db.or_(
+            Category.items.any(Item.visible_in_shop == True),
+            Category.id.in_(
+                db.session.query(item_subcategories.c.category_id).join(
+                    Item, Item.id == item_subcategories.c.item_id
+                ).filter(Item.visible_in_shop == True)
+            )
+        )
     ).order_by(Category.display_order, Category.name).all()
     selected_category = request.args.get('category', type=int)
 
     query = Item.query.filter_by(visible_in_shop=True)
     if selected_category:
-        query = query.filter_by(category_id=selected_category)
+        query = query.filter(
+            db.or_(
+                Item.category_id == selected_category,
+                Item.subcategories.any(Category.id == selected_category)
+            )
+        )
     items = query.order_by(Item.name).all()
 
     # Get cart from session

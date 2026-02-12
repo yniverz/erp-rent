@@ -37,6 +37,13 @@ class User(UserMixin, db.Model):
         return item.owner_id == self.id
 
 
+# Association table for item subcategories (many-to-many)
+item_subcategories = db.Table('item_subcategories',
+    db.Column('item_id', db.Integer, db.ForeignKey('item.id'), primary_key=True),
+    db.Column('category_id', db.Integer, db.ForeignKey('category.id'), primary_key=True)
+)
+
+
 class Category(db.Model):
     """Category for organizing inventory items"""
     id = db.Column(db.Integer, primary_key=True)
@@ -69,6 +76,7 @@ class Item(db.Model):
 
     owner = db.relationship('User', back_populates='items')
     category = db.relationship('Category', back_populates='items')
+    subcategories = db.relationship('Category', secondary=item_subcategories, lazy='selectin')
     quote_items = db.relationship('QuoteItem', back_populates='item', cascade='all, delete-orphan')
 
     @property
