@@ -93,15 +93,12 @@
             <input type="hidden" name="recipient_lines" value="{{ quote.recipient_lines or '' }}">
             <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
             <div style="display: flex; gap: 6px; align-items: center;">
-                <span style="color:#6b7280;">Mietzeitraum: {{ quote.date_based_rental_days() }} Tag{{ 'e' if quote.date_based_rental_days() != 1 }} (Datum)</span>
+                <span style="color:#6b7280;">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}{% if quote.rental_days_override %} <strong style="color:#2563eb;">(manuell)</strong>{% endif %}</span>
                 <label style="color:#6b7280; font-size: 0.9em; margin:0;">Überschreiben:</label>
                 <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" style="width: 80px;" placeholder="—">
                 <span style="color:#6b7280; font-size: 0.9em;">Tage</span>
                 <button type="submit" class="btn btn-sm btn-outline">Speichern</button>
             </div>
-            {% if quote.rental_days_override %}
-            <span style="color:#2563eb; font-size: 0.85em; font-weight: 600;">→ {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }} (manuell)</span>
-            {% endif %}
         </form>
 
         <!-- Add Item Dropdown -->
