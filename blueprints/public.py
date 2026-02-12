@@ -11,7 +11,9 @@ public_bp = Blueprint('public', __name__)
 @public_bp.route('/')
 def catalog():
     """Public storefront catalog"""
-    categories = Category.query.order_by(Category.display_order, Category.name).all()
+    categories = Category.query.filter(
+        Category.items.any(Item.visible_in_shop == True)
+    ).order_by(Category.display_order, Category.name).all()
     selected_category = request.args.get('category', type=int)
 
     query = Item.query.filter_by(visible_in_shop=True)
