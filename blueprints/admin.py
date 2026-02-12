@@ -336,6 +336,7 @@ def quote_edit(quote_id):
     """Edit quote and add items"""
     quote = Quote.query.get_or_404(quote_id)
     items = Item.query.order_by(Item.name).all()
+    categories = Category.query.order_by(Category.display_order, Category.name).all()
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -352,7 +353,7 @@ def quote_edit(quote_id):
                 if start_date and end_date and start_date > end_date:
                     flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
 
                 quote.start_date = start_date
                 quote.end_date = end_date
@@ -368,63 +369,84 @@ def quote_edit(quote_id):
                 db.session.commit()
                 flash('Angebot aktualisiert!', 'success')
 
-            elif action == 'update_items':
+            elif action == 'add_item':
                 if not quote.start_date or not quote.end_date:
                     flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen!', 'error')
+                else:
+                    item_id = request.form.get('item_id', type=int)
+                    if item_id:
+                        item = Item.query.get(item_id)
+                        if item:
+                            existing = QuoteItem.query.filter_by(
+                                quote_id=quote.id, item_id=item.id, is_custom=False
+                            ).first()
+                            if existing:
+                                flash(f'{item.name} ist bereits im Angebot.', 'info')
+                            else:
+                                qi = QuoteItem(
+                                    quote_id=quote.id,
+                                    item_id=item.id,
+                                    quantity=item.rental_step or 1,
+                                    rental_price_per_day=item.default_rental_price_per_day,
+                                    rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
+                                    is_custom=False
+                                )
+                                db.session.add(qi)
+                                db.session.commit()
+                                flash(f'{item.name} hinzugefügt!', 'success')
+
+            elif action == 'update_items':
+                if not quote.start_date or not quote.end_date:
+                    flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel bearbeiten!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
 
                 errors = []
-                for item in items:
-                    quantity_key = f'quantity_{item.id}'
-                    price_key = f'price_{item.id}'
-                    cost_key = f'cost_{item.id}'
+                for qi in quote.quote_items:
+                    if qi.is_custom:
+                        continue
+                    if not qi.item:
+                        continue
+
+                    quantity_key = f'quantity_{qi.item_id}'
+                    price_key = f'price_{qi.item_id}'
+                    cost_key = f'cost_{qi.item_id}'
+                    exempt_key = f'discount_exempt_{qi.item_id}'
 
                     if quantity_key in request.form:
                         quantity = int(request.form.get(quantity_key, 0))
-                        price = round(float(request.form.get(price_key, item.default_rental_price_per_day)), 2)
-                        cost = round(float(request.form.get(cost_key, item.default_rental_cost_per_day if item.is_external else 0)), 2)
+                        price = round(float(request.form.get(price_key, qi.rental_price_per_day)), 2)
+                        cost = round(float(request.form.get(cost_key, qi.rental_cost_per_day)), 2)
+                        exempt = request.form.get(exempt_key) == 'on'
 
                         if quantity > 0:
                             available = get_available_quantity(
-                                item.id,
+                                qi.item_id,
                                 quote.start_date,
                                 quote.end_date,
                                 exclude_quote_id=quote.id
                             )
 
                             if available != -1 and quantity > available:
-                                errors.append(f'{item.name}: Nur {available} verfügbar (gesamt: {item.total_quantity})')
+                                errors.append(f'{qi.item.name}: Nur {available} verfügbar (gesamt: {qi.item.total_quantity})')
                                 continue
 
-                            if item.rental_step > 1 and quantity % item.rental_step != 0:
-                                errors.append(f'{item.name}: Menge muss ein Vielfaches von {item.rental_step} sein')
+                            if qi.item.rental_step > 1 and quantity % qi.item.rental_step != 0:
+                                errors.append(f'{qi.item.name}: Menge muss ein Vielfaches von {qi.item.rental_step} sein')
                                 continue
 
-                        existing = QuoteItem.query.filter_by(
-                            quote_id=quote.id,
-                            item_id=item.id,
-                            is_custom=False
-                        ).first()
-
-                        if quantity > 0:
-                            if existing:
-                                existing.quantity = quantity
-                                existing.rental_price_per_day = price
-                                existing.rental_cost_per_day = cost if item.is_external else 0
-                            else:
-                                quote_item = QuoteItem(
-                                    quote_id=quote.id,
-                                    item_id=item.id,
-                                    quantity=quantity,
-                                    rental_price_per_day=price,
-                                    rental_cost_per_day=cost if item.is_external else 0,
-                                    is_custom=False
-                                )
-                                db.session.add(quote_item)
+                            qi.quantity = quantity
+                            qi.rental_price_per_day = price
+                            qi.rental_cost_per_day = cost if qi.item.is_external else 0
+                            qi.discount_exempt = exempt
                         else:
-                            if existing:
-                                db.session.delete(existing)
+                            db.session.delete(qi)
+
+                # Also update custom items discount_exempt
+                for qi in quote.quote_items:
+                    if qi.is_custom:
+                        exempt_key = f'discount_exempt_custom_{qi.id}'
+                        qi.discount_exempt = request.form.get(exempt_key) == 'on'
 
                 if errors:
                     flash('Fehler: ' + '; '.join(errors), 'error')
@@ -432,6 +454,14 @@ def quote_edit(quote_id):
                 else:
                     db.session.commit()
                     flash('Artikel aktualisiert!', 'success')
+
+            elif action == 'remove_item':
+                quote_item_id = int(request.form.get('quote_item_id'))
+                quote_item = QuoteItem.query.get(quote_item_id)
+                if quote_item and quote_item.quote_id == quote.id:
+                    db.session.delete(quote_item)
+                    db.session.commit()
+                    flash('Artikel aus Angebot entfernt!', 'success')
 
             elif action == 'add_custom':
                 custom_name = request.form.get('custom_name', '').strip()
@@ -451,14 +481,6 @@ def quote_edit(quote_id):
                     db.session.commit()
                     flash(f'Eigene Position "{custom_name}" hinzugefügt!', 'success')
 
-            elif action == 'remove_item':
-                quote_item_id = int(request.form.get('quote_item_id'))
-                quote_item = QuoteItem.query.get(quote_item_id)
-                if quote_item and quote_item.quote_id == quote.id:
-                    db.session.delete(quote_item)
-                    db.session.commit()
-                    flash('Artikel aus Angebot entfernt!', 'success')
-
             elif action == 'update_discount':
                 discount_percent = float(request.form.get('final_discount_percent', 0))
                 quote.discount_percent = discount_percent
@@ -469,7 +491,7 @@ def quote_edit(quote_id):
                 if not quote.start_date or not quote.end_date:
                     flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
 
                 validation_errors = []
                 for quote_item in quote.quote_items:
@@ -491,7 +513,7 @@ def quote_edit(quote_id):
                     for item in items:
                         item_availability[item.id] = get_available_quantity(
                             item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
 
                 quote.status = 'finalized'
                 quote.finalized_at = datetime.utcnow()
@@ -513,7 +535,7 @@ def quote_edit(quote_id):
         for item in items:
             item_availability[item.id] = item.total_quantity
 
-    return render_template('admin/quote_edit.html', quote=quote, items=items, item_availability=item_availability)
+    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
 
 
 @admin_bp.route('/quotes/<int:quote_id>')
@@ -555,7 +577,8 @@ def quote_mark_paid(quote_id):
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
-                    item_revenue = round(quote_item.total_price * discount_multiplier, 2)
+                    multiplier = 1.0 if quote_item.discount_exempt else discount_multiplier
+                    item_revenue = round(quote_item.total_price * multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue + item_revenue, 2)
                     # Accumulate external rental costs
                     if quote_item.item.is_external and quote_item.rental_cost_per_day:
@@ -582,7 +605,8 @@ def quote_unpay(quote_id):
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
-                    item_revenue = round(quote_item.total_price * discount_multiplier, 2)
+                    multiplier = 1.0 if quote_item.discount_exempt else discount_multiplier
+                    item_revenue = round(quote_item.total_price * multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
                     # Reverse external rental costs
                     if quote_item.item.is_external and quote_item.rental_cost_per_day:
@@ -611,7 +635,8 @@ def quote_delete(quote_id):
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
-                    item_revenue = round(quote_item.total_price * discount_multiplier, 2)
+                    multiplier = 1.0 if quote_item.discount_exempt else discount_multiplier
+                    item_revenue = round(quote_item.total_price * multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
                     # Reverse external rental costs
                     if quote_item.item.is_external and quote_item.rental_cost_per_day:

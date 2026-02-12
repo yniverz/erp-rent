@@ -53,6 +53,9 @@
                     {% if qi.item and qi.item.is_external %}
                         <small style="color:#8b5cf6;">&#x2197; Extern</small>
                     {% endif %}
+                    {% if qi.discount_exempt and quote.discount_percent > 0 %}
+                        <br><small style="color:#d97706;">Kein Rabatt</small>
+                    {% endif %}
                 </td>
                 <td>{{ qi.item.owner.display_name or qi.item.owner.username if qi.item and qi.item.owner else '—' }}</td>
                 <td>{{ qi.quantity }}</td>
@@ -82,6 +85,10 @@
         </div>
         {% if quote.discount_percent > 0 %}
         <div class="price-row">
+            <span>Rabattfähig</span>
+            <span>&euro;{{ "%.2f"|format(quote.discountable_subtotal) }}</span>
+        </div>
+        <div class="price-row">
             <span>Rabatt ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
             <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>
         </div>
@@ -103,7 +110,8 @@
         {% if owner_name not in ns.owners %}
             {% set _ = ns.owners.update({owner_name: 0}) %}
         {% endif %}
-        {% set _ = ns.owners.update({owner_name: ns.owners[owner_name] + qi.total_price * ((100 - quote.discount_percent) / 100)}) %}
+        {% set multiplier = 1.0 if qi.discount_exempt else ((100 - quote.discount_percent) / 100) %}
+        {% set _ = ns.owners.update({owner_name: ns.owners[owner_name] + qi.total_price * multiplier}) %}
     {% endfor %}
     <table>
         <thead><tr><th>Eigentümer</th><th>Umsatzanteil</th></tr></thead>

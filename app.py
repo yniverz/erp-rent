@@ -124,6 +124,8 @@ with app.app_context():
         # QuoteItem table migrations
         if not column_exists('quote_item', 'rental_cost_per_day'):
             cursor.execute("ALTER TABLE quote_item ADD COLUMN rental_cost_per_day FLOAT DEFAULT 0")
+        if not column_exists('quote_item', 'discount_exempt'):
+            cursor.execute("ALTER TABLE quote_item ADD COLUMN discount_exempt BOOLEAN DEFAULT 0")
 
         conn.commit()
         conn.close()

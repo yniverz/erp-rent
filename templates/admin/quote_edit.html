@@ -6,6 +6,8 @@
 <style>
     .quote-section { margin-bottom: 30px; }
     .item-row-disabled { opacity: 0.5; }
+    .exempt-label { font-size: 0.8em; color: #6b7280; white-space: nowrap; }
+    .exempt-label input { vertical-align: middle; }
 </style>
 {% endblock %}
 
@@ -65,95 +67,169 @@
         <p style="color: #d97706;">&#9888; Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen.</p>
     {% else %}
         <p style="color:#6b7280; margin-bottom: 14px;">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}</p>
-    {% endif %}
 
-    <form method="POST">
-        <input type="hidden" name="action" value="update_items">
-        <table>
-            <thead>
-                <tr>
-                    <th>Artikel</th>
-                    <th>Eigentümer</th>
-                    <th>Verfügbar</th>
-                    <th>Menge</th>
-                    <th>Preis/Tag</th>
-                    <th>Kosten/Tag</th>
-                    <th>Summe</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                {% set avail = item_availability.get(item.id, 0) %}
-                {% set existing = namespace(qty=0, price=item.default_rental_price_per_day, cost=item.default_rental_cost_per_day if item.is_external else 0) %}
-                {% for qi in quote.quote_items %}
-                    {% if qi.item_id == item.id and not qi.is_custom %}
-                        {% set existing.qty = qi.quantity %}
-                        {% set existing.price = qi.rental_price_per_day %}
-                        {% set existing.cost = qi.rental_cost_per_day %}
-                    {% endif %}
-                {% endfor %}
-                <tr class="{{ 'item-row-disabled' if avail == 0 and existing.qty == 0 }}">
-                    <td>
-                        <strong>{{ item.name }}</strong>
-                        {% if item.is_external %}<br><small style="color:#8b5cf6;">&#x2197; Extern</small>{% endif %}
-                        {% if item.category %}<br><small style="color:#6b7280;">{{ item.category.name }}</small>{% endif %}
-                    </td>
-                    <td><small>{{ item.owner.display_name or item.owner.username }}</small></td>
-                    <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
-                    <td><input type="number" name="quantity_{{ item.id }}" value="{{ existing.qty }}" min="0" step="{{ item.rental_step }}" style="width:80px;"></td>
-                    <td><input type="number" name="price_{{ item.id }}" value="{{ '%.2f'|format(existing.price) }}" step="0.01" min="0" style="width:100px;"></td>
-                    <td>
-                        {% if item.is_external %}
-                            <input type="number" name="cost_{{ item.id }}" value="{{ '%.2f'|format(existing.cost) }}" step="0.01" min="0" style="width:100px;">
-                        {% else %}
-                            <span style="color:#9ca3af;">—</span>
-                            <input type="hidden" name="cost_{{ item.id }}" value="0">
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if existing.qty > 0 %}
-                            &euro;{{ "%.2f"|format(existing.qty * existing.price * quote.calculate_rental_days()) }}
-                            {% if item.is_external and existing.cost > 0 %}
-                                <br><small style="color:#dc2626;">Kosten: &euro;{{ "%.2f"|format(existing.qty * existing.cost * quote.calculate_rental_days()) }}</small>
+        <!-- Add Item Dropdown -->
+        <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-bottom: 20px;">
+            <input type="hidden" name="action" value="add_item">
+            <div class="form-group" style="margin:0; flex:1;">
+                <label>Artikel hinzufügen</label>
+                <select name="item_id" style="width:100%;">
+                    <option value="">— Artikel auswählen —</option>
+                    {% set existing_ids = quote.quote_items|rejectattr('is_custom')|map(attribute='item_id')|list %}
+
+                    {# Items without category #}
+                    {% set uncategorized = items|rejectattr('category')|list %}
+                    {% if uncategorized %}
+                    <optgroup label="Ohne Kategorie">
+                        {% for item in uncategorized %}
+                            {% if item.id not in existing_ids %}
+                                {% set avail = item_availability.get(item.id, 0) %}
+                                <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
+                                    {{ item.name }}
+                                    {% if item.is_external %} ↗ Extern{% endif %}
+                                    ({{ '∞' if avail == -1 else avail }} verf.)
+                                    — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
+                                </option>
                             {% endif %}
-                        {% else %}
-                            —
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}
+
+                    {# Items grouped by category #}
+                    {% for cat in categories %}
+                        {% set cat_items = items|selectattr('category')|selectattr('category.id', 'equalto', cat.id)|list %}
+                        {% set available_cat_items = [] %}
+                        {% for item in cat_items %}
+                            {% if item.id not in existing_ids %}
+                                {% if available_cat_items.append(item) %}{% endif %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if available_cat_items %}
+                        <optgroup label="{{ cat.name }}">
+                            {% for item in available_cat_items %}
+                                {% set avail = item_availability.get(item.id, 0) %}
+                                <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
+                                    {{ item.name }}
+                                    {% if item.is_external %} ↗ Extern{% endif %}
+                                    ({{ '∞' if avail == -1 else avail }} verf.)
+                                    — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
+                                </option>
+                            {% endfor %}
+                        </optgroup>
                         {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <button type="submit" class="btn btn-primary" {{ 'disabled' if not quote.start_date or not quote.end_date }}>Artikel speichern</button>
-    </form>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Hinzufügen</button>
+        </form>
+
+        <!-- Current Items in Quote -->
+        {% set inventory_items = quote.quote_items|rejectattr('is_custom')|list %}
+        {% if inventory_items %}
+        <form method="POST">
+            <input type="hidden" name="action" value="update_items">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Artikel</th>
+                        <th>Verfügbar</th>
+                        <th>Menge</th>
+                        <th>Preis/Tag</th>
+                        <th>Kosten/Tag</th>
+                        <th>Rabatt</th>
+                        <th>Summe</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for qi in inventory_items %}
+                    {% set avail = item_availability.get(qi.item_id, 0) %}
+                    <tr>
+                        <td>
+                            <strong>{{ qi.item.name }}</strong>
+                            {% if qi.item.is_external %}<br><small style="color:#8b5cf6;">&#x2197; Extern</small>{% endif %}
+                            {% if qi.item.category %}<br><small style="color:#6b7280;">{{ qi.item.category.name }}</small>{% endif %}
+                            <br><small style="color:#6b7280;">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
+                        </td>
+                        <td>{{ '∞' if avail == -1 else (avail + qi.quantity) }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
+                        <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" step="{{ qi.item.rental_step }}" style="width:80px;"></td>
+                        <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" style="width:100px;"></td>
+                        <td>
+                            {% if qi.item.is_external %}
+                                <input type="number" name="cost_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" style="width:100px;">
+                            {% else %}
+                                <span style="color:#9ca3af;">—</span>
+                                <input type="hidden" name="cost_{{ qi.item_id }}" value="0">
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            <label class="exempt-label" title="Vom Rabatt ausgenommen">
+                                <input type="checkbox" name="discount_exempt_{{ qi.item_id }}" {{ 'checked' if qi.discount_exempt }}>
+                                Kein Rabatt
+                            </label>
+                        </td>
+                        <td>
+                            &euro;{{ "%.2f"|format(qi.total_price) }}
+                            {% if qi.item.is_external and qi.rental_cost_per_day %}
+                                <br><small style="color:#dc2626;">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="action" value="remove_item">
+                                <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Entfernen">✕</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="submit" class="btn btn-primary">Artikel speichern</button>
+        </form>
+        {% else %}
+            <p style="color: #6b7280; margin-top: 10px;">Noch keine Artikel hinzugefügt. Verwenden Sie das Dropdown oben.</p>
+        {% endif %}
+    {% endif %}
 </div>
 
 <!-- Custom Items -->
 <div class="card quote-section">
     <h2>Eigene Positionen</h2>
-    {% if quote.quote_items %}
-        <table>
-            <thead>
-                <tr><th>Name</th><th>Menge</th><th>Preis/Tag</th><th>Summe</th><th></th></tr>
-            </thead>
-            <tbody>
-                {% for qi in quote.quote_items if qi.is_custom %}
-                <tr>
-                    <td>{{ qi.custom_item_name }}</td>
-                    <td>{{ qi.quantity }}</td>
-                    <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
-                    <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
-                    <td>
-                        <form method="POST" style="display:inline;">
-                            <input type="hidden" name="action" value="remove_item">
-                            <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
-                            <button type="submit" class="btn btn-sm btn-danger">Entfernen</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    {% set custom_items = quote.quote_items|selectattr('is_custom')|list %}
+    {% if custom_items %}
+        <form method="POST">
+            <input type="hidden" name="action" value="update_items">
+            <table>
+                <thead>
+                    <tr><th>Name</th><th>Menge</th><th>Preis/Tag</th><th>Rabatt</th><th>Summe</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for qi in custom_items %}
+                    <tr>
+                        <td>{{ qi.custom_item_name }}</td>
+                        <td>{{ qi.quantity }}</td>
+                        <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
+                        <td style="text-align:center;">
+                            <label class="exempt-label" title="Vom Rabatt ausgenommen">
+                                <input type="checkbox" name="discount_exempt_custom_{{ qi.id }}" {{ 'checked' if qi.discount_exempt }}>
+                                Kein Rabatt
+                            </label>
+                        </td>
+                        <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
+                        <td>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="action" value="remove_item">
+                                <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
+                                <button type="submit" class="btn btn-sm btn-danger">Entfernen</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Positionen speichern</button>
+        </form>
     {% endif %}
 
     <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-top: 14px;">
@@ -196,6 +272,10 @@
         </form>
 
         {% if quote.discount_percent > 0 %}
+        <div class="price-row">
+            <span>Rabattfähig</span>
+            <span>&euro;{{ "%.2f"|format(quote.discountable_subtotal) }}</span>
+        </div>
         <div class="price-row">
             <span>Rabatt ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
             <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>

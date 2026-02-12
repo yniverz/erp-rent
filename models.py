@@ -138,8 +138,13 @@ class Quote(db.Model):
         return round(sum(qi.total_price for qi in self.quote_items), 2)
 
     @property
+    def discountable_subtotal(self):
+        """Sum of line totals for items that are NOT exempt from discount"""
+        return round(sum(qi.total_price for qi in self.quote_items if not qi.discount_exempt), 2)
+
+    @property
     def discount_amount(self):
-        return round(self.subtotal * (self.discount_percent / 100), 2)
+        return round(self.discountable_subtotal * (self.discount_percent / 100), 2)
 
     @property
     def total(self):
@@ -154,6 +159,7 @@ class QuoteItem(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     rental_price_per_day = db.Column(db.Float, nullable=False)
     rental_cost_per_day = db.Column(db.Float, default=0)  # What we pay externally per day per item
+    discount_exempt = db.Column(db.Boolean, default=False)  # If True, discount is not applied to this item
     custom_item_name = db.Column(db.String(200), nullable=True)
     is_custom = db.Column(db.Boolean, default=False)
 
