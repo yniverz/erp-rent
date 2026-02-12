@@ -30,6 +30,9 @@
                 {% if item.image_filename %}
                     <span style="color:#059669;" title="Has image">&#128247;</span>
                 {% endif %}
+                {% if item.is_external %}
+                    <span class="badge" style="background:#8b5cf6; color:white; font-size:0.7em; vertical-align:middle;">Extern</span>
+                {% endif %}
             </td>
             <td>{{ item.category.name if item.category else '—' }}</td>
             <td>{{ item.owner.display_name or item.owner.username }}</td>

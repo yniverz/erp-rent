@@ -39,14 +39,26 @@
             <textarea name="description" placeholder="Sichtbar in der öffentlichen Storefront...">{{ item.description if item else '' }}</textarea>
         </div>
 
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="is_external" id="is_external" {{ 'checked' if item and item.is_external }} onchange="toggleExternalFields()">
+                <label for="is_external" style="margin:0; font-weight:normal;">Externer Artikel (angemietet)</label>
+            </div>
+            <small style="color:#6b7280;">Aktivieren, wenn dieser Artikel von einem externen Anbieter angemietet wird</small>
+        </div>
+
         <div class="form-row">
             <div class="form-group">
                 <label>Gesamtmenge (-1 = unbegrenzt)</label>
                 <input type="number" name="total_quantity" value="{{ item.total_quantity if item else 1 }}" min="-1" required>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="purchase-cost-group">
                 <label>Gesamte Anschaffungskosten (&euro;)</label>
                 <input type="number" name="total_cost" step="0.01" min="0" value="{{ item.total_purchase_cost if item else '' }}" placeholder="Gesamtkosten für alle Einheiten">
+            </div>
+            <div class="form-group" id="rental-cost-group" style="display:none;">
+                <label>Mietkosten pro Tag pro Stück (&euro;)</label>
+                <input type="number" name="default_rental_cost" step="0.01" min="0" value="{{ item.default_rental_cost_per_day if item else '' }}" placeholder="Was Sie pro Tag/Stück zahlen">
             </div>
         </div>
 
@@ -103,4 +115,14 @@
         </div>
     </form>
 </div>
+
+<script>
+function toggleExternalFields() {
+    var isExternal = document.getElementById('is_external').checked;
+    document.getElementById('purchase-cost-group').style.display = isExternal ? 'none' : '';
+    document.getElementById('rental-cost-group').style.display = isExternal ? '' : 'none';
+}
+// Run on page load
+toggleExternalFields();
+</script>
 {% endblock %}

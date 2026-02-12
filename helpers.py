@@ -86,7 +86,7 @@ def send_inquiry_notification(inquiry, settings):
     else:
         dates_text = 'Nicht angegeben'
 
-    body = f"""Neue Mietanfrage eingegangen!
+    body = f"""## Mietanfrage ##
 
 Kunde: {inquiry.customer_name}
 E-Mail: {inquiry.customer_email}
@@ -101,13 +101,13 @@ Nachricht:
 {inquiry.message or '(keine Nachricht)'}
 
 ---
-Diese Anfrage im Verwaltungsbereich ansehen.
+
 """
 
     msg = MIMEMultipart()
     msg['From'] = smtp_from
     msg['To'] = recipient
-    msg['Subject'] = f'[{business_name}] Neue Mietanfrage von {inquiry.customer_name}'
+    msg['Subject'] = f'[{business_name}] Mietanfrage von {inquiry.customer_name}'
     msg.attach(MIMEText(body, 'plain'))
 
     try:

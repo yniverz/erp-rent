@@ -58,10 +58,13 @@ class Item(db.Model):
     rental_step = db.Column(db.Integer, default=1)
     unit_purchase_cost = db.Column(db.Float, nullable=False, default=0)
     default_rental_price_per_day = db.Column(db.Float, nullable=False, default=0)
+    is_external = db.Column(db.Boolean, default=False)  # True = rented from external source
+    default_rental_cost_per_day = db.Column(db.Float, default=0)  # What we pay externally per day per item
     show_price_publicly = db.Column(db.Boolean, default=True)  # False = "on request"
     visible_in_shop = db.Column(db.Boolean, default=True)
     image_filename = db.Column(db.String(300), nullable=True)
     total_revenue = db.Column(db.Float, default=0.0)
+    total_cost = db.Column(db.Float, default=0.0)  # Accumulated external rental costs
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     owner = db.relationship('User', back_populates='items')
@@ -70,18 +73,31 @@ class Item(db.Model):
 
     @property
     def total_purchase_cost(self):
+        if self.is_external:
+            return 0
         if self.total_quantity == -1:
             return 0
         return round(self.total_quantity * self.unit_purchase_cost, 2)
 
     @property
     def is_paid_off(self):
+        if self.is_external:
+            return False  # External items have no payoff concept
         return self.total_revenue >= self.total_purchase_cost
 
     @property
     def remaining_to_payoff(self):
+        if self.is_external:
+            return 0
         remaining = self.total_purchase_cost - self.total_revenue
         return round(max(0, remaining), 2)
+
+    @property
+    def total_profit(self):
+        """Net profit: revenue minus costs (purchase cost or external rental cost)"""
+        if self.is_external:
+            return round(self.total_revenue - self.total_cost, 2)
+        return round(self.total_revenue - self.total_purchase_cost, 2)
 
 
 class Quote(db.Model):
@@ -137,6 +153,7 @@ class QuoteItem(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
     quantity = db.Column(db.Integer, nullable=False)
     rental_price_per_day = db.Column(db.Float, nullable=False)
+    rental_cost_per_day = db.Column(db.Float, default=0)  # What we pay externally per day per item
     custom_item_name = db.Column(db.String(200), nullable=True)
     is_custom = db.Column(db.Boolean, default=False)
 
@@ -153,6 +170,12 @@ class QuoteItem(db.Model):
     def total_price(self):
         days = self.quote.calculate_rental_days()
         return round(self.quantity * self.rental_price_per_day * days, 2)
+
+    @property
+    def total_external_cost(self):
+        """Total cost we pay externally for this quote item"""
+        days = self.quote.calculate_rental_days()
+        return round(self.quantity * (self.rental_cost_per_day or 0) * days, 2)
 
 
 class Inquiry(db.Model):

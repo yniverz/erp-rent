@@ -114,12 +114,12 @@ def inventory_add():
             total_quantity = int(request.form.get('total_quantity', 0))
             set_size = int(request.form.get('set_size', 1))
             rental_step = int(request.form.get('rental_step', 1))
-            total_cost = float(request.form.get('total_cost', 0))
             default_rental_price = float(request.form.get('default_rental_price', 0))
             description = request.form.get('description', '').strip()
             category_id = request.form.get('category_id', type=int) or None
             show_price = request.form.get('show_price_publicly') == 'on'
             visible = request.form.get('visible_in_shop') == 'on'
+            is_external = request.form.get('is_external') == 'on'
 
             # Owner: admin can assign to any user, others assign to themselves
             if current_user.is_admin:
@@ -127,7 +127,14 @@ def inventory_add():
             else:
                 owner_id = current_user.id
 
-            unit_purchase_cost = 0 if total_quantity == -1 else (total_cost / total_quantity if total_quantity > 0 else 0)
+            # External items have no purchase cost, but a rental cost per day
+            if is_external:
+                unit_purchase_cost = 0
+                default_rental_cost = float(request.form.get('default_rental_cost', 0))
+            else:
+                total_cost = float(request.form.get('total_cost', 0))
+                unit_purchase_cost = 0 if total_quantity == -1 else (total_cost / total_quantity if total_quantity > 0 else 0)
+                default_rental_cost = 0
 
             # Handle image upload
             image_filename = None
@@ -148,6 +155,8 @@ def inventory_add():
                 rental_step=rental_step,
                 unit_purchase_cost=unit_purchase_cost,
                 default_rental_price_per_day=default_rental_price,
+                is_external=is_external,
+                default_rental_cost_per_day=default_rental_cost,
                 show_price_publicly=show_price,
                 visible_in_shop=visible,
                 image_filename=image_filename
@@ -190,13 +199,19 @@ def inventory_edit(item_id):
             item.category_id = request.form.get('category_id', type=int) or None
             item.show_price_publicly = request.form.get('show_price_publicly') == 'on'
             item.visible_in_shop = request.form.get('visible_in_shop') == 'on'
+            item.is_external = request.form.get('is_external') == 'on'
 
             if current_user.is_admin:
                 item.owner_id = request.form.get('owner_id', type=int) or item.owner_id
 
-            if 'total_cost' in request.form and request.form.get('total_cost'):
-                total_cost = float(request.form.get('total_cost'))
-                item.unit_purchase_cost = 0 if item.total_quantity == -1 else (total_cost / item.total_quantity if item.total_quantity > 0 else 0)
+            if item.is_external:
+                item.unit_purchase_cost = 0
+                item.default_rental_cost_per_day = float(request.form.get('default_rental_cost', 0))
+            else:
+                item.default_rental_cost_per_day = 0
+                if 'total_cost' in request.form and request.form.get('total_cost'):
+                    total_cost = float(request.form.get('total_cost'))
+                    item.unit_purchase_cost = 0 if item.total_quantity == -1 else (total_cost / item.total_quantity if item.total_quantity > 0 else 0)
 
             # Handle image upload
             if 'image' in request.files:
@@ -363,10 +378,12 @@ def quote_edit(quote_id):
                 for item in items:
                     quantity_key = f'quantity_{item.id}'
                     price_key = f'price_{item.id}'
+                    cost_key = f'cost_{item.id}'
 
                     if quantity_key in request.form:
                         quantity = int(request.form.get(quantity_key, 0))
                         price = round(float(request.form.get(price_key, item.default_rental_price_per_day)), 2)
+                        cost = round(float(request.form.get(cost_key, item.default_rental_cost_per_day if item.is_external else 0)), 2)
 
                         if quantity > 0:
                             available = get_available_quantity(
@@ -394,12 +411,14 @@ def quote_edit(quote_id):
                             if existing:
                                 existing.quantity = quantity
                                 existing.rental_price_per_day = price
+                                existing.rental_cost_per_day = cost if item.is_external else 0
                             else:
                                 quote_item = QuoteItem(
                                     quote_id=quote.id,
                                     item_id=item.id,
                                     quantity=quantity,
                                     rental_price_per_day=price,
+                                    rental_cost_per_day=cost if item.is_external else 0,
                                     is_custom=False
                                 )
                                 db.session.add(quote_item)
@@ -538,6 +557,10 @@ def quote_mark_paid(quote_id):
                 if not quote_item.is_custom and quote_item.item:
                     item_revenue = round(quote_item.total_price * discount_multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue + item_revenue, 2)
+                    # Accumulate external rental costs
+                    if quote_item.item.is_external and quote_item.rental_cost_per_day:
+                        item_cost = quote_item.total_external_cost
+                        quote_item.item.total_cost = round(quote_item.item.total_cost + item_cost, 2)
 
             db.session.commit()
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
@@ -561,6 +584,10 @@ def quote_unpay(quote_id):
                 if not quote_item.is_custom and quote_item.item:
                     item_revenue = round(quote_item.total_price * discount_multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
+                    # Reverse external rental costs
+                    if quote_item.item.is_external and quote_item.rental_cost_per_day:
+                        item_cost = quote_item.total_external_cost
+                        quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
             quote.status = 'finalized'
             quote.paid_at = None
@@ -586,6 +613,10 @@ def quote_delete(quote_id):
                 if not quote_item.is_custom and quote_item.item:
                     item_revenue = round(quote_item.total_price * discount_multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
+                    # Reverse external rental costs
+                    if quote_item.item.is_external and quote_item.rental_cost_per_day:
+                        item_cost = quote_item.total_external_cost
+                        quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
         db.session.delete(quote)
         db.session.commit()
@@ -664,6 +695,7 @@ def inquiry_convert(inquiry_id):
                     item_id=item.id,
                     quantity=inq_item.quantity,
                     rental_price_per_day=item.default_rental_price_per_day,
+                    rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
                     is_custom=False
                 )
                 db.session.add(qi)
@@ -850,7 +882,16 @@ def report_payoff():
         Quote.status == 'paid'
     ).scalar() or 0.0
 
-    return render_template('admin/payoff_report.html', items=items, users=users, misc_revenue=misc_revenue)
+    # Separate owned and external items
+    owned_items = [i for i in items if not i.is_external]
+    external_items = [i for i in items if i.is_external]
+
+    return render_template('admin/payoff_report.html',
+                           items=items,
+                           owned_items=owned_items,
+                           external_items=external_items,
+                           users=users,
+                           misc_revenue=misc_revenue)
 
 
 @admin_bp.route('/schedule')

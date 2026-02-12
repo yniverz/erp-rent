@@ -102,6 +102,32 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 with app.app_context():
     db.create_all()
 
+    # Migrate: add new columns if they don't exist (for existing databases)
+    import sqlite3
+    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'erp_rent.db')
+    if os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        def column_exists(table, column):
+            cursor.execute(f"PRAGMA table_info({table})")
+            return any(row[1] == column for row in cursor.fetchall())
+
+        # Item table migrations
+        if not column_exists('item', 'is_external'):
+            cursor.execute("ALTER TABLE item ADD COLUMN is_external BOOLEAN DEFAULT 0")
+        if not column_exists('item', 'default_rental_cost_per_day'):
+            cursor.execute("ALTER TABLE item ADD COLUMN default_rental_cost_per_day FLOAT DEFAULT 0")
+        if not column_exists('item', 'total_cost'):
+            cursor.execute("ALTER TABLE item ADD COLUMN total_cost FLOAT DEFAULT 0")
+
+        # QuoteItem table migrations
+        if not column_exists('quote_item', 'rental_cost_per_day'):
+            cursor.execute("ALTER TABLE quote_item ADD COLUMN rental_cost_per_day FLOAT DEFAULT 0")
+
+        conn.commit()
+        conn.close()
+
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
     os.makedirs(uploads_dir, exist_ok=True)

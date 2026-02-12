@@ -6,48 +6,66 @@
 <h1>Abrechnungsbericht</h1>
 
 <div class="stats-grid">
-    {% set ns = namespace(total_cost=0, total_revenue=0) %}
-    {% for item in items %}
+    {% set ns = namespace(total_cost=0, total_revenue=0, ext_revenue=0, ext_cost=0) %}
+    {% for item in owned_items %}
         {% set ns.total_cost = ns.total_cost + item.total_purchase_cost %}
         {% set ns.total_revenue = ns.total_revenue + item.total_revenue %}
     {% endfor %}
+    {% for item in external_items %}
+        {% set ns.ext_revenue = ns.ext_revenue + item.total_revenue %}
+        {% set ns.ext_cost = ns.ext_cost + item.total_cost %}
+    {% endfor %}
+    {% set all_revenue = ns.total_revenue + ns.ext_revenue + misc_revenue %}
+    {% set all_costs = ns.total_cost + ns.ext_cost %}
     <div class="stat-card">
-        <div class="stat-label">Gesamtinvestition</div>
+        <div class="stat-label">Investition (Eigene)</div>
         <div class="stat-value">&euro;{{ "%.2f"|format(ns.total_cost) }}</div>
     </div>
     <div class="stat-card" style="border-left-color: #059669;">
         <div class="stat-label">Gesamtumsatz</div>
-        <div class="stat-value">&euro;{{ "%.2f"|format(ns.total_revenue + misc_revenue) }}</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(all_revenue) }}</div>
     </div>
-    <div class="stat-card" style="border-left-color: {{ '#059669' if ns.total_revenue >= ns.total_cost else '#d97706' }};">
+    <div class="stat-card" style="border-left-color: {{ '#059669' if all_revenue >= all_costs else '#d97706' }};">
         <div class="stat-label">Gesamtbilanz</div>
-        <div class="stat-value">&euro;{{ "%.2f"|format(ns.total_revenue + misc_revenue - ns.total_cost) }}</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(all_revenue - all_costs) }}</div>
     </div>
+    <div class="stat-card" style="border-left-color: #8b5cf6;">
+        <div class="stat-label">Ext. Mietkosten</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(ns.ext_cost) }}</div>
+    </div>
+</div>
+
+{% if misc_revenue > 0 %}
+<div class="stats-grid" style="margin-top: -10px;">
     <div class="stat-card" style="border-left-color: #6b7280;">
         <div class="stat-label">Sonst. Umsatz</div>
         <div class="stat-value">&euro;{{ "%.2f"|format(misc_revenue) }}</div>
     </div>
 </div>
+{% endif %}
 
 <!-- Per-Owner Summary -->
 <div class="card">
     <h2>Umsatz nach Eigentümer</h2>
     <table>
         <thead>
-            <tr><th>Eigentümer</th><th>Investition</th><th>Umsatz</th><th>Bilanz</th></tr>
+            <tr><th>Eigentümer</th><th>Investition</th><th>Ext. Kosten</th><th>Umsatz</th><th>Bilanz</th></tr>
         </thead>
         <tbody>
             {% for user in users %}
             {% set user_items = items|selectattr('owner_id', 'equalto', user.id)|list %}
             {% if user_items %}
-            {% set u_cost = user_items|sum(attribute='total_purchase_cost') %}
+            {% set u_invest = user_items|rejectattr('is_external')|sum(attribute='total_purchase_cost') %}
+            {% set u_ext_cost = user_items|selectattr('is_external')|sum(attribute='total_cost') %}
             {% set u_rev = user_items|sum(attribute='total_revenue') %}
+            {% set u_balance = u_rev - u_invest - u_ext_cost %}
             <tr>
                 <td><strong>{{ user.display_name or user.username }}</strong></td>
-                <td>&euro;{{ "%.2f"|format(u_cost) }}</td>
+                <td>&euro;{{ "%.2f"|format(u_invest) }}</td>
+                <td>{% if u_ext_cost > 0 %}&euro;{{ "%.2f"|format(u_ext_cost) }}{% else %}—{% endif %}</td>
                 <td>&euro;{{ "%.2f"|format(u_rev) }}</td>
-                <td style="color: {{ '#059669' if u_rev >= u_cost else '#dc2626' }};">
-                    &euro;{{ "%.2f"|format(u_rev - u_cost) }}
+                <td style="color: {{ '#059669' if u_balance >= 0 else '#dc2626' }};">
+                    &euro;{{ "%.2f"|format(u_balance) }}
                 </td>
             </tr>
             {% endif %}
@@ -56,9 +74,10 @@
     </table>
 </div>
 
-<!-- Per-Item Table -->
+<!-- Owned Items Table -->
+{% if owned_items %}
 <div class="card">
-    <h2>Artikeldetails</h2>
+    <h2>Eigene Artikel – Abzahlung</h2>
     <table>
         <thead>
             <tr>
@@ -73,7 +92,7 @@
             </tr>
         </thead>
         <tbody>
-            {% for item in items %}
+            {% for item in owned_items %}
             <tr>
                 <td><strong>{{ item.name }}</strong></td>
                 <td>{{ item.owner.display_name or item.owner.username }}</td>
@@ -95,4 +114,41 @@
         </tbody>
     </table>
 </div>
+{% endif %}
+
+<!-- External Items Table -->
+{% if external_items %}
+<div class="card">
+    <h2>Externe Artikel – Gewinn/Verlust</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Artikel</th>
+                <th>Eigentümer</th>
+                <th>Menge</th>
+                <th>Kosten/Tag/Stk</th>
+                <th>Mietkosten ges.</th>
+                <th>Umsatz</th>
+                <th>Gewinn</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in external_items %}
+            {% set profit = item.total_revenue - item.total_cost %}
+            <tr>
+                <td><strong>{{ item.name }}</strong> <small style="color:#8b5cf6;">&#x2197; Extern</small></td>
+                <td>{{ item.owner.display_name or item.owner.username }}</td>
+                <td>{{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
+                <td>&euro;{{ "%.2f"|format(item.default_rental_cost_per_day) }}</td>
+                <td>&euro;{{ "%.2f"|format(item.total_cost) }}</td>
+                <td>&euro;{{ "%.2f"|format(item.total_revenue) }}</td>
+                <td style="color: {{ '#059669' if profit >= 0 else '#dc2626' }};">
+                    &euro;{{ "%.2f"|format(profit) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 {% endblock %}

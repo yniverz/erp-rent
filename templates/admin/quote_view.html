@@ -43,16 +43,33 @@
     <h2>Artikel</h2>
     <table>
         <thead>
-            <tr><th>Artikel</th><th>Eigentümer</th><th>Menge</th><th>Preis/Tag</th><th>Summe</th></tr>
+            <tr><th>Artikel</th><th>Eigentümer</th><th>Menge</th><th>Preis/Tag</th><th>Kosten/Tag</th><th>Summe</th></tr>
         </thead>
         <tbody>
             {% for qi in quote.quote_items %}
             <tr>
-                <td>{{ qi.display_name }}</td>
+                <td>
+                    {{ qi.display_name }}
+                    {% if qi.item and qi.item.is_external %}
+                        <small style="color:#8b5cf6;">&#x2197; Extern</small>
+                    {% endif %}
+                </td>
                 <td>{{ qi.item.owner.display_name or qi.item.owner.username if qi.item and qi.item.owner else '—' }}</td>
                 <td>{{ qi.quantity }}</td>
                 <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
-                <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
+                <td>
+                    {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
+                        &euro;{{ "%.2f"|format(qi.rental_cost_per_day) }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>
+                    &euro;{{ "%.2f"|format(qi.total_price) }}
+                    {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
+                        <br><small style="color:#dc2626;">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

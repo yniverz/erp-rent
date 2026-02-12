@@ -77,28 +77,45 @@
                     <th>Verfügbar</th>
                     <th>Menge</th>
                     <th>Preis/Tag</th>
+                    <th>Kosten/Tag</th>
                     <th>Summe</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in items %}
                 {% set avail = item_availability.get(item.id, 0) %}
-                {% set existing = namespace(qty=0, price=item.default_rental_price_per_day) %}
+                {% set existing = namespace(qty=0, price=item.default_rental_price_per_day, cost=item.default_rental_cost_per_day if item.is_external else 0) %}
                 {% for qi in quote.quote_items %}
                     {% if qi.item_id == item.id and not qi.is_custom %}
                         {% set existing.qty = qi.quantity %}
                         {% set existing.price = qi.rental_price_per_day %}
+                        {% set existing.cost = qi.rental_cost_per_day %}
                     {% endif %}
                 {% endfor %}
                 <tr class="{{ 'item-row-disabled' if avail == 0 and existing.qty == 0 }}">
-                    <td><strong>{{ item.name }}</strong>{% if item.category %}<br><small style="color:#6b7280;">{{ item.category.name }}</small>{% endif %}</td>
+                    <td>
+                        <strong>{{ item.name }}</strong>
+                        {% if item.is_external %}<br><small style="color:#8b5cf6;">&#x2197; Extern</small>{% endif %}
+                        {% if item.category %}<br><small style="color:#6b7280;">{{ item.category.name }}</small>{% endif %}
+                    </td>
                     <td><small>{{ item.owner.display_name or item.owner.username }}</small></td>
                     <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
                     <td><input type="number" name="quantity_{{ item.id }}" value="{{ existing.qty }}" min="0" step="{{ item.rental_step }}" style="width:80px;"></td>
                     <td><input type="number" name="price_{{ item.id }}" value="{{ '%.2f'|format(existing.price) }}" step="0.01" min="0" style="width:100px;"></td>
                     <td>
+                        {% if item.is_external %}
+                            <input type="number" name="cost_{{ item.id }}" value="{{ '%.2f'|format(existing.cost) }}" step="0.01" min="0" style="width:100px;">
+                        {% else %}
+                            <span style="color:#9ca3af;">—</span>
+                            <input type="hidden" name="cost_{{ item.id }}" value="0">
+                        {% endif %}
+                    </td>
+                    <td>
                         {% if existing.qty > 0 %}
                             &euro;{{ "%.2f"|format(existing.qty * existing.price * quote.calculate_rental_days()) }}
+                            {% if item.is_external and existing.cost > 0 %}
+                                <br><small style="color:#dc2626;">Kosten: &euro;{{ "%.2f"|format(existing.qty * existing.cost * quote.calculate_rental_days()) }}</small>
+                            {% endif %}
                         {% else %}
                             —
                         {% endif %}
