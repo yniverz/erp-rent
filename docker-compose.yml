@@ -16,6 +16,8 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      # Optional favicon
+      - FAVICON_URL=${FAVICON_URL:-}
     volumes:
       - ./instance:/app/instance
     restart: unless-stopped

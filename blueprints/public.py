@@ -1,8 +1,9 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings
 from helpers import send_inquiry_notification, get_upload_path
-from datetime import datetime
+from datetime import datetime, date
 import os
+import re
 
 public_bp = Blueprint('public', __name__)
 
@@ -151,19 +152,56 @@ def submit_inquiry():
     customer_email = request.form.get('customer_email', '').strip()
     customer_phone = request.form.get('customer_phone', '').strip()
     message = request.form.get('message', '').strip()
-    start_date_str = request.form.get('start_date', '')
-    end_date_str = request.form.get('end_date', '')
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
 
-    if not customer_name or not customer_email:
-        flash('Name und E-Mail sind erforderlich.', 'error')
-        return redirect(url_for('public.cart'))
+    # --- Validation ---
+    errors = []
 
+    if not customer_name:
+        errors.append('Name ist erforderlich.')
+    if not customer_email:
+        errors.append('E-Mail-Adresse ist erforderlich.')
+    elif not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', customer_email):
+        errors.append('Bitte geben Sie eine gültige E-Mail-Adresse ein.')
+
+    if not start_date_str:
+        errors.append('Startdatum ist erforderlich.')
+    if not end_date_str:
+        errors.append('Enddatum ist erforderlich.')
+
+    start_date = None
+    end_date = None
     try:
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+        if start_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
     except ValueError:
-        start_date = None
-        end_date = None
+        errors.append('Ungültiges Datumsformat.')
+
+    today = datetime.combine(date.today(), datetime.min.time())
+    if start_date and start_date < today:
+        errors.append('Das Startdatum muss in der Zukunft liegen.')
+    if end_date and end_date < today:
+        errors.append('Das Enddatum muss in der Zukunft liegen.')
+    if start_date and end_date and end_date < start_date:
+        errors.append('Das Enddatum muss nach dem Startdatum liegen.')
+
+    # Validate cart item quantities
+    for item_id_str, quantity in cart_data.items():
+        item = Item.query.get(int(item_id_str))
+        if not item:
+            errors.append(f'Artikel (ID {item_id_str}) nicht gefunden.')
+        elif quantity < 1:
+            errors.append(f'Ungültige Menge für {item.name}.')
+        elif item.rental_step > 1 and quantity % item.rental_step != 0:
+            errors.append(f'Die Menge für {item.name} muss ein Vielfaches von {item.rental_step} sein.')
+
+    if errors:
+        for err in errors:
+            flash(err, 'error')
+        return redirect(url_for('public.cart'))
 
     try:
         inquiry = Inquiry(

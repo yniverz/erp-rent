@@ -139,18 +139,19 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Gewünschtes Startdatum</label>
-                        <input type="date" name="start_date">
+                        <label>Gewünschtes Startdatum *</label>
+                        <input type="date" name="start_date" id="start_date" required>
                     </div>
                     <div class="form-group">
-                        <label>Gewünschtes Enddatum</label>
-                        <input type="date" name="end_date">
+                        <label>Gewünschtes Enddatum *</label>
+                        <input type="date" name="end_date" id="end_date" required>
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Nachricht / Zusätzliche Infos</label>
                     <textarea name="message" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
                 </div>
+                <div id="inquiry-errors" style="color: #dc2626; font-size: 0.9em; margin-bottom: 12px; display: none;"></div>
                 <button type="submit" class="btn btn-success" style="font-size: 1.05em; padding: 14px 32px;">Anfrage absenden</button>
             </form>
         </div>
@@ -168,5 +169,64 @@ function removeItem(itemId) {
     form.action = '/cart/remove/' + itemId;
     form.submit();
 }
+
+(function() {
+    // Set min date to today for date inputs
+    const today = new Date().toISOString().split('T')[0];
+    const startInput = document.getElementById('start_date');
+    const endInput = document.getElementById('end_date');
+
+    if (startInput && endInput) {
+        startInput.setAttribute('min', today);
+        endInput.setAttribute('min', today);
+
+        // When start date changes, update end date min to be >= start date
+        startInput.addEventListener('change', function() {
+            if (this.value) {
+                endInput.setAttribute('min', this.value);
+                // If end date is before new start date, clear it
+                if (endInput.value && endInput.value < this.value) {
+                    endInput.value = '';
+                }
+            } else {
+                endInput.setAttribute('min', today);
+            }
+        });
+
+        // Form validation on submit
+        const inquiryForm = startInput.closest('form');
+        if (inquiryForm) {
+            inquiryForm.addEventListener('submit', function(e) {
+                const errors = [];
+                const errDiv = document.getElementById('inquiry-errors');
+
+                const name = this.querySelector('[name="customer_name"]').value.trim();
+                const email = this.querySelector('[name="customer_email"]').value.trim();
+                const startVal = startInput.value;
+                const endVal = endInput.value;
+
+                if (!name) errors.push('Bitte geben Sie Ihren Namen ein.');
+                if (!email) errors.push('Bitte geben Sie Ihre E-Mail-Adresse ein.');
+                if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+
+                if (!startVal) errors.push('Bitte wählen Sie ein Startdatum.');
+                if (!endVal) errors.push('Bitte wählen Sie ein Enddatum.');
+
+                if (startVal && startVal < today) errors.push('Das Startdatum muss in der Zukunft liegen.');
+                if (endVal && endVal < today) errors.push('Das Enddatum muss in der Zukunft liegen.');
+                if (startVal && endVal && endVal < startVal) errors.push('Das Enddatum muss nach dem Startdatum liegen.');
+
+                if (errors.length > 0) {
+                    e.preventDefault();
+                    errDiv.innerHTML = errors.join('<br>');
+                    errDiv.style.display = 'block';
+                    errDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    errDiv.style.display = 'none';
+                }
+            });
+        }
+    }
+})();
 </script>
 {% endblock %}
