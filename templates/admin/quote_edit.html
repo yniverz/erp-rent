@@ -85,7 +85,24 @@
     {% if not quote.start_date or not quote.end_date %}
         <p style="color: #d97706;">&#9888; Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen.</p>
     {% else %}
-        <p style="color:#6b7280; margin-bottom: 14px;">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}</p>
+        <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-bottom: 14px;">
+            <input type="hidden" name="action" value="update_quote">
+            <input type="hidden" name="customer_name" value="{{ quote.customer_name }}">
+            <input type="hidden" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}">
+            <input type="hidden" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
+            <input type="hidden" name="recipient_lines" value="{{ quote.recipient_lines or '' }}">
+            <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
+            <span style="color:#6b7280;">Mietzeitraum: {{ quote.date_based_rental_days() }} Tag{{ 'e' if quote.date_based_rental_days() != 1 }} (Datum)</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <label style="color:#6b7280; font-size: 0.9em; margin:0;">Überschreiben:</label>
+                <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" style="width: 80px;" placeholder="—">
+                <span style="color:#6b7280; font-size: 0.9em;">Tage</span>
+                <button type="submit" class="btn btn-sm btn-outline">Speichern</button>
+            </div>
+            {% if quote.rental_days_override %}
+            <span style="color:#2563eb; font-size: 0.85em; font-weight: 600;">→ {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }} (manuell)</span>
+            {% endif %}
+        </form>
 
         <!-- Add Item Dropdown -->
         <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-bottom: 20px;">
@@ -273,7 +290,10 @@
         <form method="POST" style="margin: 10px 0;">
             <input type="hidden" name="action" value="update_discount">
             <div class="price-row" style="align-items: center;">
-                <span>Rabatt</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span>Rabatt</span>
+                    <input type="text" name="discount_label" value="{{ quote.discount_label or '' }}" placeholder="Bezeichnung (optional)" style="width: 200px; font-size: 0.9em;">
+                </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <input type="number" name="final_discount_percent" id="discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" style="width: 120px;">
                     <span>%</span>
@@ -321,7 +341,7 @@
             <span>&euro;{{ "%.2f"|format(quote.discountable_subtotal) }}</span>
         </div>
         <div class="price-row">
-            <span>Rabatt ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
+            <span>Rabatt{{ ' – ' + quote.discount_label if quote.discount_label else '' }} ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
             <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>
         </div>
         {% endif %}

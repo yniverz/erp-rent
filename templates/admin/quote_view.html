@@ -89,7 +89,7 @@
             <span>&euro;{{ "%.2f"|format(quote.discountable_subtotal) }}</span>
         </div>
         <div class="price-row">
-            <span>Rabatt ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
+            <span>Rabatt{{ ' – ' + quote.discount_label if quote.discount_label else '' }} ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
             <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>
         </div>
         {% endif %}

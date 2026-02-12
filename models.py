@@ -108,7 +108,9 @@ class Quote(db.Model):
     recipient_lines = db.Column(db.Text, nullable=True)
     reference_number = db.Column(db.String(50), nullable=True)
     discount_percent = db.Column(db.Float, default=0.0)
+    discount_label = db.Column(db.String(200), nullable=True)
     rental_days = db.Column(db.Integer, default=1)
+    rental_days_override = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.DateTime, nullable=True)
     end_date = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(50), default='draft')  # draft, finalized, paid
@@ -128,6 +130,15 @@ class Quote(db.Model):
             self.reference_number = f"RE{date_part}{self.id:04d}"
 
     def calculate_rental_days(self):
+        if self.rental_days_override:
+            return self.rental_days_override
+        if self.start_date and self.end_date:
+            delta = self.end_date - self.start_date
+            return max(1, delta.days + 1)
+        return self.rental_days or 1
+
+    def date_based_rental_days(self):
+        """Always returns date-based calculation, ignoring override"""
         if self.start_date and self.end_date:
             delta = self.end_date - self.start_date
             return max(1, delta.days + 1)

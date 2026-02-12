@@ -365,6 +365,10 @@ def quote_edit(quote_id):
                 else:
                     quote.rental_days = int(request.form.get('rental_days', 1))
 
+                # Manual rental days override
+                override_str = request.form.get('rental_days_override', '').strip()
+                quote.rental_days_override = int(override_str) if override_str else None
+
                 quote.recipient_lines = request.form.get('recipient_lines', '')
                 quote.notes = request.form.get('notes', '')
                 db.session.commit()
@@ -496,6 +500,7 @@ def quote_edit(quote_id):
                 else:
                     discount_percent = float(request.form.get('final_discount_percent', 0))
                 quote.discount_percent = discount_percent
+                quote.discount_label = request.form.get('discount_label', '').strip() or None
                 db.session.commit()
                 flash(f'Rabatt auf {discount_percent:.4f}% aktualisiert (Gesamt: €{quote.total:.2f})', 'success')
 

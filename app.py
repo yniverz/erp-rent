@@ -127,6 +127,12 @@ with app.app_context():
         if not column_exists('quote_item', 'discount_exempt'):
             cursor.execute("ALTER TABLE quote_item ADD COLUMN discount_exempt BOOLEAN DEFAULT 0")
 
+        # Quote table migrations
+        if not column_exists('quote', 'rental_days_override'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN rental_days_override INTEGER")
+        if not column_exists('quote', 'discount_label'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN discount_label VARCHAR(200)")
+
         # Customer table migration
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customer'")
         if not cursor.fetchone():
