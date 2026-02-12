@@ -966,7 +966,7 @@ def schedule():
     cal_events = []
     for q in quotes:
         cal_events.append({
-            'label': q.reference_number or q.customer_name,
+            'label': q.customer_name,
             'customer': q.customer_name,
             'start': q.start_date.date() if hasattr(q.start_date, 'date') else q.start_date,
             'end': q.end_date.date() if hasattr(q.end_date, 'date') else q.end_date,
