@@ -79,7 +79,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <input type="number" name="quantity_{{ ci.item.id }}" value="{{ ci.quantity }}" min="0" step="{{ ci.item.rental_step }}">
+                            <input type="number" name="quantity_{{ ci.item.id }}" value="{{ ci.quantity }}" min="0" step="{{ ci.item.rental_step }}"{% if ci.item.total_quantity != -1 %} max="{{ ci.item.total_quantity }}"{% endif %}>
                         </td>
                         <td>
                             {% if ci.line_total is not none %}

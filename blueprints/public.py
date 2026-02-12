@@ -82,7 +82,19 @@ def cart_add():
 
     cart = session.get('cart', {})
     key = str(item_id)
-    cart[key] = cart.get(key, 0) + quantity
+    new_qty = cart.get(key, 0) + quantity
+
+    # Enforce total_quantity limit (-1 = unlimited)
+    if item.total_quantity != -1 and new_qty > item.total_quantity:
+        new_qty = item.total_quantity
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            cart[key] = new_qty
+            session['cart'] = cart
+            session.modified = True
+            return jsonify({'success': True, 'cart_count': sum(cart.values()), 'clamped': True})
+        flash(f'Maximale Menge für {item.name} ist {item.total_quantity}.', 'error')
+
+    cart[key] = new_qty
     session['cart'] = cart
     session.modified = True
 
@@ -106,6 +118,11 @@ def cart_update():
             if qty <= 0:
                 del cart[key]
             else:
+                # Enforce total_quantity limit
+                item = Item.query.get(int(key))
+                if item and item.total_quantity != -1 and qty > item.total_quantity:
+                    qty = item.total_quantity
+                    flash(f'Maximale Menge für {item.name} ist {item.total_quantity}.', 'error')
                 cart[key] = qty
 
     session['cart'] = cart
@@ -195,8 +212,11 @@ def submit_inquiry():
             errors.append(f'Artikel (ID {item_id_str}) nicht gefunden.')
         elif quantity < 1:
             errors.append(f'Ungültige Menge für {item.name}.')
-        elif item.rental_step > 1 and quantity % item.rental_step != 0:
-            errors.append(f'Die Menge für {item.name} muss ein Vielfaches von {item.rental_step} sein.')
+        else:
+            if item.rental_step > 1 and quantity % item.rental_step != 0:
+                errors.append(f'Die Menge für {item.name} muss ein Vielfaches von {item.rental_step} sein.')
+            if item.total_quantity != -1 and quantity > item.total_quantity:
+                errors.append(f'Maximale verfügbare Menge für {item.name} ist {item.total_quantity}.')
 
     if errors:
         for err in errors:
