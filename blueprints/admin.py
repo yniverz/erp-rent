@@ -924,12 +924,90 @@ def report_payoff():
 @login_required
 def schedule():
     """Rental schedule / calendar"""
-    from datetime import timedelta
+    from datetime import timedelta, date
+    import calendar as cal_mod
+
     quotes = Quote.query.filter(
         Quote.start_date.isnot(None),
         Quote.end_date.isnot(None)
     ).order_by(Quote.start_date).all()
-    return render_template('admin/schedule.html', quotes=quotes, timedelta=timedelta)
+
+    # Inquiries with date ranges (not yet converted to quotes)
+    inquiries = Inquiry.query.filter(
+        Inquiry.desired_start_date.isnot(None),
+        Inquiry.desired_end_date.isnot(None),
+        Inquiry.status.in_(['new', 'contacted'])
+    ).order_by(Inquiry.desired_start_date).all()
+
+    # Calendar month from query params, default to current month
+    try:
+        cal_year = int(request.args.get('year', date.today().year))
+        cal_month = int(request.args.get('month', date.today().month))
+    except (ValueError, TypeError):
+        cal_year, cal_month = date.today().year, date.today().month
+
+    # Build calendar weeks
+    first_weekday, num_days = cal_mod.monthrange(cal_year, cal_month)
+    # Monday=0 … Sunday=6
+    month_start = date(cal_year, cal_month, 1)
+    month_end = date(cal_year, cal_month, num_days)
+
+    # Previous / next month
+    if cal_month == 1:
+        prev_year, prev_month = cal_year - 1, 12
+    else:
+        prev_year, prev_month = cal_year, cal_month - 1
+    if cal_month == 12:
+        next_year, next_month = cal_year + 1, 1
+    else:
+        next_year, next_month = cal_year, cal_month + 1
+
+    # Build calendar events from quotes
+    cal_events = []
+    for q in quotes:
+        cal_events.append({
+            'label': q.reference_number or q.customer_name,
+            'customer': q.customer_name,
+            'start': q.start_date.date() if hasattr(q.start_date, 'date') else q.start_date,
+            'end': q.end_date.date() if hasattr(q.end_date, 'date') else q.end_date,
+            'status': q.status,
+            'type': 'quote',
+            'id': q.id,
+        })
+    for inq in inquiries:
+        cal_events.append({
+            'label': inq.customer_name,
+            'customer': inq.customer_name,
+            'start': inq.desired_start_date.date() if hasattr(inq.desired_start_date, 'date') else inq.desired_start_date,
+            'end': inq.desired_end_date.date() if hasattr(inq.desired_end_date, 'date') else inq.desired_end_date,
+            'status': 'inquiry',
+            'type': 'inquiry',
+            'id': inq.id,
+        })
+
+    # Build weeks grid (list of lists of 7 day-cells)
+    # Each cell: {'day': int|None, 'date': date|None, 'events': [...]}
+    weeks = []
+    current_week = [None] * first_weekday  # padding before 1st
+    for day_num in range(1, num_days + 1):
+        d = date(cal_year, cal_month, day_num)
+        day_events = [e for e in cal_events if e['start'] <= d <= e['end']]
+        current_week.append({'day': day_num, 'date': d, 'events': day_events})
+        if len(current_week) == 7:
+            weeks.append(current_week)
+            current_week = []
+    if current_week:
+        while len(current_week) < 7:
+            current_week.append(None)
+        weeks.append(current_week)
+
+    return render_template('admin/schedule.html',
+                           quotes=quotes, timedelta=timedelta,
+                           inquiries=inquiries,
+                           cal_year=cal_year, cal_month=cal_month,
+                           prev_year=prev_year, prev_month=prev_month,
+                           next_year=next_year, next_month=next_month,
+                           weeks=weeks, today=date.today())
 
 
 # ============= PDF GENERATORS =============

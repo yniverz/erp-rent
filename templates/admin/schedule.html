@@ -2,6 +2,8 @@
 
 {% block title %}Zeitplan - Verwaltung{% endblock %}
 
+{% set month_names = {1:'Januar',2:'Februar',3:'März',4:'April',5:'Mai',6:'Juni',7:'Juli',8:'August',9:'September',10:'Oktober',11:'November',12:'Dezember'} %}
+
 {% block extra_head %}
 <style>
     .schedule-table th, .schedule-table td { padding: 10px 14px; font-size: 0.9em; }
@@ -9,54 +11,178 @@
     .schedule-bar.draft { background: #fbbf24; }
     .schedule-bar.finalized { background: #3b82f6; }
     .schedule-bar.paid { background: #10b981; }
+
+    /* View toggle */
+    .view-toggle { display: flex; gap: 8px; margin-bottom: 20px; }
+    .view-toggle .btn { padding: 6px 16px; font-size: 0.88em; }
+    .view-toggle .btn.active-view { background: #2563eb; color: white; }
+
+    /* Calendar styles */
+    .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .cal-header h2 { margin: 0; font-size: 1.4em; }
+    .cal-nav { display: flex; gap: 8px; align-items: center; }
+    .cal-nav .btn { padding: 6px 14px; font-size: 0.88em; }
+
+    .cal-grid { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px; }
+    .cal-grid th { background: #1a1a2e; color: white; padding: 10px 8px; text-align: center; font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.3px; }
+    .cal-grid td { border: 1px solid #e5e7eb; padding: 4px; vertical-align: top; height: 110px; width: 14.28%; }
+    .cal-grid td.empty { background: #f9fafb; }
+    .cal-grid td.today { background: #eff6ff; }
+    .cal-day-num { font-size: 0.85em; font-weight: 600; color: #374151; padding: 2px 6px; }
+    .cal-day-num.today-num { background: #2563eb; color: white; border-radius: 50%; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; }
+
+    .cal-event { display: block; padding: 2px 6px; margin: 1px 0; border-radius: 4px; font-size: 0.73em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; cursor: pointer; line-height: 1.5; }
+    .cal-event:hover { filter: brightness(0.9); }
+
+    /* Status colors */
+    .cal-event.status-paid { background: #d1fae5; color: #065f46; border-left: 3px solid #10b981; }
+    .cal-event.status-finalized { background: #dbeafe; color: #1e40af; border-left: 3px solid #3b82f6; }
+    .cal-event.status-draft { background: #fef3c7; color: #92400e; border-left: 3px solid #f59e0b; }
+    .cal-event.status-inquiry { background: #f3f4f6; color: #6b7280; border-left: 3px solid #d1d5db; }
+
+    .cal-more { font-size: 0.72em; color: #6b7280; padding: 1px 6px; cursor: default; }
+
+    .cal-legend { display: flex; gap: 18px; margin-bottom: 16px; flex-wrap: wrap; }
+    .cal-legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.84em; color: #374151; }
+    .cal-legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+    .cal-legend-dot.paid { background: #10b981; }
+    .cal-legend-dot.finalized { background: #3b82f6; }
+    .cal-legend-dot.draft { background: #f59e0b; }
+    .cal-legend-dot.inquiry { background: #d1d5db; }
+
+    #calendar-view, #table-view { display: none; }
+    #calendar-view.show, #table-view.show { display: block; }
 </style>
 {% endblock %}
 
 {% block content %}
 <h1>Mietplan</h1>
 
-<table class="schedule-table">
-    <thead>
-        <tr>
-            <th>Ref.-Nr.</th>
-            <th>Kunde</th>
-            <th>Start</th>
-            <th>Ende</th>
-            <th>Tage</th>
-            <th>Status</th>
-            <th>Artikel</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for quote in quotes %}
-        <tr>
-            <td><strong>{{ quote.reference_number or '—' }}</strong></td>
-            <td>{{ quote.customer_name }}</td>
-            <td>{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '—' }}</td>
-            <td>{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '—' }}</td>
-            <td>{{ quote.calculate_rental_days() }}</td>
-            <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
-            <td>
-                {% for qi in quote.quote_items[:3] %}
-                    {{ qi.display_name }}{% if not loop.last %}, {% endif %}
-                {% endfor %}
-                {% if quote.quote_items|length > 3 %}
-                    + {{ quote.quote_items|length - 3 }} weitere
-                {% endif %}
-            </td>
-            <td>
-                {% if quote.status == 'draft' %}
-                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
+<div class="view-toggle">
+    <button class="btn btn-outline active-view" onclick="switchView('calendar')" id="btn-calendar">Kalender</button>
+    <button class="btn btn-outline" onclick="switchView('table')" id="btn-table">Tabelle</button>
+</div>
+
+<!-- ========== CALENDAR VIEW ========== -->
+<div id="calendar-view" class="show">
+    <div class="cal-header">
+        <a href="{{ url_for('admin.schedule', year=prev_year, month=prev_month) }}" class="btn btn-outline btn-sm">&laquo; Zurück</a>
+        <h2>{{ month_names[cal_month] }} {{ cal_year }}</h2>
+        <div class="cal-nav">
+            {% if cal_year != today.year or cal_month != today.month %}
+            <a href="{{ url_for('admin.schedule') }}" class="btn btn-outline btn-sm">Heute</a>
+            {% endif %}
+            <a href="{{ url_for('admin.schedule', year=next_year, month=next_month) }}" class="btn btn-outline btn-sm">Weiter &raquo;</a>
+        </div>
+    </div>
+
+    <div class="cal-legend">
+        <div class="cal-legend-item"><span class="cal-legend-dot paid"></span> Bezahlt</div>
+        <div class="cal-legend-item"><span class="cal-legend-dot finalized"></span> Finalisiert</div>
+        <div class="cal-legend-item"><span class="cal-legend-dot draft"></span> Entwurf</div>
+        <div class="cal-legend-item"><span class="cal-legend-dot inquiry"></span> Anfrage</div>
+    </div>
+
+    <table class="cal-grid">
+        <thead>
+            <tr>
+                <th>Mo</th><th>Di</th><th>Mi</th><th>Do</th><th>Fr</th><th>Sa</th><th>So</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for week in weeks %}
+            <tr>
+                {% for cell in week %}
+                {% if cell is none %}
+                <td class="empty"></td>
                 {% else %}
-                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
+                <td class="{{ 'today' if cell.date == today else '' }}">
+                    <div class="cal-day-num {{ 'today-num' if cell.date == today else '' }}">{{ cell.day }}</div>
+                    {% for ev in cell.events[:4] %}
+                    {% if ev.type == 'quote' %}
+                    <a class="cal-event status-{{ ev.status }}"
+                       href="{{ url_for('admin.quote_view', quote_id=ev.id) if ev.status != 'draft' else url_for('admin.quote_edit', quote_id=ev.id) }}"
+                       title="{{ ev.customer }} ({{ ev.status|capitalize }})">
+                        {{ ev.label }}
+                    </a>
+                    {% else %}
+                    <a class="cal-event status-inquiry"
+                       href="{{ url_for('admin.inquiry_view', inquiry_id=ev.id) }}"
+                       title="{{ ev.customer }} (Anfrage)">
+                        {{ ev.label }}
+                    </a>
+                    {% endif %}
+                    {% endfor %}
+                    {% if cell.events|length > 4 %}
+                    <span class="cal-more">+{{ cell.events|length - 4 }} weitere</span>
+                    {% endif %}
+                </td>
                 {% endif %}
-            </td>
-        </tr>
-        {% endfor %}
-        {% if not quotes %}
-        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">Keine geplanten Vermietungen.</td></tr>
-        {% endif %}
-    </tbody>
-</table>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- ========== TABLE VIEW ========== -->
+<div id="table-view">
+    <table class="schedule-table">
+        <thead>
+            <tr>
+                <th>Ref.-Nr.</th>
+                <th>Kunde</th>
+                <th>Start</th>
+                <th>Ende</th>
+                <th>Tage</th>
+                <th>Status</th>
+                <th>Artikel</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for quote in quotes %}
+            <tr>
+                <td><strong>{{ quote.reference_number or '—' }}</strong></td>
+                <td>{{ quote.customer_name }}</td>
+                <td>{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '—' }}</td>
+                <td>{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '—' }}</td>
+                <td>{{ quote.calculate_rental_days() }}</td>
+                <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
+                <td>
+                    {% for qi in quote.quote_items[:3] %}
+                        {{ qi.display_name }}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                    {% if quote.quote_items|length > 3 %}
+                        + {{ quote.quote_items|length - 3 }} weitere
+                    {% endif %}
+                </td>
+                <td>
+                    {% if quote.status == 'draft' %}
+                        <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
+                    {% else %}
+                        <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not quotes %}
+            <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">Keine geplanten Vermietungen.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function switchView(view) {
+    document.getElementById('calendar-view').classList.toggle('show', view === 'calendar');
+    document.getElementById('table-view').classList.toggle('show', view === 'table');
+    document.getElementById('btn-calendar').classList.toggle('active-view', view === 'calendar');
+    document.getElementById('btn-table').classList.toggle('active-view', view === 'table');
+    localStorage.setItem('scheduleView', view);
+}
+// Restore last view
+const saved = localStorage.getItem('scheduleView');
+if (saved) switchView(saved);
+</script>
 {% endblock %}
