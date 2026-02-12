@@ -36,51 +36,7 @@
             <div style="background: #f8f9fa; padding: 14px; border-radius: 8px; white-space: pre-line; color: #374151;">{{ inquiry.message }}</div>
         </div>
     {% endif %}
-
-    <div style="margin-top: 16px;" id="customer-actions">
-        <span id="customer-status" style="font-size: 0.85em; color: #6b7280;"></span>
-    </div>
 </div>
-
-<script>
-(function() {
-    const customerName = {{ inquiry.customer_name|tojson }};
-    const statusEl = document.getElementById('customer-status');
-    const actionsEl = document.getElementById('customer-actions');
-
-    // Check if customer exists in saved database
-    fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(customerName))
-        .then(r => r.json())
-        .then(data => {
-            const match = data.find(c => c.name.toLowerCase() === customerName.toLowerCase());
-            if (match) {
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-sm btn-danger';
-                btn.textContent = 'Gespeicherten Kunden löschen';
-                btn.style.marginLeft = '8px';
-                btn.addEventListener('click', function() {
-                    if (!confirm('Gespeicherten Kunden "' + match.name + '" wirklich löschen?')) return;
-                    fetch('{{ url_for("admin.customer_delete") }}', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({name: match.name})
-                    })
-                    .then(r => r.json())
-                    .then(res => {
-                        if (res.error) { statusEl.textContent = res.error; statusEl.style.color = '#dc2626'; }
-                        else { btn.remove(); statusEl.textContent = 'Kunde gelöscht.'; statusEl.style.color = '#059669'; }
-                    })
-                    .catch(() => { statusEl.textContent = 'Fehler.'; statusEl.style.color = '#dc2626'; });
-                });
-                statusEl.textContent = 'Kunde ist gespeichert.';
-                statusEl.style.color = '#059669';
-                actionsEl.appendChild(btn);
-            } else {
-                statusEl.textContent = 'Kunde nicht in der Datenbank gespeichert.';
-            }
-        });
-})();
-</script>
 
 <div class="card">
     <h2>Angefragte Artikel</h2>

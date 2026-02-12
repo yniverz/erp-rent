@@ -69,6 +69,7 @@
         </div>
         <div style="margin-bottom: 16px;">
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
+            <button type="button" class="btn btn-danger btn-sm" id="delete-customer-btn" style="display:none;">Kunde löschen</button>
             <span class="customer-save-feedback" id="save-feedback"></span>
         </div>
         <div class="form-group">
@@ -367,6 +368,7 @@
     const addrInput = document.getElementById('recipient_lines');
     const sugBox = document.getElementById('customer-suggestions');
     const saveBtn = document.getElementById('save-customer-btn');
+    const deleteBtn = document.getElementById('delete-customer-btn');
     const feedback = document.getElementById('save-feedback');
     let debounce = null;
     let activeIdx = -1;
@@ -441,11 +443,49 @@
             else {
                 feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
                 feedback.style.color = '#059669';
+                deleteBtn.style.display = 'inline-block';
                 setTimeout(() => feedback.textContent = '', 3000);
             }
         })
         .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
     });
+
+    deleteBtn.addEventListener('click', function() {
+        const name = nameInput.value.trim();
+        if (!name) return;
+        if (!confirm('Gespeicherten Kunden "' + name + '" wirklich löschen?')) return;
+        fetch('{{ url_for("admin.customer_delete") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+            else {
+                feedback.textContent = 'Kunde gelöscht.';
+                feedback.style.color = '#059669';
+                deleteBtn.style.display = 'none';
+                setTimeout(() => feedback.textContent = '', 3000);
+            }
+        })
+        .catch(() => { feedback.textContent = 'Fehler beim Löschen.'; feedback.style.color = '#dc2626'; });
+    });
+
+    // Check if current customer exists on page load
+    function checkCustomerExists() {
+        const name = nameInput.value.trim();
+        if (name.length < 1) { deleteBtn.style.display = 'none'; return; }
+        fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(name))
+            .then(r => r.json())
+            .then(data => {
+                const match = data.find(c => c.name.toLowerCase() === name.toLowerCase());
+                deleteBtn.style.display = match ? 'inline-block' : 'none';
+            })
+            .catch(() => {});
+    }
+    checkCustomerExists();
+    nameInput.addEventListener('change', checkCustomerExists);
 })();
 
 function removeQuoteItem(quoteItemId) {
