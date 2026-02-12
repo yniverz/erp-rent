@@ -18,6 +18,33 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 _favicon_data = None
 _favicon_mimetype = 'image/x-icon'
 
+# Map file extensions to MIME types for favicons
+_FAVICON_EXT_MAP = {
+    '.ico': 'image/x-icon',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp',
+}
+
+def _detect_mimetype(url, content_type_header):
+    """Detect favicon MIME type from Content-Type header or URL extension."""
+    # Try Content-Type header first (ignore generic octet-stream)
+    if content_type_header:
+        ct = content_type_header.split(';')[0].strip().lower()
+        if ct and ct != 'application/octet-stream' and ct.startswith('image/'):
+            return ct
+    # Fall back to URL extension
+    from urllib.parse import urlparse
+    path = urlparse(url).path.lower()
+    for ext, mime in _FAVICON_EXT_MAP.items():
+        if path.endswith(ext):
+            return mime
+    return 'image/x-icon'
+
 def _load_favicon():
     global _favicon_data, _favicon_mimetype
     favicon_url = os.getenv('FAVICON_URL', '').strip()
@@ -27,10 +54,8 @@ def _load_favicon():
         resp = http_requests.get(favicon_url, timeout=10)
         resp.raise_for_status()
         _favicon_data = resp.content
-        ct = resp.headers.get('Content-Type', 'image/x-icon').split(';')[0].strip()
-        if ct:
-            _favicon_mimetype = ct
-        print(f"Favicon loaded from {favicon_url} ({len(_favicon_data)} bytes)")
+        _favicon_mimetype = _detect_mimetype(favicon_url, resp.headers.get('Content-Type', ''))
+        print(f"Favicon loaded from {favicon_url} ({len(_favicon_data)} bytes, {_favicon_mimetype})")
     except Exception as e:
         print(f"Warning: Could not load favicon from {favicon_url}: {e}")
 
@@ -53,7 +78,7 @@ def load_user(user_id):
 @app.context_processor
 def inject_site_settings():
     settings = SiteSettings.query.first()
-    return dict(site_settings=settings, has_favicon=_favicon_data is not None)
+    return dict(site_settings=settings, has_favicon=_favicon_data is not None, favicon_mimetype=_favicon_mimetype)
 
 
 @app.route('/favicon.ico')
