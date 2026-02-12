@@ -275,12 +275,45 @@
             <div class="price-row" style="align-items: center;">
                 <span>Rabatt</span>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="number" name="final_discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" style="width: 120px;">
+                    <input type="number" name="final_discount_percent" id="discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" style="width: 120px;">
                     <span>%</span>
+                </div>
+            </div>
+            <div class="price-row" style="align-items: center; margin-top: 8px;">
+                <span>oder Gesamtpreis</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span>&euro;</span>
+                    <input type="number" name="target_total" id="target_total" value="" step="0.01" min="0" style="width: 140px;" placeholder="{{ '%.2f'|format(quote.total) }}">
                     <button type="submit" class="btn btn-sm btn-outline">Übernehmen</button>
                 </div>
             </div>
         </form>
+
+        <script>
+        (function() {
+            const pctInput = document.getElementById('discount_percent');
+            const totalInput = document.getElementById('target_total');
+            const subtotal = {{ quote.subtotal }};
+            const discountable = {{ quote.discountable_subtotal }};
+
+            pctInput.addEventListener('input', function() {
+                if (discountable > 0) {
+                    const pct = parseFloat(this.value) || 0;
+                    const discount = discountable * (pct / 100);
+                    totalInput.value = '';
+                    totalInput.placeholder = (subtotal - discount).toFixed(2);
+                }
+            });
+            totalInput.addEventListener('input', function() {
+                const target = parseFloat(this.value);
+                if (!isNaN(target) && discountable > 0) {
+                    const needed = subtotal - target;
+                    const pct = Math.max(0, Math.min(100, (needed / discountable) * 100));
+                    pctInput.value = pct.toFixed(4);
+                }
+            });
+        })();
+        </script>
 
         {% if quote.discount_percent > 0 %}
         <div class="price-row">

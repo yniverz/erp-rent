@@ -483,10 +483,21 @@ def quote_edit(quote_id):
                     flash(f'Eigene Position "{custom_name}" hinzugefügt!', 'success')
 
             elif action == 'update_discount':
-                discount_percent = float(request.form.get('final_discount_percent', 0))
+                target_total_str = request.form.get('target_total', '').strip()
+                if target_total_str:
+                    # Calculate discount percent from target total
+                    target_total = float(target_total_str)
+                    discountable = quote.discountable_subtotal
+                    if discountable > 0:
+                        needed_discount = quote.subtotal - target_total
+                        discount_percent = max(0, min(100, (needed_discount / discountable) * 100))
+                    else:
+                        discount_percent = 0
+                else:
+                    discount_percent = float(request.form.get('final_discount_percent', 0))
                 quote.discount_percent = discount_percent
                 db.session.commit()
-                flash(f'Rabatt auf {discount_percent:.4f}% aktualisiert', 'success')
+                flash(f'Rabatt auf {discount_percent:.4f}% aktualisiert (Gesamt: €{quote.total:.2f})', 'success')
 
             elif action == 'finalize':
                 if not quote.start_date or not quote.end_date:
