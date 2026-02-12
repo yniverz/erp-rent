@@ -23,7 +23,17 @@
         </tr>
     </thead>
     <tbody>
+        {% set current_category = namespace(id=-1) %}
         {% for item in items %}
+        {% set cat_id = item.category_id if item.category_id else 0 %}
+        {% if cat_id != current_category.id %}
+            {% set current_category.id = cat_id %}
+            <tr>
+                <td colspan="9" style="background:#f0f4f8; font-weight:700; font-size:1.05em; padding:12px 16px; color:#1e40af; border-top:2px solid #cbd5e1;">
+                    {{ item.category.name if item.category else 'Ohne Kategorie' }}
+                </td>
+            </tr>
+        {% endif %}
         <tr>
             <td>
                 <strong>{{ item.name }}</strong>

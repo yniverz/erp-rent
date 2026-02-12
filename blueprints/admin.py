@@ -96,7 +96,12 @@ def categories():
 @login_required
 def inventory_list():
     """List all inventory items"""
-    items = Item.query.order_by(Item.name).all()
+    items = Item.query.outerjoin(Category).order_by(
+        db.case((Item.category_id.is_(None), 1), else_=0),
+        Category.display_order,
+        Category.name,
+        Item.name
+    ).all()
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     return render_template('admin/inventory_list.html', items=items, categories=categories)
 
