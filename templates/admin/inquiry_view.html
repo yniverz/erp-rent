@@ -1,0 +1,104 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Inquiry #{{ inquiry.id }} - Admin{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 style="margin:0; flex:1;">Inquiry #{{ inquiry.id }}</h1>
+    <span class="badge badge-{{ inquiry.status }}" style="font-size: 1em; padding: 6px 16px;">{{ inquiry.status|capitalize }}</span>
+</div>
+
+<div class="card">
+    <h2>Customer Details</h2>
+    <div class="form-row">
+        <div>
+            <p><strong>Name:</strong> {{ inquiry.customer_name }}</p>
+            <p><strong>Email:</strong> <a href="mailto:{{ inquiry.customer_email }}">{{ inquiry.customer_email }}</a></p>
+            {% if inquiry.customer_phone %}
+                <p><strong>Phone:</strong> <a href="tel:{{ inquiry.customer_phone }}">{{ inquiry.customer_phone }}</a></p>
+            {% endif %}
+        </div>
+        <div>
+            <p><strong>Desired Period:</strong>
+                {% if inquiry.desired_start_date and inquiry.desired_end_date %}
+                    {{ inquiry.desired_start_date.strftime('%d.%m.%Y') }} – {{ inquiry.desired_end_date.strftime('%d.%m.%Y') }}
+                {% else %}
+                    Not specified
+                {% endif %}
+            </p>
+            <p><strong>Received:</strong> {{ inquiry.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+        </div>
+    </div>
+
+    {% if inquiry.message %}
+        <div style="margin-top: 16px;">
+            <p><strong>Message:</strong></p>
+            <div style="background: #f8f9fa; padding: 14px; border-radius: 8px; white-space: pre-line; color: #374151;">{{ inquiry.message }}</div>
+        </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Requested Items</h2>
+    <table>
+        <thead>
+            <tr><th>Item</th><th>Qty</th><th>Price/Day</th></tr>
+        </thead>
+        <tbody>
+            {% for inq_item in inquiry.items %}
+            <tr>
+                <td>{{ inq_item.item_name_snapshot }}</td>
+                <td>{{ inq_item.quantity }}</td>
+                <td>
+                    {% if inq_item.price_snapshot is not none %}
+                        &euro;{{ "%.2f"|format(inq_item.price_snapshot) }}
+                    {% else %}
+                        <span style="color: #d97706;">On request</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if inquiry.converted_quote %}
+<div class="alert alert-info">
+    This inquiry was converted to <a href="{{ url_for('admin.quote_view', quote_id=inquiry.converted_quote.id) }}">Quote {{ inquiry.converted_quote.reference_number }}</a>.
+</div>
+{% endif %}
+
+<div class="card no-print">
+    <h2>Actions</h2>
+
+    <!-- Status Update -->
+    <div style="margin-bottom: 16px;">
+        <form method="POST" action="{{ url_for('admin.inquiry_update_status', inquiry_id=inquiry.id) }}" style="display: flex; gap: 10px; align-items: center;">
+            <label style="margin:0; font-weight: 600;">Update Status:</label>
+            <select name="status" style="width: 160px;">
+                <option value="new" {{ 'selected' if inquiry.status == 'new' }}>New</option>
+                <option value="contacted" {{ 'selected' if inquiry.status == 'contacted' }}>Contacted</option>
+                <option value="converted" {{ 'selected' if inquiry.status == 'converted' }}>Converted</option>
+                <option value="closed" {{ 'selected' if inquiry.status == 'closed' }}>Closed</option>
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary">Update</button>
+        </form>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        {% if inquiry.status != 'converted' %}
+            <form method="POST" action="{{ url_for('admin.inquiry_convert', inquiry_id=inquiry.id) }}">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Convert this inquiry to a quote?');">Convert to Quote</button>
+            </form>
+        {% endif %}
+
+        <a href="mailto:{{ inquiry.customer_email }}?subject=Re: Your rental inquiry" class="btn btn-primary">Reply by Email</a>
+
+        <a href="{{ url_for('admin.inquiry_list') }}" class="btn btn-outline">Back to Inquiries</a>
+
+        <form method="POST" action="{{ url_for('admin.inquiry_delete', inquiry_id=inquiry.id) }}" onsubmit="return confirm('Delete this inquiry?');">
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Quotes - Admin{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 style="margin:0; flex:1;">Quotes</h1>
+    <a href="{{ url_for('admin.quote_create') }}" class="btn btn-success">+ Create Quote</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Ref #</th>
+            <th>Customer</th>
+            <th>Period</th>
+            <th>Items</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Created By</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for quote in quotes %}
+        <tr>
+            <td><strong>{{ quote.reference_number or '—' }}</strong></td>
+            <td>{{ quote.customer_name }}</td>
+            <td>
+                {% if quote.start_date and quote.end_date %}
+                    {{ quote.start_date.strftime('%d.%m.%Y') }} – {{ quote.end_date.strftime('%d.%m.%Y') }}
+                    <br><small style="color:#6b7280;">{{ quote.calculate_rental_days() }} day{{ 's' if quote.calculate_rental_days() != 1 }}</small>
+                {% else %}
+                    <span style="color:#6b7280;">Not set</span>
+                {% endif %}
+            </td>
+            <td>{{ quote.quote_items|length }}</td>
+            <td>&euro;{{ "%.2f"|format(quote.total) }}</td>
+            <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
+            <td>{{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</td>
+            <td>
+                {% if quote.status == 'draft' %}
+                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Edit</a>
+                {% else %}
+                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">View</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not quotes %}
+        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">No quotes yet. <a href="{{ url_for('admin.quote_create') }}">Create your first quote</a>.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endblock %}

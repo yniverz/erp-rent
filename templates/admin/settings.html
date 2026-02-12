@@ -1,0 +1,71 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Settings - Admin{% endblock %}
+
+{% block content %}
+<h1>Site Settings</h1>
+
+<div class="card">
+    <form method="POST">
+        <h2>Business Information</h2>
+        <p style="color: #6b7280; margin-bottom: 16px;">Used in PDFs and the public storefront.</p>
+
+        <div class="form-group">
+            <label>Business Name</label>
+            <input type="text" name="business_name" value="{{ settings.business_name or '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>Address Lines</label>
+            <textarea name="address_lines" rows="3" placeholder="Street&#10;ZIP City&#10;Country">{{ settings.address_lines or '' }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Contact Lines</label>
+            <textarea name="contact_lines" rows="3" placeholder="Tel: +49 ...&#10;Email: info@...">{{ settings.contact_lines or '' }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Bank Details</label>
+            <textarea name="bank_lines" rows="3" placeholder="Bank: ...&#10;IBAN: ...&#10;BIC: ...">{{ settings.bank_lines or '' }}</textarea>
+        </div>
+
+        <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+        <h2>Public Shop</h2>
+
+        <div class="form-group">
+            <label>Shop Description</label>
+            <textarea name="shop_description" rows="2" placeholder="Short description shown on the storefront...">{{ settings.shop_description or '' }}</textarea>
+        </div>
+
+        <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+        <h2>Legal Links</h2>
+        <p style="color: #6b7280; margin-bottom: 16px;">These are shown in the footer of the public storefront.</p>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Imprint URL</label>
+                <input type="url" name="imprint_url" value="{{ settings.imprint_url or '' }}" placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label>Data Protection URL</label>
+                <input type="url" name="privacy_url" value="{{ settings.privacy_url or '' }}" placeholder="https://...">
+            </div>
+        </div>
+
+        <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+        <h2>Notifications</h2>
+
+        <div class="form-group">
+            <label>Notification Email</label>
+            <input type="email" name="notification_email" value="{{ settings.notification_email or '' }}" placeholder="Receives inquiry notifications">
+            <small style="color:#6b7280;">Email address that receives notifications when customers submit inquiries. SMTP must be configured via environment variables (SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save Settings</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Users - Admin{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 style="margin:0; flex:1;">User Management</h1>
+    <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Display Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Items</th>
+            <th>Active</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td><strong>{{ user.username }}</strong></td>
+            <td>{{ user.display_name or '—' }}</td>
+            <td>{{ user.email or '—' }}</td>
+            <td>
+                {% if user.is_admin %}
+                    <span class="badge badge-paid">Admin</span>
+                {% elif user.can_edit_all %}
+                    <span class="badge badge-finalized">Editor</span>
+                {% else %}
+                    <span class="badge badge-draft">Member</span>
+                {% endif %}
+            </td>
+            <td>{{ user.items.count() }}</td>
+            <td>
+                {% if user.active %}
+                    <span style="color:#059669;">&#10003;</span>
+                {% else %}
+                    <span style="color:#dc2626;">&#10007;</span>
+                {% endif %}
+            </td>
+            <td>{{ user.created_at.strftime('%d.%m.%Y') }}</td>
+            <td>
+                <a href="{{ url_for('admin.user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline">Edit</a>
+                {% if user.id != current_user.id %}
+                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" style="display:inline;" onsubmit="return confirm('Delete user {{ user.username }}? Items will be reassigned to you.');">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

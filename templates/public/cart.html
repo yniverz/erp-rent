@@ -1,0 +1,172 @@
+{% extends "public/base.html" %}
+
+{% block title %}Cart - {{ site_settings.business_name or 'Rental Shop' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .cart-page h1 { font-size: 1.8em; margin-bottom: 24px; }
+
+    .cart-empty { text-align: center; padding: 60px 20px; color: #6b7280; }
+    .cart-empty h2 { margin-bottom: 12px; }
+
+    .cart-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .cart-table th { background: #1a1a2e; color: white; padding: 14px 18px; text-align: left; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.3px; }
+    .cart-table td { padding: 14px 18px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .cart-table tr:last-child td { border-bottom: none; }
+    .cart-table .item-row { display: flex; align-items: center; gap: 14px; }
+    .cart-table .item-thumb { width: 50px; height: 50px; border-radius: 6px; object-fit: cover; background: #f3f4f6; }
+    .cart-table input[type="number"] { width: 80px; text-align: center; }
+    .on-request-text { color: #d97706; font-weight: 600; font-size: 0.9em; }
+
+    .cart-summary { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 30px; }
+    .summary-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 1em; }
+    .summary-row.total { font-size: 1.3em; font-weight: 700; border-top: 2px solid #e5e7eb; margin-top: 10px; padding-top: 14px; }
+    .summary-note { font-size: 0.88em; color: #d97706; margin-top: 8px; }
+
+    .inquiry-form { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .inquiry-form h2 { margin-bottom: 20px; font-size: 1.3em; }
+
+    .cart-actions { display: flex; gap: 10px; margin-bottom: 20px; }
+
+    @media (max-width: 768px) {
+        .cart-table { font-size: 0.9em; }
+        .cart-table th, .cart-table td { padding: 10px 12px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cart-page">
+    <h1>Your Cart</h1>
+
+    {% if not cart_items %}
+        <div class="cart-empty">
+            <h2>Your cart is empty</h2>
+            <p>Browse our catalog to find equipment for your event.</p>
+            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary" style="margin-top: 16px;">Browse Catalog</a>
+        </div>
+    {% else %}
+        <form method="POST" action="{{ url_for('public.cart_update') }}">
+            <table class="cart-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Price / Day</th>
+                        <th>Qty</th>
+                        <th>Line Total / Day</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ci in cart_items %}
+                    <tr>
+                        <td>
+                            <div class="item-row">
+                                {% if ci.item.image_filename %}
+                                    <img src="{{ url_for('public.uploaded_file', filename=ci.item.image_filename) }}" class="item-thumb" alt="">
+                                {% endif %}
+                                <div>
+                                    <strong>{{ ci.item.name }}</strong>
+                                    {% if ci.item.category %}<br><small style="color:#6b7280;">{{ ci.item.category.name }}</small>{% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if ci.item.show_price_publicly %}
+                                &euro;{{ "%.2f"|format(ci.item.default_rental_price_per_day) }}
+                            {% else %}
+                                <span class="on-request-text">On request</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <input type="number" name="quantity_{{ ci.item.id }}" value="{{ ci.quantity }}" min="0" step="{{ ci.item.rental_step }}">
+                        </td>
+                        <td>
+                            {% if ci.line_total is not none %}
+                                &euro;{{ "%.2f"|format(ci.line_total) }}
+                            {% else %}
+                                <span class="on-request-text">On request</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="removeItem({{ ci.item.id }})">&#10005;</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="cart-actions">
+                <button type="submit" class="btn btn-outline btn-sm">Update Quantities</button>
+                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm" style="background:#6b7280;">Continue Browsing</a>
+            </div>
+        </form>
+
+        <div class="cart-summary">
+            <div class="summary-row total">
+                <span>Subtotal per day</span>
+                <span>&euro;{{ "%.2f"|format(subtotal) }}</span>
+            </div>
+            {% if has_on_request %}
+                <div class="summary-note">&#9888; Some items are marked "price on request". The final price will be communicated after your inquiry.</div>
+            {% endif %}
+            <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Final total depends on the rental period and will be confirmed after review.</p>
+        </div>
+
+        <div class="inquiry-form">
+            <h2>Send Rental Inquiry</h2>
+            <p style="color: #6b7280; margin-bottom: 20px; font-size: 0.95em;">Fill in your details and desired dates. We'll get back to you with availability and a quote.</p>
+
+            <form method="POST" action="{{ url_for('public.submit_inquiry') }}">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Your Name *</label>
+                        <input type="text" name="customer_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email Address *</label>
+                        <input type="email" name="customer_email" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <input type="tel" name="customer_phone">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Desired Start Date</label>
+                        <input type="date" name="start_date">
+                    </div>
+                    <div class="form-group">
+                        <label>Desired End Date</label>
+                        <input type="date" name="end_date">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Message / Additional Info</label>
+                    <textarea name="message" placeholder="Tell us about your event, venue, specific requirements..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-success" style="font-size: 1.05em; padding: 14px 32px;">Submit Inquiry</button>
+            </form>
+        </div>
+    {% endif %}
+</div>
+
+<form id="remove-form" method="POST" style="display:none;">
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function removeItem(itemId) {
+    const form = document.getElementById('remove-form');
+    form.action = '/cart/remove/' + itemId;
+    form.submit();
+}
+</script>
+{% endblock %}

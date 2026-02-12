@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Create Quote - Admin{% endblock %}
+
+{% block content %}
+<h1>Create New Quote</h1>
+
+<div class="card">
+    <form method="POST">
+        <div class="form-group">
+            <label>Customer Name *</label>
+            <input type="text" name="customer_name" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" name="start_date">
+            </div>
+            <div class="form-group">
+                <label>End Date</label>
+                <input type="date" name="end_date">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-success">Create Quote</button>
+            <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

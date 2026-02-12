@@ -1,0 +1,47 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Inquiries - Admin{% endblock %}
+
+{% block content %}
+<h1>Customer Inquiries</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Customer</th>
+            <th>Email</th>
+            <th>Desired Period</th>
+            <th>Items</th>
+            <th>Status</th>
+            <th>Received</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for inq in inquiries %}
+        <tr>
+            <td>{{ inq.id }}</td>
+            <td><strong>{{ inq.customer_name }}</strong></td>
+            <td><a href="mailto:{{ inq.customer_email }}">{{ inq.customer_email }}</a></td>
+            <td>
+                {% if inq.desired_start_date and inq.desired_end_date %}
+                    {{ inq.desired_start_date.strftime('%d.%m.%Y') }} – {{ inq.desired_end_date.strftime('%d.%m.%Y') }}
+                {% else %}
+                    <span style="color:#6b7280;">Not specified</span>
+                {% endif %}
+            </td>
+            <td>{{ inq.items|length }}</td>
+            <td><span class="badge badge-{{ inq.status }}">{{ inq.status|capitalize }}</span></td>
+            <td>{{ inq.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+            <td>
+                <a href="{{ url_for('admin.inquiry_view', inquiry_id=inq.id) }}" class="btn btn-sm btn-outline">View</a>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not inquiries %}
+        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">No inquiries yet.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Schedule - Admin{% endblock %}
+
+{% block extra_head %}
+<style>
+    .schedule-table th, .schedule-table td { padding: 10px 14px; font-size: 0.9em; }
+    .schedule-bar { height: 8px; border-radius: 4px; margin-top: 4px; }
+    .schedule-bar.draft { background: #fbbf24; }
+    .schedule-bar.finalized { background: #3b82f6; }
+    .schedule-bar.paid { background: #10b981; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Rental Schedule</h1>
+
+<table class="schedule-table">
+    <thead>
+        <tr>
+            <th>Ref #</th>
+            <th>Customer</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Days</th>
+            <th>Status</th>
+            <th>Items</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for quote in quotes %}
+        <tr>
+            <td><strong>{{ quote.reference_number or '—' }}</strong></td>
+            <td>{{ quote.customer_name }}</td>
+            <td>{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '—' }}</td>
+            <td>{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '—' }}</td>
+            <td>{{ quote.calculate_rental_days() }}</td>
+            <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
+            <td>
+                {% for qi in quote.quote_items[:3] %}
+                    {{ qi.display_name }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+                {% if quote.quote_items|length > 3 %}
+                    + {{ quote.quote_items|length - 3 }} more
+                {% endif %}
+            </td>
+            <td>
+                {% if quote.status == 'draft' %}
+                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Edit</a>
+                {% else %}
+                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">View</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not quotes %}
+        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">No scheduled rentals.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endblock %}

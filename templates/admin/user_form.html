@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ 'Edit User' if user else 'Add User' }} - Admin{% endblock %}
+
+{% block content %}
+<h1>{{ 'Edit User: ' + user.username if user else 'Add New User' }}</h1>
+
+<div class="card">
+    <form method="POST">
+        {% if not user %}
+        <div class="form-group">
+            <label>Username *</label>
+            <input type="text" name="username" required>
+        </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label>{{ 'New Password (leave blank to keep current)' if user else 'Password *' }}</label>
+            <input type="password" name="password" {{ '' if user else 'required' }}>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" name="display_name" value="{{ user.display_name if user else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email" value="{{ user.email if user else '' }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="is_admin" id="is_admin" {{ 'checked' if user and user.is_admin }}>
+                <label for="is_admin" style="margin:0; font-weight:normal;">Admin</label>
+            </div>
+            <small style="color:#6b7280;">Admins can manage users, settings, and all items.</small>
+        </div>
+
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="can_edit_all" id="can_edit_all" {{ 'checked' if user and user.can_edit_all }}>
+                <label for="can_edit_all" style="margin:0; font-weight:normal;">Can edit all items</label>
+            </div>
+            <small style="color:#6b7280;">Allows editing items owned by other users (without full admin privileges).</small>
+        </div>
+
+        {% if user %}
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="active" id="active" {{ 'checked' if user.active }}>
+                <label for="active" style="margin:0; font-weight:normal;">Account active</label>
+            </div>
+            <small style="color:#6b7280;">Inactive accounts cannot log in.</small>
+        </div>
+        {% endif %}
+
+        <div style="display: flex; gap: 10px; margin-top: 24px;">
+            <button type="submit" class="btn btn-primary">{{ 'Update User' if user else 'Create User' }}</button>
+            <a href="{{ url_for('admin.user_list') }}" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

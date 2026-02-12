@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin - {{ site_settings.business_name or 'ERP Rent' }}{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; background: #f0f2f5; color: #333; }
+
+        nav { background: #1a1a2e; color: white; padding: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+        .nav-inner { max-width: 1400px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; }
+        .nav-brand { font-size: 1.15em; font-weight: 700; color: white; text-decoration: none; padding: 14px 0; }
+        .nav-links { display: flex; align-items: center; gap: 2px; }
+        .nav-links a { color: rgba(255,255,255,0.8); text-decoration: none; padding: 14px 14px; font-size: 0.9em; transition: all 0.15s; border-bottom: 3px solid transparent; }
+        .nav-links a:hover { color: white; background: rgba(255,255,255,0.05); }
+        .nav-links a.active { color: white; border-bottom-color: #2563eb; }
+        .nav-right { display: flex; align-items: center; gap: 14px; }
+        .nav-user { color: rgba(255,255,255,0.7); font-size: 0.85em; }
+        .nav-logout { color: white; background: #dc2626; text-decoration: none; padding: 7px 16px; border-radius: 6px; font-size: 0.85em; transition: background 0.2s; }
+        .nav-logout:hover { background: #b91c1c; }
+        .inquiry-badge { background: #ef4444; color: white; font-size: 0.7em; padding: 1px 6px; border-radius: 8px; margin-left: 4px; vertical-align: top; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+
+        .alert { padding: 12px 18px; margin-bottom: 20px; border-radius: 8px; font-size: 0.93em; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+
+        h1, h2, h3 { margin-bottom: 16px; }
+        h1 { font-size: 1.7em; }
+
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px; }
+        table th { background: #1a1a2e; color: white; padding: 12px 16px; text-align: left; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.3px; }
+        table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+        table tr:last-child td { border-bottom: none; }
+        table tr:hover { background: #f9fafb; }
+
+        .btn { display: inline-block; padding: 8px 18px; background: #1a1a2e; color: white; text-decoration: none; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9em; transition: all 0.15s; }
+        .btn:hover { background: #16213e; }
+        .btn-primary { background: #2563eb; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-success { background: #059669; }
+        .btn-success:hover { background: #047857; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-warning { background: #d97706; }
+        .btn-warning:hover { background: #b45309; }
+        .btn-sm { padding: 5px 12px; font-size: 0.83em; }
+        .btn-outline { background: transparent; border: 1px solid #d1d5db; color: #374151; }
+        .btn-outline:hover { background: #f3f4f6; }
+
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
+        .badge-draft { background: #fef3c7; color: #92400e; }
+        .badge-finalized { background: #dbeafe; color: #1e40af; }
+        .badge-paid { background: #d1fae5; color: #065f46; }
+        .badge-new { background: #fef3c7; color: #92400e; }
+        .badge-contacted { background: #dbeafe; color: #1e40af; }
+        .badge-converted { background: #d1fae5; color: #065f46; }
+        .badge-closed { background: #f3f4f6; color: #6b7280; }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+
+        .card { background: white; border-radius: 10px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 20px; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-left: 4px solid #2563eb; }
+        .stat-label { font-size: 0.85em; color: #6b7280; margin-bottom: 4px; }
+        .stat-value { font-size: 1.8em; font-weight: 700; color: #111827; }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.88em; color: #374151; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        input[type="text"], input[type="number"], input[type="email"], input[type="password"], input[type="date"], input[type="url"],
+        textarea, select { width: 100%; padding: 9px 14px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.93em; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        textarea { min-height: 80px; resize: vertical; }
+
+        .price-summary { background: #f8f9fa; padding: 18px; border-radius: 8px; margin-top: 16px; }
+        .price-row { display: flex; justify-content: space-between; padding: 6px 0; }
+        .price-row.total { font-size: 1.2em; font-weight: 700; border-top: 2px solid #333; margin-top: 10px; padding-top: 12px; }
+
+        .actions-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+
+        .checkbox-group { display: flex; align-items: center; gap: 8px; }
+        .checkbox-group input[type="checkbox"] { width: auto; }
+
+        @media print {
+            nav, .btn, .no-print, .actions-bar { display: none; }
+            body { background: white; }
+        }
+
+        @media (max-width: 768px) {
+            .nav-inner { flex-direction: column; gap: 8px; padding: 10px 20px; }
+            .nav-links { flex-wrap: wrap; justify-content: center; }
+            .form-row { grid-template-columns: 1fr; }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-brand">{{ site_settings.business_name or 'ERP Rent' }} Admin</a>
+            <div class="nav-links">
+                <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint == 'admin.dashboard' }}">Dashboard</a>
+                <a href="{{ url_for('admin.inventory_list') }}" class="{{ 'active' if 'inventory' in request.endpoint }}">Inventory</a>
+                <a href="{{ url_for('admin.categories') }}" class="{{ 'active' if request.endpoint == 'admin.categories' }}">Categories</a>
+                <a href="{{ url_for('admin.quote_list') }}" class="{{ 'active' if 'quote' in request.endpoint }}">Quotes</a>
+                <a href="{{ url_for('admin.inquiry_list') }}" class="{{ 'active' if 'inquiry' in request.endpoint }}">
+                    Inquiries
+                    {% set new_count = inquiry_count if inquiry_count is defined else 0 %}
+                </a>
+                <a href="{{ url_for('admin.schedule') }}" class="{{ 'active' if request.endpoint == 'admin.schedule' }}">Schedule</a>
+                <a href="{{ url_for('admin.report_payoff') }}" class="{{ 'active' if request.endpoint == 'admin.report_payoff' }}">Payoff</a>
+                {% if current_user.is_admin %}
+                <a href="{{ url_for('admin.user_list') }}" class="{{ 'active' if 'user' in request.endpoint }}">Users</a>
+                <a href="{{ url_for('admin.settings') }}" class="{{ 'active' if request.endpoint == 'admin.settings' }}">Settings</a>
+                {% endif %}
+            </div>
+            <div class="nav-right">
+                <span class="nav-user">{{ current_user.display_name or current_user.username }}</span>
+                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm btn-outline" style="color:white;border-color:rgba(255,255,255,0.3);">Shop</a>
+                <a href="{{ url_for('auth.logout') }}" class="nav-logout">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

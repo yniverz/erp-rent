@@ -1,0 +1,37 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard - Admin{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Inventory Items</div>
+        <div class="stat-value">{{ total_items }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #059669;">
+        <div class="stat-label">Active Quotes</div>
+        <div class="stat-value">{{ active_quotes }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #d97706;">
+        <div class="stat-label">New Inquiries</div>
+        <div class="stat-value">{{ new_inquiries }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #6b7280;">
+        <div class="stat-label">Total Quotes</div>
+        <div class="stat-value">{{ total_quotes }}</div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="card">
+        <h3>Quick Actions</h3>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+            <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">Add Inventory Item</a>
+            <a href="{{ url_for('admin.quote_create') }}" class="btn btn-success">Create New Quote</a>
+            <a href="{{ url_for('admin.inquiry_list') }}" class="btn btn-warning">View Inquiries</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

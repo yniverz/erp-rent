@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Payoff Report - Admin{% endblock %}
+
+{% block content %}
+<h1>Payoff Report</h1>
+
+<div class="stats-grid">
+    {% set ns = namespace(total_cost=0, total_revenue=0) %}
+    {% for item in items %}
+        {% set ns.total_cost = ns.total_cost + item.total_purchase_cost %}
+        {% set ns.total_revenue = ns.total_revenue + item.total_revenue %}
+    {% endfor %}
+    <div class="stat-card">
+        <div class="stat-label">Total Investment</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(ns.total_cost) }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #059669;">
+        <div class="stat-label">Total Revenue</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(ns.total_revenue + misc_revenue) }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: {{ '#059669' if ns.total_revenue >= ns.total_cost else '#d97706' }};">
+        <div class="stat-label">Overall Balance</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(ns.total_revenue + misc_revenue - ns.total_cost) }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #6b7280;">
+        <div class="stat-label">Misc Revenue</div>
+        <div class="stat-value">&euro;{{ "%.2f"|format(misc_revenue) }}</div>
+    </div>
+</div>
+
+<!-- Per-Owner Summary -->
+<div class="card">
+    <h2>Revenue by Owner</h2>
+    <table>
+        <thead>
+            <tr><th>Owner</th><th>Investment</th><th>Revenue</th><th>Balance</th></tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            {% set user_items = items|selectattr('owner_id', 'equalto', user.id)|list %}
+            {% if user_items %}
+            {% set u_cost = user_items|sum(attribute='total_purchase_cost') %}
+            {% set u_rev = user_items|sum(attribute='total_revenue') %}
+            <tr>
+                <td><strong>{{ user.display_name or user.username }}</strong></td>
+                <td>&euro;{{ "%.2f"|format(u_cost) }}</td>
+                <td>&euro;{{ "%.2f"|format(u_rev) }}</td>
+                <td style="color: {{ '#059669' if u_rev >= u_cost else '#dc2626' }};">
+                    &euro;{{ "%.2f"|format(u_rev - u_cost) }}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Per-Item Table -->
+<div class="card">
+    <h2>Item Details</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Owner</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>Total Cost</th>
+                <th>Revenue</th>
+                <th>Remaining</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td><strong>{{ item.name }}</strong></td>
+                <td>{{ item.owner.display_name or item.owner.username }}</td>
+                <td>{{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
+                <td>&euro;{{ "%.2f"|format(item.unit_purchase_cost) }}</td>
+                <td>&euro;{{ "%.2f"|format(item.total_purchase_cost) }}</td>
+                <td>&euro;{{ "%.2f"|format(item.total_revenue) }}</td>
+                <td>&euro;{{ "%.2f"|format(item.remaining_to_payoff) }}</td>
+                <td>
+                    {% if item.is_paid_off %}
+                        <span class="badge badge-success">Paid Off</span>
+                    {% else %}
+                        {% set pct = (item.total_revenue / item.total_purchase_cost * 100) if item.total_purchase_cost > 0 else 0 %}
+                        <span class="badge badge-warning">{{ "%.0f"|format(pct) }}%</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

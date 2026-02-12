@@ -1,0 +1,205 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Edit Quote {{ quote.reference_number }} - Admin{% endblock %}
+
+{% block extra_head %}
+<style>
+    .quote-section { margin-bottom: 30px; }
+    .item-row-disabled { opacity: 0.5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 style="margin:0; flex:1;">Edit Quote: {{ quote.reference_number or 'Draft' }}</h1>
+    <span class="badge badge-{{ quote.status }}" style="font-size: 1em; padding: 6px 16px;">{{ quote.status|capitalize }}</span>
+</div>
+
+{% if quote.inquiry %}
+<div class="alert alert-info">
+    This quote was created from <a href="{{ url_for('admin.inquiry_view', inquiry_id=quote.inquiry_id) }}">Inquiry #{{ quote.inquiry_id }}</a>.
+</div>
+{% endif %}
+
+<!-- Quote Details -->
+<div class="card quote-section">
+    <h2>Quote Details</h2>
+    <form method="POST">
+        <input type="hidden" name="action" value="update_quote">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Customer Name</label>
+                <input type="text" name="customer_name" value="{{ quote.customer_name }}" required>
+            </div>
+            <div class="form-group">
+                <label>Reference</label>
+                <input type="text" value="{{ quote.reference_number }}" disabled>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}">
+            </div>
+            <div class="form-group">
+                <label>End Date</label>
+                <input type="date" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Recipient Address</label>
+            <textarea name="recipient_lines" rows="3">{{ quote.recipient_lines or '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Notes</label>
+            <textarea name="notes" rows="3">{{ quote.notes or '' }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Details</button>
+    </form>
+</div>
+
+<!-- Inventory Items -->
+<div class="card quote-section">
+    <h2>Inventory Items</h2>
+    {% if not quote.start_date or not quote.end_date %}
+        <p style="color: #d97706;">&#9888; Please set start and end dates before adding items.</p>
+    {% else %}
+        <p style="color:#6b7280; margin-bottom: 14px;">Rental period: {{ quote.calculate_rental_days() }} day{{ 's' if quote.calculate_rental_days() != 1 }}</p>
+    {% endif %}
+
+    <form method="POST">
+        <input type="hidden" name="action" value="update_items">
+        <table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Owner</th>
+                    <th>Available</th>
+                    <th>Qty</th>
+                    <th>Price/Day</th>
+                    <th>Line Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                {% set avail = item_availability.get(item.id, 0) %}
+                {% set existing = namespace(qty=0, price=item.default_rental_price_per_day) %}
+                {% for qi in quote.quote_items %}
+                    {% if qi.item_id == item.id and not qi.is_custom %}
+                        {% set existing.qty = qi.quantity %}
+                        {% set existing.price = qi.rental_price_per_day %}
+                    {% endif %}
+                {% endfor %}
+                <tr class="{{ 'item-row-disabled' if avail == 0 and existing.qty == 0 }}">
+                    <td><strong>{{ item.name }}</strong>{% if item.category %}<br><small style="color:#6b7280;">{{ item.category.name }}</small>{% endif %}</td>
+                    <td><small>{{ item.owner.display_name or item.owner.username }}</small></td>
+                    <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
+                    <td><input type="number" name="quantity_{{ item.id }}" value="{{ existing.qty }}" min="0" step="{{ item.rental_step }}" style="width:80px;"></td>
+                    <td><input type="number" name="price_{{ item.id }}" value="{{ '%.2f'|format(existing.price) }}" step="0.01" min="0" style="width:100px;"></td>
+                    <td>
+                        {% if existing.qty > 0 %}
+                            &euro;{{ "%.2f"|format(existing.qty * existing.price * quote.calculate_rental_days()) }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-primary" {{ 'disabled' if not quote.start_date or not quote.end_date }}>Save Items</button>
+    </form>
+</div>
+
+<!-- Custom Items -->
+<div class="card quote-section">
+    <h2>Custom Items</h2>
+    {% if quote.quote_items %}
+        <table>
+            <thead>
+                <tr><th>Name</th><th>Qty</th><th>Price/Day</th><th>Total</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for qi in quote.quote_items if qi.is_custom %}
+                <tr>
+                    <td>{{ qi.custom_item_name }}</td>
+                    <td>{{ qi.quantity }}</td>
+                    <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
+                    <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
+                    <td>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="action" value="remove_item">
+                            <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-top: 14px;">
+        <input type="hidden" name="action" value="add_custom">
+        <div class="form-group" style="margin:0; flex:1;">
+            <label>Name</label>
+            <input type="text" name="custom_name" placeholder="e.g. Setup Time">
+        </div>
+        <div class="form-group" style="margin:0; width:100px;">
+            <label>Qty</label>
+            <input type="number" name="custom_quantity" value="1" min="1">
+        </div>
+        <div class="form-group" style="margin:0; width:120px;">
+            <label>Price/Day</label>
+            <input type="number" name="custom_price" step="0.01" min="0">
+        </div>
+        <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+</div>
+
+<!-- Pricing Summary -->
+<div class="card quote-section">
+    <h2>Pricing Summary</h2>
+    <div class="price-summary">
+        <div class="price-row">
+            <span>Subtotal ({{ quote.calculate_rental_days() }} day{{ 's' if quote.calculate_rental_days() != 1 }})</span>
+            <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
+        </div>
+
+        <form method="POST" style="margin: 10px 0;">
+            <input type="hidden" name="action" value="update_discount">
+            <div class="price-row" style="align-items: center;">
+                <span>Discount</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="number" name="final_discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" style="width: 120px;">
+                    <span>%</span>
+                    <button type="submit" class="btn btn-sm btn-outline">Apply</button>
+                </div>
+            </div>
+        </form>
+
+        {% if quote.discount_percent > 0 %}
+        <div class="price-row">
+            <span>Discount ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
+            <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>
+        </div>
+        {% endif %}
+
+        <div class="price-row total">
+            <span>Total</span>
+            <span>&euro;{{ "%.2f"|format(quote.total) }}</span>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+        <form method="POST" style="display:inline;">
+            <input type="hidden" name="action" value="finalize">
+            <button type="submit" class="btn btn-success" onclick="return confirm('Finalize this quote?');">Finalize Quote</button>
+        </form>
+        <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Back to Quotes</a>
+        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" style="display:inline;" onsubmit="return confirm('Delete this quote?');">
+            <button type="submit" class="btn btn-danger">Delete Quote</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Quote {{ quote.reference_number }} - Admin{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 style="margin:0; flex:1;">Quote: {{ quote.reference_number }}</h1>
+    <span class="badge badge-{{ quote.status }}" style="font-size: 1em; padding: 6px 16px;">{{ quote.status|capitalize }}</span>
+</div>
+
+<div class="card">
+    <div class="form-row">
+        <div>
+            <p><strong>Customer:</strong> {{ quote.customer_name }}</p>
+            {% if quote.recipient_lines %}
+                <p style="white-space: pre-line; color: #6b7280;">{{ quote.recipient_lines }}</p>
+            {% endif %}
+        </div>
+        <div>
+            <p><strong>Period:</strong>
+                {% if quote.start_date and quote.end_date %}
+                    {{ quote.start_date.strftime('%d.%m.%Y') }} – {{ quote.end_date.strftime('%d.%m.%Y') }}
+                    ({{ quote.calculate_rental_days() }} day{{ 's' if quote.calculate_rental_days() != 1 }})
+                {% else %}
+                    Not set
+                {% endif %}
+            </p>
+            <p><strong>Reference:</strong> {{ quote.reference_number }}</p>
+            <p><strong>Created:</strong> {{ quote.created_at.strftime('%d.%m.%Y %H:%M') }} by {{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</p>
+            {% if quote.finalized_at %}<p><strong>Finalized:</strong> {{ quote.finalized_at.strftime('%d.%m.%Y %H:%M') }}</p>{% endif %}
+            {% if quote.paid_at %}<p><strong>Paid:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}</p>{% endif %}
+        </div>
+    </div>
+
+    {% if quote.notes %}
+        <p style="margin-top: 14px;"><strong>Notes:</strong></p>
+        <p style="white-space: pre-line; color:#6b7280;">{{ quote.notes }}</p>
+    {% endif %}
+</div>
+
+<!-- Items -->
+<div class="card">
+    <h2>Items</h2>
+    <table>
+        <thead>
+            <tr><th>Item</th><th>Owner</th><th>Qty</th><th>Price/Day</th><th>Total</th></tr>
+        </thead>
+        <tbody>
+            {% for qi in quote.quote_items %}
+            <tr>
+                <td>{{ qi.display_name }}</td>
+                <td>{{ qi.item.owner.display_name or qi.item.owner.username if qi.item and qi.item.owner else '—' }}</td>
+                <td>{{ qi.quantity }}</td>
+                <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
+                <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="price-summary">
+        <div class="price-row">
+            <span>Subtotal</span>
+            <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
+        </div>
+        {% if quote.discount_percent > 0 %}
+        <div class="price-row">
+            <span>Discount ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
+            <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>
+        </div>
+        {% endif %}
+        <div class="price-row total">
+            <span>Total</span>
+            <span>&euro;{{ "%.2f"|format(quote.total) }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Revenue Breakdown by Owner -->
+{% if quote.status == 'paid' %}
+<div class="card">
+    <h2>Revenue Breakdown by Owner</h2>
+    {% set ns = namespace(owners={}) %}
+    {% for qi in quote.quote_items if not qi.is_custom and qi.item %}
+        {% set owner_name = qi.item.owner.display_name or qi.item.owner.username %}
+        {% if owner_name not in ns.owners %}
+            {% set _ = ns.owners.update({owner_name: 0}) %}
+        {% endif %}
+        {% set _ = ns.owners.update({owner_name: ns.owners[owner_name] + qi.total_price * ((100 - quote.discount_percent) / 100)}) %}
+    {% endfor %}
+    <table>
+        <thead><tr><th>Owner</th><th>Revenue Share</th></tr></thead>
+        <tbody>
+            {% for owner, amount in ns.owners.items() %}
+            <tr><td>{{ owner }}</td><td>&euro;{{ "%.2f"|format(amount) }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Actions -->
+<div class="card no-print">
+    <h2>Actions</h2>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        {% if quote.status == 'finalized' %}
+            <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Mark as paid?');">Mark as Paid</button>
+            </form>
+            <form method="POST" action="{{ url_for('admin.quote_unfinalize', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-warning">Unfinalize</button>
+            </form>
+        {% elif quote.status == 'paid' %}
+            <form method="POST" action="{{ url_for('admin.quote_unpay', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Revert payment?');">Unpay</button>
+            </form>
+        {% endif %}
+
+        {% if quote.status in ['finalized', 'paid'] %}
+            <a href="{{ url_for('admin.ueberlassungsbestaetigung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Überlassungsbestätigung PDF</a>
+            <a href="{{ url_for('admin.ueberlassungsbestaetigung_pdf', quote_id=quote.id, with_quote_total='true') }}" class="btn btn-primary" target="_blank">Überl. + Total PDF</a>
+            <a href="{{ url_for('admin.quote_receipt', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Kostenbeteiligung PDF</a>
+        {% endif %}
+
+        {% if quote.status == 'draft' %}
+            <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Edit</a>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Delete this quote?');">
+            <button type="submit" class="btn btn-danger">Delete Quote</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - {{ site_settings.business_name or 'ERP Rent' }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .login-card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 400px; }
+        .login-card h1 { text-align: center; margin-bottom: 8px; font-size: 1.6em; color: #1a1a2e; }
+        .login-card .subtitle { text-align: center; color: #6b7280; margin-bottom: 28px; font-size: 0.95em; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9em; color: #374151; }
+        .form-group input { width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1em; }
+        .form-group input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .btn-login { width: 100%; padding: 14px; background: #1a1a2e; color: white; border: none; border-radius: 8px; font-size: 1.05em; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-login:hover { background: #16213e; }
+        .alert { padding: 12px 16px; margin-bottom: 20px; border-radius: 8px; font-size: 0.9em; }
+        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .alert-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        .back-link { display: block; text-align: center; margin-top: 20px; color: #6b7280; text-decoration: none; font-size: 0.9em; }
+        .back-link:hover { color: #374151; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>{{ site_settings.business_name or 'ERP Rent' }}</h1>
+        <p class="subtitle">Sign in to manage your rentals</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required>
+            </div>
+            <button type="submit" class="btn-login">Sign In</button>
+        </form>
+        <a href="{{ url_for('public.catalog') }}" class="back-link">&larr; Back to shop</a>
+    </div>
+</body>
+</html>

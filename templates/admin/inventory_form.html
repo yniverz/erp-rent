@@ -1,0 +1,106 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ 'Edit' if item else 'Add' }} Item - Admin{% endblock %}
+
+{% block content %}
+<h1>{{ 'Edit' if item else 'Add New' }} Inventory Item</h1>
+
+<div class="card">
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Item Name *</label>
+                <input type="text" name="name" value="{{ item.name if item else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select name="category_id">
+                    <option value="">— No Category —</option>
+                    {% for cat in categories %}
+                        <option value="{{ cat.id }}" {{ 'selected' if item and item.category_id == cat.id }}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        {% if current_user.is_admin %}
+        <div class="form-group">
+            <label>Owner</label>
+            <select name="owner_id">
+                {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if (item and item.owner_id == u.id) or (not item and u.id == current_user.id) }}>{{ u.display_name or u.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label>Description</label>
+            <textarea name="description" placeholder="Visible on the public storefront...">{{ item.description if item else '' }}</textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Total Quantity (-1 = unlimited)</label>
+                <input type="number" name="total_quantity" value="{{ item.total_quantity if item else 1 }}" min="-1" required>
+            </div>
+            <div class="form-group">
+                <label>Total Purchase Cost (&euro;)</label>
+                <input type="number" name="total_cost" step="0.01" min="0" value="{{ item.total_purchase_cost if item else '' }}" placeholder="Total cost for all units">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Set Size</label>
+                <input type="number" name="set_size" value="{{ item.set_size if item else 1 }}" min="1">
+            </div>
+            <div class="form-group">
+                <label>Rental Step</label>
+                <input type="number" name="rental_step" value="{{ item.rental_step if item else 1 }}" min="1">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Default Rental Price per Day (&euro;)</label>
+            <input type="number" name="default_rental_price" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" name="show_price_publicly" id="show_price" {{ 'checked' if not item or item.show_price_publicly }}>
+                    <label for="show_price" style="margin:0; font-weight:normal;">Show price publicly</label>
+                </div>
+                <small style="color:#6b7280;">Uncheck to show "Price on request" in the shop</small>
+            </div>
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" name="visible_in_shop" id="visible" {{ 'checked' if not item or item.visible_in_shop }}>
+                    <label for="visible" style="margin:0; font-weight:normal;">Visible in public shop</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Item Image</label>
+            {% if item and item.image_filename %}
+                <div style="margin-bottom: 10px;">
+                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" style="max-width: 200px; max-height: 150px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <div class="checkbox-group" style="margin-top: 6px;">
+                        <input type="checkbox" name="remove_image" id="remove_image">
+                        <label for="remove_image" style="margin:0; font-weight:normal; color: #dc2626;">Remove current image</label>
+                    </div>
+                </div>
+            {% endif %}
+            <input type="file" name="image" accept="image/*">
+            <small style="color:#6b7280;">Accepted formats: PNG, JPG, GIF, WebP (max 16MB)</small>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 24px;">
+            <button type="submit" class="btn btn-primary">{{ 'Update Item' if item else 'Add Item' }}</button>
+            <a href="{{ url_for('admin.inventory_list') }}" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,213 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
+from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings
+from helpers import send_inquiry_notification, get_upload_path
+from datetime import datetime
+import os
+
+public_bp = Blueprint('public', __name__)
+
+
+@public_bp.route('/')
+def catalog():
+    """Public storefront catalog"""
+    categories = Category.query.order_by(Category.display_order, Category.name).all()
+    selected_category = request.args.get('category', type=int)
+
+    query = Item.query.filter_by(visible_in_shop=True)
+    if selected_category:
+        query = query.filter_by(category_id=selected_category)
+    items = query.order_by(Item.name).all()
+
+    # Get cart from session
+    cart = session.get('cart', {})
+    cart_count = sum(cart.values())
+
+    return render_template('public/catalog.html',
+                           items=items,
+                           categories=categories,
+                           selected_category=selected_category,
+                           cart=cart,
+                           cart_count=cart_count)
+
+
+@public_bp.route('/cart')
+def cart():
+    """View shopping cart"""
+    cart_data = session.get('cart', {})
+    cart_items = []
+    subtotal = 0
+    has_on_request = False
+
+    for item_id_str, quantity in cart_data.items():
+        item = Item.query.get(int(item_id_str))
+        if item:
+            if item.show_price_publicly:
+                line_total = item.default_rental_price_per_day * quantity
+                subtotal += line_total
+            else:
+                line_total = None
+                has_on_request = True
+            cart_items.append({
+                'item': item,
+                'quantity': quantity,
+                'line_total': line_total
+            })
+
+    return render_template('public/cart.html',
+                           cart_items=cart_items,
+                           subtotal=subtotal,
+                           has_on_request=has_on_request,
+                           cart_count=sum(cart_data.values()))
+
+
+@public_bp.route('/cart/add', methods=['POST'])
+def cart_add():
+    """Add item to cart (AJAX or form)"""
+    item_id = request.form.get('item_id', type=int)
+    quantity = request.form.get('quantity', 1, type=int)
+
+    if not item_id or quantity < 1:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': 'Invalid request'}), 400
+        flash('Invalid request.', 'error')
+        return redirect(url_for('public.catalog'))
+
+    item = Item.query.get(item_id)
+    if not item or not item.visible_in_shop:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': 'Item not found'}), 404
+        flash('Item not found.', 'error')
+        return redirect(url_for('public.catalog'))
+
+    cart = session.get('cart', {})
+    key = str(item_id)
+    cart[key] = cart.get(key, 0) + quantity
+    session['cart'] = cart
+    session.modified = True
+
+    cart_count = sum(cart.values())
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': True, 'cart_count': cart_count})
+
+    flash(f'{item.name} added to cart!', 'success')
+    return redirect(url_for('public.catalog'))
+
+
+@public_bp.route('/cart/update', methods=['POST'])
+def cart_update():
+    """Update cart quantities"""
+    cart = session.get('cart', {})
+
+    for key in list(cart.keys()):
+        qty = request.form.get(f'quantity_{key}', type=int)
+        if qty is not None:
+            if qty <= 0:
+                del cart[key]
+            else:
+                cart[key] = qty
+
+    session['cart'] = cart
+    session.modified = True
+    flash('Cart updated.', 'success')
+    return redirect(url_for('public.cart'))
+
+
+@public_bp.route('/cart/remove/<int:item_id>', methods=['POST'])
+def cart_remove(item_id):
+    """Remove item from cart"""
+    cart = session.get('cart', {})
+    key = str(item_id)
+    if key in cart:
+        del cart[key]
+        session['cart'] = cart
+        session.modified = True
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': True, 'cart_count': sum(cart.values())})
+
+    flash('Item removed from cart.', 'success')
+    return redirect(url_for('public.cart'))
+
+
+@public_bp.route('/cart/clear', methods=['POST'])
+def cart_clear():
+    """Clear entire cart"""
+    session.pop('cart', None)
+    session.modified = True
+    flash('Cart cleared.', 'success')
+    return redirect(url_for('public.cart'))
+
+
+@public_bp.route('/inquiry', methods=['POST'])
+def submit_inquiry():
+    """Submit cart as customer inquiry"""
+    cart_data = session.get('cart', {})
+    if not cart_data:
+        flash('Your cart is empty.', 'error')
+        return redirect(url_for('public.cart'))
+
+    customer_name = request.form.get('customer_name', '').strip()
+    customer_email = request.form.get('customer_email', '').strip()
+    customer_phone = request.form.get('customer_phone', '').strip()
+    message = request.form.get('message', '').strip()
+    start_date_str = request.form.get('start_date', '')
+    end_date_str = request.form.get('end_date', '')
+
+    if not customer_name or not customer_email:
+        flash('Name and email are required.', 'error')
+        return redirect(url_for('public.cart'))
+
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+    except ValueError:
+        start_date = None
+        end_date = None
+
+    try:
+        inquiry = Inquiry(
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone or None,
+            message=message or None,
+            desired_start_date=start_date,
+            desired_end_date=end_date
+        )
+        db.session.add(inquiry)
+        db.session.flush()
+
+        for item_id_str, quantity in cart_data.items():
+            item = Item.query.get(int(item_id_str))
+            if item:
+                inq_item = InquiryItem(
+                    inquiry_id=inquiry.id,
+                    item_id=item.id,
+                    quantity=quantity,
+                    price_snapshot=item.default_rental_price_per_day if item.show_price_publicly else None,
+                    item_name_snapshot=item.name
+                )
+                db.session.add(inq_item)
+
+        db.session.commit()
+
+        # Send email notification
+        settings = SiteSettings.query.first()
+        send_inquiry_notification(inquiry, settings)
+
+        # Clear cart
+        session.pop('cart', None)
+        session.modified = True
+
+        return render_template('public/inquiry_sent.html', inquiry=inquiry)
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error submitting inquiry: {str(e)}', 'error')
+        return redirect(url_for('public.cart'))
+
+
+@public_bp.route('/uploads/<path:filename>')
+def uploaded_file(filename):
+    """Serve uploaded files"""
+    return send_from_directory(get_upload_path(), filename)

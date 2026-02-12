@@ -1,0 +1,62 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Categories - Admin{% endblock %}
+
+{% block content %}
+<h1>Categories</h1>
+
+<div class="card" style="margin-bottom: 24px;">
+    <h3>Add Category</h3>
+    <form method="POST" style="display: flex; gap: 12px; align-items: end;">
+        <input type="hidden" name="action" value="add">
+        <div class="form-group" style="margin:0; flex:1;">
+            <label>Name</label>
+            <input type="text" name="name" required placeholder="e.g. Lighting">
+        </div>
+        <div class="form-group" style="margin:0; width:120px;">
+            <label>Order</label>
+            <input type="number" name="display_order" value="0">
+        </div>
+        <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Display Order</th>
+            <th>Items</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for cat in categories %}
+        <tr>
+            <td>
+                <form method="POST" style="display: flex; gap: 8px; align-items: center;" id="edit-form-{{ cat.id }}">
+                    <input type="hidden" name="action" value="edit">
+                    <input type="hidden" name="category_id" value="{{ cat.id }}">
+                    <input type="text" name="name" value="{{ cat.name }}" style="width:200px;">
+                </form>
+            </td>
+            <td>
+                <input type="number" name="display_order" value="{{ cat.display_order }}" style="width:80px;" form="edit-form-{{ cat.id }}">
+            </td>
+            <td>{{ cat.items.count() }}</td>
+            <td>
+                <button type="submit" form="edit-form-{{ cat.id }}" class="btn btn-sm btn-outline">Save</button>
+                <form method="POST" style="display:inline;" onsubmit="return confirm('Delete category {{ cat.name }}? Items will be unassigned.');">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="category_id" value="{{ cat.id }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not categories %}
+        <tr><td colspan="4" style="text-align:center; color:#6b7280; padding:20px;">No categories yet.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endblock %}

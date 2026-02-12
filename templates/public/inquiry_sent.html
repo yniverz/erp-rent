@@ -1,0 +1,36 @@
+{% extends "public/base.html" %}
+
+{% block title %}Inquiry Sent - {{ site_settings.business_name or 'Rental Shop' }}{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 60px 20px;">
+    <div style="font-size: 4em; margin-bottom: 20px;">&#9989;</div>
+    <h1 style="margin-bottom: 14px; font-size: 2em;">Thank You!</h1>
+    <p style="font-size: 1.15em; color: #374151; margin-bottom: 10px;">Your rental inquiry has been received.</p>
+    <p style="color: #6b7280; max-width: 500px; margin: 0 auto 30px;">
+        We'll review your request and get back to you at <strong>{{ inquiry.customer_email }}</strong> with availability and pricing details.
+    </p>
+
+    <div style="background: white; border-radius: 12px; padding: 24px; max-width: 500px; margin: 0 auto 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: left;">
+        <h3 style="margin-bottom: 14px;">Inquiry Summary</h3>
+        <p><strong>Name:</strong> {{ inquiry.customer_name }}</p>
+        {% if inquiry.desired_start_date and inquiry.desired_end_date %}
+            <p><strong>Dates:</strong> {{ inquiry.desired_start_date.strftime('%d.%m.%Y') }} &ndash; {{ inquiry.desired_end_date.strftime('%d.%m.%Y') }}</p>
+        {% endif %}
+        <p style="margin-top: 10px;"><strong>Items:</strong></p>
+        <ul style="margin-left: 20px;">
+            {% for inq_item in inquiry.items %}
+                <li>{{ inq_item.quantity }}x {{ inq_item.item_name_snapshot }}
+                    {% if inq_item.price_snapshot is not none %}
+                        <span style="color: #6b7280;">(&euro;{{ "%.2f"|format(inq_item.price_snapshot) }}/day)</span>
+                    {% else %}
+                        <span style="color: #d97706;">(price on request)</span>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <a href="{{ url_for('public.catalog') }}" class="btn btn-primary">Back to Catalog</a>
+</div>
+{% endblock %}
