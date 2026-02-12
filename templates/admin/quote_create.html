@@ -2,14 +2,42 @@
 
 {% block title %}Angebot erstellen - Verwaltung{% endblock %}
 
+{% block extra_head %}
+<style>
+    .autocomplete-wrapper { position: relative; }
+    .autocomplete-list {
+        position: absolute; z-index: 100; left: 0; right: 0; top: 100%;
+        background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;
+        max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.1);
+        display: none;
+    }
+    .autocomplete-list div {
+        padding: 8px 12px; cursor: pointer; font-size: 0.95em;
+    }
+    .autocomplete-list div:hover, .autocomplete-list div.active {
+        background: #e0e7ff; color: #1e40af;
+    }
+    .customer-save-feedback { font-size: 0.85em; margin-left: 8px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1>Neues Angebot erstellen</h1>
 
 <div class="card">
     <form method="POST">
-        <div class="form-group">
+        <div class="form-group autocomplete-wrapper">
             <label>Kundenname *</label>
-            <input type="text" name="customer_name" required>
+            <input type="text" name="customer_name" id="customer_name" required autocomplete="off">
+            <div class="autocomplete-list" id="customer-suggestions"></div>
+        </div>
+        <div class="form-group">
+            <label>Empfängeradresse</label>
+            <textarea name="recipient_lines" id="recipient_lines" rows="3"></textarea>
+        </div>
+        <div style="margin-bottom: 16px;">
+            <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
+            <span class="customer-save-feedback" id="save-feedback"></span>
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -27,4 +55,92 @@
         </div>
     </form>
 </div>
+
+<script>
+(function() {
+    const nameInput = document.getElementById('customer_name');
+    const addrInput = document.getElementById('recipient_lines');
+    const sugBox = document.getElementById('customer-suggestions');
+    const saveBtn = document.getElementById('save-customer-btn');
+    const feedback = document.getElementById('save-feedback');
+    let debounce = null;
+    let activeIdx = -1;
+    let suggestions = [];
+
+    nameInput.addEventListener('input', function() {
+        clearTimeout(debounce);
+        const q = this.value.trim();
+        if (q.length < 1) { hideSuggestions(); return; }
+        debounce = setTimeout(() => fetchSuggestions(q), 200);
+    });
+
+    nameInput.addEventListener('keydown', function(e) {
+        const items = sugBox.querySelectorAll('div');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); highlight(items); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlight(items); }
+        else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); selectSuggestion(activeIdx); }
+        else if (e.key === 'Escape') { hideSuggestions(); }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!sugBox.contains(e.target) && e.target !== nameInput) hideSuggestions();
+    });
+
+    function fetchSuggestions(q) {
+        fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(data => {
+                suggestions = data;
+                renderSuggestions(data);
+            });
+    }
+
+    function renderSuggestions(data) {
+        sugBox.innerHTML = '';
+        activeIdx = -1;
+        if (!data.length) { hideSuggestions(); return; }
+        data.forEach((c, i) => {
+            const d = document.createElement('div');
+            d.textContent = c.name;
+            d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
+            sugBox.appendChild(d);
+        });
+        sugBox.style.display = 'block';
+    }
+
+    function selectSuggestion(idx) {
+        const c = suggestions[idx];
+        nameInput.value = c.name;
+        addrInput.value = c.recipient_lines;
+        hideSuggestions();
+    }
+
+    function highlight(items) {
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    }
+
+    function hideSuggestions() { sugBox.style.display = 'none'; activeIdx = -1; }
+
+    saveBtn.addEventListener('click', function() {
+        const name = nameInput.value.trim();
+        if (!name) { feedback.textContent = 'Bitte Kundenname eingeben.'; feedback.style.color = '#dc2626'; return; }
+        fetch('{{ url_for("admin.customer_save") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, recipient_lines: addrInput.value})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+            else {
+                feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
+                feedback.style.color = '#059669';
+                setTimeout(() => feedback.textContent = '', 3000);
+            }
+        })
+        .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
+    });
+})();
+</script>
 {% endblock %}

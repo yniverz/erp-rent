@@ -1,7 +1,7 @@
 from io import BytesIO
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer
 from helpers import get_available_quantity, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
@@ -312,7 +312,8 @@ def quote_create():
                 start_date=start_date,
                 end_date=end_date,
                 rental_days=rental_days,
-                status='draft'
+                status='draft',
+                recipient_lines=request.form.get('recipient_lines', '').strip()
             )
             db.session.add(quote)
             db.session.commit()
@@ -1026,3 +1027,41 @@ def quote_receipt(quote_id):
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+# ============= CUSTOMER DATABASE =============
+
+@admin_bp.route('/api/customers/search')
+@login_required
+def customer_search():
+    """Search saved customers by name (for autocomplete)"""
+    q = request.args.get('q', '').strip()
+    if len(q) < 1:
+        return jsonify([])
+    customers = Customer.query.filter(Customer.name.ilike(f'%{q}%')).order_by(Customer.name).limit(10).all()
+    return jsonify([{'name': c.name, 'recipient_lines': c.recipient_lines or ''} for c in customers])
+
+
+@admin_bp.route('/api/customers/save', methods=['POST'])
+@login_required
+def customer_save():
+    """Save or update a customer entry (identified by name)"""
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    recipient_lines = (data.get('recipient_lines') or '').strip()
+
+    if not name:
+        return jsonify({'error': 'Name ist erforderlich.'}), 400
+
+    customer = Customer.query.filter(Customer.name.ilike(name)).first()
+    if customer:
+        customer.recipient_lines = recipient_lines
+        customer.name = name  # preserve exact casing from latest save
+        action = 'updated'
+    else:
+        customer = Customer(name=name, recipient_lines=recipient_lines)
+        db.session.add(customer)
+        action = 'created'
+
+    db.session.commit()
+    return jsonify({'status': 'ok', 'action': action, 'name': customer.name})

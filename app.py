@@ -127,6 +127,18 @@ with app.app_context():
         if not column_exists('quote_item', 'discount_exempt'):
             cursor.execute("ALTER TABLE quote_item ADD COLUMN discount_exempt BOOLEAN DEFAULT 0")
 
+        # Customer table migration
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customer'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE customer (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(200) NOT NULL UNIQUE,
+                    recipient_lines TEXT,
+                    updated_at DATETIME
+                )
+            """)
+
         conn.commit()
         conn.close()
 

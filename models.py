@@ -214,6 +214,14 @@ class InquiryItem(db.Model):
     item = db.relationship('Item')
 
 
+class Customer(db.Model):
+    """Saved customer for quick lookup by name"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, unique=True)
+    recipient_lines = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SiteSettings(db.Model):
     """Global site settings"""
     id = db.Column(db.Integer, primary_key=True)
