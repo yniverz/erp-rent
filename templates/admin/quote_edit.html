@@ -170,7 +170,7 @@
                             {% if qi.item.category %}<br><small style="color:#6b7280;">{{ qi.item.category.name }}</small>{% endif %}
                             <br><small style="color:#6b7280;">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
                         </td>
-                        <td>{{ '∞' if avail == -1 else (avail + qi.quantity) }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
+                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
                         <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" step="{{ qi.item.rental_step }}" style="width:80px;"></td>
                         <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" style="width:100px;"></td>
                         <td>
