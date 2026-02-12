@@ -194,11 +194,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="action" value="remove_item">
-                                <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
-                                <button type="submit" class="btn btn-sm btn-danger" title="Entfernen">✕</button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-danger" title="Entfernen" onclick="removeQuoteItem({{ qi.id }})">✕</button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -237,11 +233,7 @@
                         </td>
                         <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
                         <td>
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="action" value="remove_item">
-                                <input type="hidden" name="quote_item_id" value="{{ qi.id }}">
-                                <button type="submit" class="btn btn-sm btn-danger">Entfernen</button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="removeQuoteItem({{ qi.id }})">Entfernen</button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -405,5 +397,14 @@
         .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
     });
 })();
+
+function removeQuoteItem(quoteItemId) {
+    const f = document.createElement('form');
+    f.method = 'POST';
+    f.style.display = 'none';
+    f.innerHTML = '<input name="action" value="remove_item"><input name="quote_item_id" value="' + quoteItemId + '">';
+    document.body.appendChild(f);
+    f.submit();
+}
 </script>
 {% endblock %}
