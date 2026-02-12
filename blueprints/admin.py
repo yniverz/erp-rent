@@ -1159,3 +1159,19 @@ def customer_save():
 
     db.session.commit()
     return jsonify({'status': 'ok', 'action': action, 'name': customer.name})
+
+
+@admin_bp.route('/api/customers/delete', methods=['POST'])
+@login_required
+def customer_delete():
+    """Delete a saved customer by name"""
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name ist erforderlich.'}), 400
+    customer = Customer.query.filter(Customer.name.ilike(name)).first()
+    if not customer:
+        return jsonify({'error': 'Kunde nicht gefunden.'}), 404
+    db.session.delete(customer)
+    db.session.commit()
+    return jsonify({'status': 'ok', 'name': name})

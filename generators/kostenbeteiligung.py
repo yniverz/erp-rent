@@ -230,6 +230,11 @@ def build_rechnung_pdf_bytes(
     return buf.getvalue()
 
 
+
+
+
+
+
 # ---------------- Example Flask endpoint ----------------
 def file():
     pdf_bytes = build_rechnung_pdf_bytes(

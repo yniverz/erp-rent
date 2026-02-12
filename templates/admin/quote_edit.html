@@ -94,7 +94,7 @@
             <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
             <div style="display: flex; gap: 6px; align-items: center;">
                 <span style="color:#6b7280;">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}{% if quote.rental_days_override %} <strong style="color:#2563eb;">(manuell)</strong>{% endif %}</span>
-                <label style="color:#6b7280; font-size: 0.9em; margin:0;">Überschreiben:</label>
+                <label style="color:#6b7280; font-size: 0.9em; margin:0;">— Überschreiben:</label>
                 <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" style="width: 80px;" placeholder="—">
                 <span style="color:#6b7280; font-size: 0.9em;">Tage</span>
                 <button type="submit" class="btn btn-sm btn-outline">Speichern</button>
