@@ -98,12 +98,10 @@
                     {% else %}
                         <div class="item-price on-request">Preis auf Anfrage</div>
                     {% endif %}
-                    <form class="add-to-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart data-item-id="{{ item.id }}">
+                    <form class="add-to-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
                         <input type="hidden" name="item_id" value="{{ item.id }}">
-                        {% set in_cart = cart.get(item.id|string, 0) %}
-                        {% set remaining = item.total_quantity - in_cart if item.total_quantity != -1 else none %}
-                        <input type="number" name="quantity" value="1" min="1" step="{{ item.rental_step }}"{% if remaining is not none %} max="{{ remaining }}"{% endif %}>
-                        <button type="submit" class="btn btn-primary btn-sm"{% if remaining is not none and remaining <= 0 %} disabled{% endif %}>{% if remaining is not none and remaining <= 0 %}Ausverkauft{% else %}In den Warenkorb{% endif %}</button>
+                        <input type="number" name="quantity" value="1" min="1" step="{{ item.rental_step }}">
+                        <button type="submit" class="btn btn-primary btn-sm">In den Warenkorb</button>
                     </form>
                 </div>
             </div>
@@ -123,10 +121,8 @@
 document.querySelectorAll('[data-ajax-cart]').forEach(form => {
     form.addEventListener('submit', function(e) {
         e.preventDefault();
-        const btn = this.querySelector('button');
-        if (btn.disabled) return;
         const formData = new FormData(this);
-        const qtyInput = this.querySelector('input[name="quantity"]');
+        const btn = this.querySelector('button');
         const origText = btn.textContent;
         btn.textContent = 'Hinzugefügt!';
         btn.style.background = '#059669';
@@ -141,20 +137,6 @@ document.querySelectorAll('[data-ajax-cart]').forEach(form => {
         .then(data => {
             if (data.cart_count !== undefined) {
                 document.getElementById('cart-badge').textContent = data.cart_count;
-            }
-            // Update max for this item's input if it has a max
-            if (qtyInput.hasAttribute('max')) {
-                const addedQty = parseInt(formData.get('quantity')) || 0;
-                const currentMax = parseInt(qtyInput.getAttribute('max')) || 0;
-                const newMax = currentMax - addedQty;
-                qtyInput.setAttribute('max', newMax);
-                qtyInput.value = Math.min(parseInt(qtyInput.value), Math.max(newMax, 0));
-                if (newMax <= 0) {
-                    btn.disabled = true;
-                    btn.textContent = 'Ausverkauft';
-                    btn.style.background = '#9ca3af';
-                    qtyInput.value = 0;
-                }
             }
         })
         .catch(() => {});
