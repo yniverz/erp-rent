@@ -537,8 +537,7 @@ def quote_edit(quote_id):
                             )
 
                             if available != -1 and quantity > available:
-                                errors.append(f'{qi.item.name}: Nur {available} verfügbar (gesamt: {qi.item.total_quantity})')
-                                continue
+                                errors.append(f'{qi.item.name}: Nur {available} verfügbar (gesamt: {qi.item.total_quantity}), aber {quantity} zugewiesen')
 
                             qi.quantity = quantity
                             qi.rental_price_per_day = price
@@ -554,11 +553,9 @@ def quote_edit(quote_id):
                         qi.discount_exempt = request.form.get(exempt_key) == 'on'
 
                 if errors:
-                    flash('Fehler: ' + '; '.join(errors), 'error')
-                    db.session.rollback()
-                else:
-                    db.session.commit()
-                    flash('Artikel aktualisiert!', 'success')
+                    flash('⚠ Bestandswarnung: ' + '; '.join(errors), 'warning')
+                db.session.commit()
+                flash('Artikel aktualisiert!', 'success')
 
             elif action == 'remove_item':
                 quote_item_id = int(request.form.get('quote_item_id'))
@@ -618,7 +615,7 @@ def quote_edit(quote_id):
                     item_availability = {item.id: item.total_quantity for item in items}
                     return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
 
-                validation_errors = []
+                validation_warnings = []
                 for quote_item in quote.quote_items:
                     if not quote_item.is_custom and quote_item.item:
                         available = get_available_quantity(
@@ -629,17 +626,12 @@ def quote_edit(quote_id):
                         )
                         if available != -1 and quote_item.quantity > available:
                             pkg_note = f' (Paket: {quote_item.package.name})' if quote_item.package_id else ''
-                            validation_errors.append(
+                            validation_warnings.append(
                                 f'{quote_item.item.name}{pkg_note}: Nur {available} verfügbar (Angebot hat {quote_item.quantity})'
                             )
 
-                if validation_errors:
-                    flash('Kann nicht finalisiert werden: ' + '; '.join(validation_errors), 'error')
-                    item_availability = {}
-                    for item in items:
-                        item_availability[item.id] = get_available_quantity(
-                            item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
+                if validation_warnings:
+                    flash('⚠ Bestandswarnung: ' + '; '.join(validation_warnings), 'warning')
 
                 quote.status = 'finalized'
                 quote.finalized_at = datetime.utcnow()

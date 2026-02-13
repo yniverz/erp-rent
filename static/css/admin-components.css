@@ -34,6 +34,10 @@
 .package-component-row td { background: var(--color-gray-50); }
 .pl-30                  { padding-left: 30px !important; }
 
+/* ── Overstock warning row ── */
+.overstock-row td       { background: var(--color-warning-light) !important; }
+.overstock-row td::first-child::after { content: ' ⚠'; }
+
 /* ── Quote section spacing ── */
 .quote-section      { margin-bottom: 30px; }
 

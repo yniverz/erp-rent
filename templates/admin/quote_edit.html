@@ -98,16 +98,16 @@
                                 {% if item.is_package %}
                                     {% if item.id not in existing_package_ids %}
                                         {% set avail = item_availability.get(item.id, 0) %}
-                                        <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
-                                            📦 {{ item.name }}
+                                        <option value="{{ item.id }}">
+                                            {{ '⚠ ' if avail == 0 }}📦 {{ item.name }}
                                             ({{ '∞' if avail == -1 else avail }} verf.)
                                             — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
                                         </option>
                                     {% endif %}
                                 {% elif item.id not in existing_ids %}
                                     {% set avail = item_availability.get(item.id, 0) %}
-                                    <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
-                                        {{ item.name }}
+                                    <option value="{{ item.id }}">
+                                        {{ '⚠ ' if avail == 0 }}{{ item.name }}
                                         {% if item.is_external %} ↗ Extern{% endif %}
                                         ({{ '∞' if avail == -1 else avail }} verf.)
                                         — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
@@ -126,16 +126,16 @@
                             {% if item.is_package %}
                                 {% if item.id not in existing_package_ids %}
                                     {% set avail = item_availability.get(item.id, 0) %}
-                                    <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
-                                        📦 {{ item.name }}
+                                    <option value="{{ item.id }}">
+                                        {{ '⚠ ' if avail == 0 }}📦 {{ item.name }}
                                         ({{ '∞' if avail == -1 else avail }} verf.)
                                         — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
                                     </option>
                                 {% endif %}
                             {% elif item.id not in existing_ids %}
                                 {% set avail = item_availability.get(item.id, 0) %}
-                                <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
-                                    {{ item.name }}
+                                <option value="{{ item.id }}">
+                                    {{ '⚠ ' if avail == 0 }}{{ item.name }}
                                     {% if item.is_external %} ↗ Extern{% endif %}
                                     ({{ '∞' if avail == -1 else avail }} verf.)
                                     — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
@@ -190,13 +190,13 @@
                     </tr>
                     {% for qi in pkg_components %}
                     {% set avail = item_availability.get(qi.item_id, 0) %}
-                    <tr class="package-component-row">
+                    <tr class="package-component-row{{ ' overstock-row' if avail != -1 and qi.quantity > avail }}">
                         <td class="pl-30">
                             ↳ {{ qi.item.name }}
                             {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
                             {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
                         </td>
-                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
+                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}{% if avail != -1 and qi.quantity > avail %}<br><small class="text-warning">⚠ Überbestand</small>{% endif %}</td>
                         <td><input type="number" name="quantity_pkg_{{ qi.id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
                         <td><input type="number" name="price_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
@@ -224,13 +224,13 @@
                     {# Standalone items (non-package) #}
                     {% for qi in standalone_items %}
                     {% set avail = item_availability.get(qi.item_id, 0) %}
-                    <tr>
+                    <tr class="{{ 'overstock-row' if avail != -1 and qi.quantity > avail }}">
                         <td>
                             <strong>{{ qi.item.name }}</strong>
                             {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
                             {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
                         </td>
-                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
+                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}{% if avail != -1 and qi.quantity > avail %}<br><small class="text-warning">⚠ Überbestand</small>{% endif %}</td>
                         <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
                         <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
