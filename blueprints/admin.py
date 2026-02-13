@@ -1,8 +1,8 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer
-from helpers import get_available_quantity, get_upload_path, allowed_image_file
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent
+from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
 from werkzeug.utils import secure_filename
@@ -125,15 +125,21 @@ def inventory_add():
             show_price = request.form.get('show_price_publicly') == 'on'
             visible = request.form.get('visible_in_shop') == 'on'
             is_external = request.form.get('is_external') == 'on'
+            is_package = request.form.get('is_package') == 'on'
 
-            # Owner: admin can assign to any user, others assign to themselves
-            if current_user.is_admin:
+            # Owner: admin or can_edit_all can assign to any user, others assign to themselves
+            if current_user.is_admin or current_user.can_edit_all:
                 owner_id = request.form.get('owner_id', type=int) or current_user.id
             else:
                 owner_id = current_user.id
 
-            # External items have no purchase cost, but a rental cost per day
-            if is_external:
+            # Packages don't have purchase cost or external fields
+            if is_package:
+                unit_purchase_cost = 0
+                default_rental_cost = 0
+                total_quantity = -1  # availability derived from components
+                is_external = False
+            elif is_external:
                 unit_purchase_cost = 0
                 default_rental_cost = float(request.form.get('default_rental_cost', 0))
             else:
@@ -164,7 +170,8 @@ def inventory_add():
                 default_rental_cost_per_day=default_rental_cost,
                 show_price_publicly=show_price,
                 visible_in_shop=visible,
-                image_filename=image_filename
+                image_filename=image_filename,
+                is_package=is_package
             )
 
             # Handle subcategories
@@ -172,6 +179,21 @@ def inventory_add():
             item.subcategories = Category.query.filter(Category.id.in_(subcategory_ids)).all() if subcategory_ids else []
 
             db.session.add(item)
+            db.session.flush()  # Get the item.id
+
+            # Handle package components
+            if is_package:
+                comp_item_ids = request.form.getlist('component_item_ids', type=int)
+                comp_quantities = request.form.getlist('component_quantities', type=int)
+                for comp_id, comp_qty in zip(comp_item_ids, comp_quantities):
+                    if comp_id and comp_qty and comp_qty > 0:
+                        pc = PackageComponent(
+                            package_id=item.id,
+                            component_item_id=comp_id,
+                            quantity=comp_qty
+                        )
+                        db.session.add(pc)
+
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
             return redirect(url_for('admin.inventory_list'))
@@ -183,7 +205,8 @@ def inventory_add():
     return render_template('admin/inventory_form.html',
                            item=None,
                            categories=categories,
-                           users=users)
+                           users=users,
+                           all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
 
 @admin_bp.route('/inventory/<int:item_id>/edit', methods=['GET', 'POST'])
@@ -210,11 +233,30 @@ def inventory_edit(item_id):
             item.show_price_publicly = request.form.get('show_price_publicly') == 'on'
             item.visible_in_shop = request.form.get('visible_in_shop') == 'on'
             item.is_external = request.form.get('is_external') == 'on'
+            item.is_package = request.form.get('is_package') == 'on'
 
-            if current_user.is_admin:
+            if current_user.is_admin or current_user.can_edit_all:
                 item.owner_id = request.form.get('owner_id', type=int) or item.owner_id
 
-            if item.is_external:
+            if item.is_package:
+                item.unit_purchase_cost = 0
+                item.default_rental_cost_per_day = 0
+                item.total_quantity = -1
+                item.is_external = False
+
+                # Update package components
+                PackageComponent.query.filter_by(package_id=item.id).delete()
+                comp_item_ids = request.form.getlist('component_item_ids', type=int)
+                comp_quantities = request.form.getlist('component_quantities', type=int)
+                for comp_id, comp_qty in zip(comp_item_ids, comp_quantities):
+                    if comp_id and comp_qty and comp_qty > 0:
+                        pc = PackageComponent(
+                            package_id=item.id,
+                            component_item_id=comp_id,
+                            quantity=comp_qty
+                        )
+                        db.session.add(pc)
+            elif item.is_external:
                 item.unit_purchase_cost = 0
                 item.default_rental_cost_per_day = float(request.form.get('default_rental_cost', 0))
             else:
@@ -258,7 +300,8 @@ def inventory_edit(item_id):
     return render_template('admin/inventory_form.html',
                            item=item,
                            categories=categories,
-                           users=users)
+                           users=users,
+                           all_items=Item.query.filter(Item.is_package == False, Item.id != item.id).order_by(Item.name).all())
 
 
 @admin_bp.route('/inventory/<int:item_id>/delete', methods=['POST'])
@@ -277,6 +320,8 @@ def inventory_delete(item_id):
             old_path = os.path.join(get_upload_path(), item.image_filename)
             if os.path.exists(old_path):
                 os.remove(old_path)
+        # Remove this item from any packages it's a component of
+        PackageComponent.query.filter_by(component_item_id=item.id).delete()
         name = item.name
         db.session.delete(item)
         db.session.commit()
@@ -396,23 +441,53 @@ def quote_edit(quote_id):
                     if item_id:
                         item = Item.query.get(item_id)
                         if item:
-                            existing = QuoteItem.query.filter_by(
-                                quote_id=quote.id, item_id=item.id, is_custom=False
-                            ).first()
-                            if existing:
-                                flash(f'{item.name} ist bereits im Angebot.', 'info')
+                            if item.is_package:
+                                # Check if package already added
+                                existing_pkg = QuoteItem.query.filter_by(
+                                    quote_id=quote.id, package_id=item.id
+                                ).first()
+                                if existing_pkg:
+                                    flash(f'{item.name} ist bereits im Angebot.', 'info')
+                                else:
+                                    # Calculate proportional prices based on package price
+                                    component_price_sum = item.component_price_sum
+                                    for pc in item.package_components:
+                                        if component_price_sum > 0:
+                                            # Proportional share of package price
+                                            comp_share = (pc.component_item.default_rental_price_per_day * pc.quantity) / component_price_sum
+                                            adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
+                                        else:
+                                            adjusted_price = 0
+                                        qi = QuoteItem(
+                                            quote_id=quote.id,
+                                            item_id=pc.component_item_id,
+                                            quantity=pc.quantity,
+                                            rental_price_per_day=adjusted_price,
+                                            rental_cost_per_day=pc.component_item.default_rental_cost_per_day if pc.component_item.is_external else 0,
+                                            is_custom=False,
+                                            package_id=item.id
+                                        )
+                                        db.session.add(qi)
+                                    db.session.commit()
+                                    flash(f'Paket {item.name} mit {len(item.package_components)} Komponenten hinzugefügt!', 'success')
                             else:
-                                qi = QuoteItem(
-                                    quote_id=quote.id,
-                                    item_id=item.id,
-                                    quantity=item.rental_step or 1,
-                                    rental_price_per_day=item.default_rental_price_per_day,
-                                    rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
-                                    is_custom=False
-                                )
-                                db.session.add(qi)
-                                db.session.commit()
-                                flash(f'{item.name} hinzugefügt!', 'success')
+                                existing = QuoteItem.query.filter_by(
+                                    quote_id=quote.id, item_id=item.id, is_custom=False, package_id=None
+                                ).first()
+                                if existing:
+                                    flash(f'{item.name} ist bereits im Angebot.', 'info')
+                                else:
+                                    qi = QuoteItem(
+                                        quote_id=quote.id,
+                                        item_id=item.id,
+                                        quantity=item.rental_step or 1,
+                                        rental_price_per_day=item.default_rental_price_per_day,
+                                        rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
+                                        is_custom=False
+                                    )
+                                    db.session.add(qi)
+                                    db.session.commit()
+                                    flash(f'{item.name} hinzugefügt!', 'success')
 
             elif action == 'update_items':
                 if not quote.start_date or not quote.end_date:
@@ -427,10 +502,17 @@ def quote_edit(quote_id):
                     if not qi.item:
                         continue
 
-                    quantity_key = f'quantity_{qi.item_id}'
-                    price_key = f'price_{qi.item_id}'
-                    cost_key = f'cost_{qi.item_id}'
-                    exempt_key = f'discount_exempt_{qi.item_id}'
+                    # Use qi.id as unique key for package components
+                    if qi.package_id:
+                        quantity_key = f'quantity_pkg_{qi.id}'
+                        price_key = f'price_pkg_{qi.id}'
+                        cost_key = f'cost_pkg_{qi.id}'
+                        exempt_key = f'discount_exempt_pkg_{qi.id}'
+                    else:
+                        quantity_key = f'quantity_{qi.item_id}'
+                        price_key = f'price_{qi.item_id}'
+                        cost_key = f'cost_{qi.item_id}'
+                        exempt_key = f'discount_exempt_{qi.item_id}'
 
                     if quantity_key in request.form:
                         quantity = int(request.form.get(quantity_key, 0))
@@ -450,7 +532,7 @@ def quote_edit(quote_id):
                                 errors.append(f'{qi.item.name}: Nur {available} verfügbar (gesamt: {qi.item.total_quantity})')
                                 continue
 
-                            if qi.item.rental_step > 1 and quantity % qi.item.rental_step != 0:
+                            if not qi.package_id and qi.item.rental_step > 1 and quantity % qi.item.rental_step != 0:
                                 errors.append(f'{qi.item.name}: Menge muss ein Vielfaches von {qi.item.rental_step} sein')
                                 continue
 
@@ -481,6 +563,14 @@ def quote_edit(quote_id):
                     db.session.delete(quote_item)
                     db.session.commit()
                     flash('Artikel aus Angebot entfernt!', 'success')
+
+            elif action == 'remove_package':
+                package_id = int(request.form.get('package_id'))
+                pkg_items = QuoteItem.query.filter_by(quote_id=quote.id, package_id=package_id).all()
+                for qi in pkg_items:
+                    db.session.delete(qi)
+                db.session.commit()
+                flash('Paket aus Angebot entfernt!', 'success')
 
             elif action == 'add_custom':
                 custom_name = request.form.get('custom_name', '').strip()
@@ -534,8 +624,9 @@ def quote_edit(quote_id):
                             exclude_quote_id=quote.id
                         )
                         if available != -1 and quote_item.quantity > available:
+                            pkg_note = f' (Paket: {quote_item.package.name})' if quote_item.package_id else ''
                             validation_errors.append(
-                                f'{quote_item.item.name}: Nur {available} verfügbar (Angebot hat {quote_item.quantity})'
+                                f'{quote_item.item.name}{pkg_note}: Nur {available} verfügbar (Angebot hat {quote_item.quantity})'
                             )
 
                 if validation_errors:
@@ -560,8 +651,12 @@ def quote_edit(quote_id):
     item_availability = {}
     if quote.start_date and quote.end_date:
         for item in items:
-            item_availability[item.id] = get_available_quantity(
-                item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
+            if item.is_package:
+                item_availability[item.id] = get_package_available_quantity(
+                    item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
+            else:
+                item_availability[item.id] = get_available_quantity(
+                    item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
     else:
         for item in items:
             item_availability[item.id] = item.total_quantity
@@ -746,15 +841,36 @@ def inquiry_convert(inquiry_id):
         for inq_item in inquiry.items:
             item = Item.query.get(inq_item.item_id)
             if item:
-                qi = QuoteItem(
-                    quote_id=quote.id,
-                    item_id=item.id,
-                    quantity=inq_item.quantity,
-                    rental_price_per_day=item.default_rental_price_per_day,
-                    rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
-                    is_custom=False
-                )
-                db.session.add(qi)
+                if item.is_package:
+                    # Expand package into components
+                    component_price_sum = item.component_price_sum
+                    for pc in item.package_components:
+                        if component_price_sum > 0:
+                            comp_share = (pc.component_item.default_rental_price_per_day * pc.quantity) / component_price_sum
+                            adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
+                        else:
+                            adjusted_price = 0
+                        for _ in range(inq_item.quantity):
+                            qi = QuoteItem(
+                                quote_id=quote.id,
+                                item_id=pc.component_item_id,
+                                quantity=pc.quantity,
+                                rental_price_per_day=adjusted_price,
+                                rental_cost_per_day=pc.component_item.default_rental_cost_per_day if pc.component_item.is_external else 0,
+                                is_custom=False,
+                                package_id=item.id
+                            )
+                            db.session.add(qi)
+                else:
+                    qi = QuoteItem(
+                        quote_id=quote.id,
+                        item_id=item.id,
+                        quantity=inq_item.quantity,
+                        rental_price_per_day=item.default_rental_price_per_day,
+                        rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
+                        is_custom=False
+                    )
+                    db.session.add(qi)
 
         inquiry.status = 'converted'
         db.session.commit()

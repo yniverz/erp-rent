@@ -38,6 +38,7 @@
                                 {% endif %}
                                 <div>
                                     <strong>{{ ci.item.name }}</strong>
+                                    {% if ci.item.is_package %}<span class="badge badge-bundle">Paket</span>{% endif %}
                                     {% if ci.item.category %}<br><small class="text-muted">{{ ci.item.category.name }}</small>{% endif %}
                                 </div>
                             </div>

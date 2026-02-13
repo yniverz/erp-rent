@@ -2,7 +2,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from models import db, Item, Quote, QuoteItem
+from models import db, Item, Quote, QuoteItem, PackageComponent
 from sqlalchemy import and_, or_
 
 
@@ -17,6 +17,7 @@ def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None)
     """
     Calculate available quantity for an item during a specific date range.
     Considers overlapping quotes that are finalized or paid.
+    Also accounts for items consumed by package rentals (via quote_items with package_id).
     Returns -1 for unlimited items (items with total_quantity = -1).
     """
     item = Item.query.get(item_id)
@@ -45,11 +46,41 @@ def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None)
     booked_quantity = 0
     for quote in overlapping_quotes:
         for quote_item in quote.quote_items:
-            if quote_item.item_id == item_id and not quote_item.is_custom:
+            if quote_item.is_custom:
+                continue
+            # Direct booking of this item
+            if quote_item.item_id == item_id and not quote_item.package_id:
+                booked_quantity += quote_item.quantity
+            # This item booked as part of a package (expanded component)
+            elif quote_item.item_id == item_id and quote_item.package_id:
                 booked_quantity += quote_item.quantity
 
     available = item.total_quantity - booked_quantity
     return max(0, available)
+
+
+def get_package_available_quantity(package_id, start_date, end_date, exclude_quote_id=None):
+    """
+    Calculate how many units of a package can be rented based on component availability.
+    Returns min(available_component / component_qty) across all components.
+    Returns -1 if all components are unlimited.
+    """
+    package = Item.query.get(package_id)
+    if not package or not package.is_package or not package.package_components:
+        return 0
+
+    min_available = None
+    for pc in package.package_components:
+        comp_available = get_available_quantity(
+            pc.component_item_id, start_date, end_date, exclude_quote_id
+        )
+        if comp_available == -1:
+            continue  # unlimited component doesn't constrain
+        packages_from_this = comp_available // pc.quantity
+        if min_available is None or packages_from_this < min_available:
+            min_available = packages_from_this
+
+    return min_available if min_available is not None else -1
 
 
 def send_inquiry_notification(inquiry, settings):

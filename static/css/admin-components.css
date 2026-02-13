@@ -29,6 +29,11 @@
 }
 .customer-save-feedback { font-size: 0.85em; margin-left: 8px; }
 
+/* ── Package rows in quotes ── */
+.package-header-row td  { background: var(--color-gray-100); border-bottom: 1px solid var(--border-color); }
+.package-component-row td { background: var(--color-gray-50); }
+.pl-30                  { padding-left: 30px !important; }
+
 /* ── Quote section spacing ── */
 .quote-section      { margin-bottom: 30px; }
 

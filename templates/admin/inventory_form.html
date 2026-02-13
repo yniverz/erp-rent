@@ -32,7 +32,7 @@
             </div>
         </div>
 
-        {% if current_user.is_admin %}
+        {% if current_user.is_admin or current_user.can_edit_all %}
         <div class="form-group">
             <label>Eigentümer</label>
             <select name="owner_id">
@@ -54,6 +54,14 @@
                 <label for="is_external" class="m-0 font-normal">Externer Artikel (angemietet)</label>
             </div>
             <small class="help-text">Aktivieren, wenn dieser Artikel von einem externen Anbieter angemietet wird</small>
+        </div>
+
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="is_package" id="is_package" {{ 'checked' if item and item.is_package }} onchange="togglePackageFields()">
+                <label for="is_package" class="m-0 font-normal">Paket / Bundle</label>
+            </div>
+            <small class="help-text">Aktivieren, um diesen Artikel als Paket aus mehreren Komponenten zusammenzustellen</small>
         </div>
 
         <div class="form-row">
@@ -122,16 +130,85 @@
             <button type="submit" class="btn btn-primary">{{ 'Artikel aktualisieren' if item else 'Artikel hinzufügen' }}</button>
             <a href="{{ url_for('admin.inventory_list') }}" class="btn btn-outline">Abbrechen</a>
         </div>
+
+        <!-- Package Components Section (hidden unless is_package is checked) -->
+        <div id="package-components-section" class="d-none mt-24">
+            <h3>Paket-Komponenten</h3>
+            <p class="help-text mb-10">Wählen Sie die Artikel und Mengen, die dieses Paket enthalten soll.</p>
+            <table id="components-table">
+                <thead>
+                    <tr><th>Artikel</th><th>Menge</th><th></th></tr>
+                </thead>
+                <tbody id="components-tbody">
+                    {% if item and item.is_package %}
+                        {% for pc in item.package_components %}
+                        <tr>
+                            <td>
+                                <select name="component_item_ids" class="w-full">
+                                    <option value="">— Artikel wählen —</option>
+                                    {% for ai in all_items %}
+                                        <option value="{{ ai.id }}" {{ 'selected' if ai.id == pc.component_item_id }}>{{ ai.name }}{% if ai.category %} ({{ ai.category.name }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" name="component_quantities" value="{{ pc.quantity }}" min="1" class="w-80"></td>
+                            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addComponentRow()">+ Komponente hinzufügen</button>
+        </div>
     </form>
 </div>
 
 <script>
 function toggleExternalFields() {
     var isExternal = document.getElementById('is_external').checked;
-    document.getElementById('purchase-cost-group').classList.toggle('d-none', isExternal);
-    document.getElementById('rental-cost-group').classList.toggle('d-none', !isExternal);
+    var isPackage = document.getElementById('is_package').checked;
+    document.getElementById('purchase-cost-group').classList.toggle('d-none', isExternal || isPackage);
+    document.getElementById('rental-cost-group').classList.toggle('d-none', !isExternal || isPackage);
+    if (isPackage) {
+        document.getElementById('is_external').checked = false;
+    }
 }
+
+function togglePackageFields() {
+    var isPackage = document.getElementById('is_package').checked;
+    document.getElementById('package-components-section').classList.toggle('d-none', !isPackage);
+    document.getElementById('purchase-cost-group').classList.toggle('d-none', isPackage);
+    document.getElementById('rental-cost-group').classList.toggle('d-none', true);
+    if (isPackage) {
+        document.getElementById('is_external').checked = false;
+        // If no component rows yet, add one
+        if (document.getElementById('components-tbody').children.length === 0) {
+            addComponentRow();
+        }
+    }
+    toggleExternalFields();
+}
+
+function addComponentRow() {
+    var tbody = document.getElementById('components-tbody');
+    var row = document.createElement('tr');
+    row.innerHTML = `
+        <td>
+            <select name="component_item_ids" class="w-full">
+                <option value="">— Artikel wählen —</option>
+                {% for ai in all_items %}
+                <option value="{{ ai.id }}">{{ ai.name }}{% if ai.category %} ({{ ai.category.name }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td><input type="number" name="component_quantities" value="1" min="1" class="w-80"></td>
+        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+    `;
+    tbody.appendChild(row);
+}
+
 // Run on page load
 toggleExternalFields();
+togglePackageFields();
 </script>
 {% endblock %}

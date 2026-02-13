@@ -108,6 +108,8 @@ table tr:hover         { background: var(--color-gray-50); }
 .badge-success    { background: var(--color-success-light);  color: var(--color-success-dark); }
 .badge-warning    { background: var(--color-warning-light);  color: var(--color-warning-dark); }
 .badge-external   { background: var(--color-external); color: white; font-size: 0.7em; vertical-align: middle; }
+.badge-package    { background: var(--color-accent); color: white; font-size: 0.7em; vertical-align: middle; }
+.badge-bundle     { display: inline-block; font-size: 0.7em; color: white; background: var(--color-accent); padding: 2px 6px; border-radius: var(--radius-sm); vertical-align: middle; margin-left: 4px; }
 .badge-lg         { font-size: 1em; padding: 6px 16px; }
 
 /* ── Cards ── */

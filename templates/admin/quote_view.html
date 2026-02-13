@@ -46,34 +46,79 @@
             <tr><th>Artikel</th><th>Eigentümer</th><th>Menge</th><th>Preis/Tag</th><th>Kosten/Tag</th><th>Summe</th></tr>
         </thead>
         <tbody>
+            {% set package_items = quote.quote_items|selectattr('package_id')|list %}
+            {% set package_ids = package_items|map(attribute='package_id')|unique|list %}
+            {% set shown_ids = [] %}
+
             {% for qi in quote.quote_items %}
-            <tr>
-                <td>
-                    {{ qi.display_name }}
-                    {% if qi.item and qi.item.is_external %}
-                        <small class="text-external">&#x2197; Extern</small>
-                    {% endif %}
-                    {% if qi.discount_exempt and quote.discount_percent > 0 %}
-                        <br><small class="text-warning">Kein Rabatt</small>
-                    {% endif %}
-                </td>
-                <td>{{ qi.item.owner.display_name or qi.item.owner.username if qi.item and qi.item.owner else '—' }}</td>
-                <td>{{ qi.quantity }}</td>
-                <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
-                <td>
-                    {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
-                        &euro;{{ "%.2f"|format(qi.rental_cost_per_day) }}
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td>
-                    &euro;{{ "%.2f"|format(qi.total_price) }}
-                    {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
-                        <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
-                    {% endif %}
-                </td>
-            </tr>
+                {% if qi.package_id and qi.package_id not in shown_ids %}
+                    {% set pkg_components = package_items|selectattr('package_id', 'equalto', qi.package_id)|list %}
+                    {% if shown_ids.append(qi.package_id) %}{% endif %}
+                    <tr class="package-header-row">
+                        <td colspan="5">
+                            <strong>📦 {{ qi.package.name }}</strong>
+                            <span class="badge badge-package">Paket</span>
+                        </td>
+                        <td>&euro;{{ "%.2f"|format(pkg_components|sum(attribute='total_price')) }}</td>
+                    </tr>
+                    {% for pqi in pkg_components %}
+                    <tr class="package-component-row">
+                        <td class="pl-30">
+                            ↳ {{ pqi.display_name }}
+                            {% if pqi.item and pqi.item.is_external %}
+                                <small class="text-external">&#x2197; Extern</small>
+                            {% endif %}
+                            {% if pqi.discount_exempt and quote.discount_percent > 0 %}
+                                <br><small class="text-warning">Kein Rabatt</small>
+                            {% endif %}
+                        </td>
+                        <td>{{ pqi.item.owner.display_name or pqi.item.owner.username if pqi.item and pqi.item.owner else '—' }}</td>
+                        <td>{{ pqi.quantity }}</td>
+                        <td>&euro;{{ "%.2f"|format(pqi.rental_price_per_day) }}</td>
+                        <td>
+                            {% if pqi.item and pqi.item.is_external and pqi.rental_cost_per_day %}
+                                &euro;{{ "%.2f"|format(pqi.rental_cost_per_day) }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            &euro;{{ "%.2f"|format(pqi.total_price) }}
+                            {% if pqi.item and pqi.item.is_external and pqi.rental_cost_per_day %}
+                                <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(pqi.total_external_cost) }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% elif not qi.package_id %}
+                <tr>
+                    <td>
+                        {{ qi.display_name }}
+                        {% if qi.item and qi.item.is_external %}
+                            <small class="text-external">&#x2197; Extern</small>
+                        {% endif %}
+                        {% if qi.discount_exempt and quote.discount_percent > 0 %}
+                            <br><small class="text-warning">Kein Rabatt</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ qi.item.owner.display_name or qi.item.owner.username if qi.item and qi.item.owner else '—' }}</td>
+                    <td>{{ qi.quantity }}</td>
+                    <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
+                    <td>
+                        {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
+                            &euro;{{ "%.2f"|format(qi.rental_cost_per_day) }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>
+                        &euro;{{ "%.2f"|format(qi.total_price) }}
+                        {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
+                            <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
             {% endfor %}
         </tbody>
     </table>

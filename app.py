@@ -1,6 +1,6 @@
 from flask import Flask, send_file
 from flask_login import LoginManager
-from models import db, User, SiteSettings
+from models import db, User, SiteSettings, PackageComponent
 from dotenv import load_dotenv
 import os
 import io
@@ -155,6 +155,27 @@ with app.app_context():
                     PRIMARY KEY (item_id, category_id),
                     FOREIGN KEY (item_id) REFERENCES item(id),
                     FOREIGN KEY (category_id) REFERENCES category(id)
+                )
+            """)
+
+        # Package support migrations
+        if not column_exists('item', 'is_package'):
+            cursor.execute("ALTER TABLE item ADD COLUMN is_package BOOLEAN DEFAULT 0")
+
+        if not column_exists('quote_item', 'package_id'):
+            cursor.execute("ALTER TABLE quote_item ADD COLUMN package_id INTEGER REFERENCES item(id)")
+
+        # PackageComponent table migration
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='package_component'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE package_component (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    package_id INTEGER NOT NULL,
+                    component_item_id INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY (package_id) REFERENCES item(id),
+                    FOREIGN KEY (component_item_id) REFERENCES item(id)
                 )
             """)
 

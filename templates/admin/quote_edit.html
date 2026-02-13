@@ -86,14 +86,24 @@
                 <label>Artikel hinzufügen</label>
                 <select name="item_id" class="w-full">
                     <option value="">— Artikel auswählen —</option>
-                    {% set existing_ids = quote.quote_items|rejectattr('is_custom')|map(attribute='item_id')|list %}
+                    {% set existing_ids = quote.quote_items|rejectattr('is_custom')|rejectattr('package_id')|map(attribute='item_id')|list %}
+                    {% set existing_package_ids = quote.quote_items|selectattr('package_id')|map(attribute='package_id')|unique|list %}
 
                     {# Items without category #}
                     {% set uncategorized = items|rejectattr('category')|list %}
                     {% if uncategorized %}
                     <optgroup label="Ohne Kategorie">
                         {% for item in uncategorized %}
-                            {% if item.id not in existing_ids %}
+                            {% if item.is_package %}
+                                {% if item.id not in existing_package_ids %}
+                                    {% set avail = item_availability.get(item.id, 0) %}
+                                    <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
+                                        📦 {{ item.name }}
+                                        ({{ '∞' if avail == -1 else avail }} verf.)
+                                        — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
+                                    </option>
+                                {% endif %}
+                            {% elif item.id not in existing_ids %}
                                 {% set avail = item_availability.get(item.id, 0) %}
                                 <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
                                     {{ item.name }}
@@ -111,7 +121,11 @@
                         {% set cat_items = items|selectattr('category')|selectattr('category.id', 'equalto', cat.id)|list %}
                         {% set available_cat_items = [] %}
                         {% for item in cat_items %}
-                            {% if item.id not in existing_ids %}
+                            {% if item.is_package %}
+                                {% if item.id not in existing_package_ids %}
+                                    {% if available_cat_items.append(item) %}{% endif %}
+                                {% endif %}
+                            {% elif item.id not in existing_ids %}
                                 {% if available_cat_items.append(item) %}{% endif %}
                             {% endif %}
                         {% endfor %}
@@ -120,7 +134,7 @@
                             {% for item in available_cat_items %}
                                 {% set avail = item_availability.get(item.id, 0) %}
                                 <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
-                                    {{ item.name }}
+                                    {% if item.is_package %}📦 {% endif %}{{ item.name }}
                                     {% if item.is_external %} ↗ Extern{% endif %}
                                     ({{ '∞' if avail == -1 else avail }} verf.)
                                     — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
@@ -136,6 +150,9 @@
 
         <!-- Current Items in Quote -->
         {% set inventory_items = quote.quote_items|rejectattr('is_custom')|list %}
+        {% set standalone_items = inventory_items|rejectattr('package_id')|list %}
+        {% set package_items = inventory_items|selectattr('package_id')|list %}
+        {% set package_ids = package_items|map(attribute='package_id')|unique|list %}
         {% if inventory_items %}
         <form method="POST">
             <input type="hidden" name="action" value="update_items">
@@ -153,7 +170,65 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for qi in inventory_items %}
+                    {# Package grouped items #}
+                    {% for pkg_id in package_ids %}
+                    {% set pkg_components = package_items|selectattr('package_id', 'equalto', pkg_id)|list %}
+                    {% if pkg_components %}
+                    {% set pkg = pkg_components[0].package %}
+                    <tr class="package-header-row">
+                        <td colspan="6">
+                            <strong>📦 {{ pkg.name }}</strong>
+                            <span class="badge badge-package">Paket</span>
+                        </td>
+                        <td>
+                            &euro;{{ "%.2f"|format(pkg_components|sum(attribute='total_price')) }}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger" title="Ganzes Paket entfernen" onclick="removePackage({{ pkg_id }})">✕ Paket</button>
+                        </td>
+                    </tr>
+                    {% for qi in pkg_components %}
+                    {% set avail = item_availability.get(qi.item_id, 0) %}
+                    <tr class="package-component-row">
+                        <td class="pl-30">
+                            ↳ {{ qi.item.name }}
+                            {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
+                            {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
+                            <br><small class="text-muted">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
+                        </td>
+                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
+                        <td><input type="number" name="quantity_pkg_{{ qi.id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
+                        <td><input type="number" name="price_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
+                        <td>
+                            {% if qi.item.is_external %}
+                                <input type="number" name="cost_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
+                            {% else %}
+                                <span class="text-muted">—</span>
+                                <input type="hidden" name="cost_pkg_{{ qi.id }}" value="0">
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <label class="exempt-label" title="Vom Rabatt ausgenommen">
+                                <input type="checkbox" name="discount_exempt_pkg_{{ qi.id }}" {{ 'checked' if qi.discount_exempt }}>
+                                Kein Rabatt
+                            </label>
+                        </td>
+                        <td>
+                            &euro;{{ "%.2f"|format(qi.total_price) }}
+                            {% if qi.item.is_external and qi.rental_cost_per_day %}
+                                <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger" title="Komponente entfernen" onclick="removeQuoteItem({{ qi.id }})">✕</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endif %}
+                    {% endfor %}
+
+                    {# Standalone items (non-package) #}
+                    {% for qi in standalone_items %}
                     {% set avail = item_availability.get(qi.item_id, 0) %}
                     <tr>
                         <td>
@@ -470,6 +545,16 @@ function removeQuoteItem(quoteItemId) {
     f.method = 'POST';
     f.style.display = 'none';
     f.innerHTML = '<input name="action" value="remove_item"><input name="quote_item_id" value="' + quoteItemId + '">';
+    document.body.appendChild(f);
+    f.submit();
+}
+
+function removePackage(packageId) {
+    if (!confirm('Alle Komponenten dieses Pakets entfernen?')) return;
+    const f = document.createElement('form');
+    f.method = 'POST';
+    f.style.display = 'none';
+    f.innerHTML = '<input name="action" value="remove_package"><input name="package_id" value="' + packageId + '">';
     document.body.appendChild(f);
     f.submit();
 }

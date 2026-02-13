@@ -43,6 +43,9 @@
                 {% if item.is_external %}
                     <span class="badge badge-external">Extern</span>
                 {% endif %}
+                {% if item.is_package %}
+                    <span class="badge badge-package">Paket</span>
+                {% endif %}
             </td>
             <td>
                 {{ item.category.name if item.category else '—' }}

@@ -44,6 +44,9 @@
                     {% if item.category %}
                         <div class="item-category-tag">{{ item.category.name }}</div>
                     {% endif %}
+                    {% if item.is_package %}
+                        <div class="item-bundle-tag">Paket</div>
+                    {% endif %}
                     <div class="item-name">{{ item.name }}</div>
                     {% if item.description %}
                         <div class="item-description">{{ item.description[:120] }}{% if item.description|length > 120 %}...{% endif %}</div>

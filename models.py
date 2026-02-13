@@ -44,6 +44,17 @@ item_subcategories = db.Table('item_subcategories',
 )
 
 
+class PackageComponent(db.Model):
+    """Component item within a package/bundle"""
+    id = db.Column(db.Integer, primary_key=True)
+    package_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    component_item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+
+    package = db.relationship('Item', foreign_keys=[package_id], back_populates='package_components')
+    component_item = db.relationship('Item', foreign_keys=[component_item_id])
+
+
 class Category(db.Model):
     """Category for organizing inventory items"""
     id = db.Column(db.Integer, primary_key=True)
@@ -72,12 +83,18 @@ class Item(db.Model):
     image_filename = db.Column(db.String(300), nullable=True)
     total_revenue = db.Column(db.Float, default=0.0)
     total_cost = db.Column(db.Float, default=0.0)  # Accumulated external rental costs
+    is_package = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     owner = db.relationship('User', back_populates='items')
     category = db.relationship('Category', back_populates='items')
     subcategories = db.relationship('Category', secondary=item_subcategories, lazy='selectin')
-    quote_items = db.relationship('QuoteItem', back_populates='item', cascade='all, delete-orphan')
+    quote_items = db.relationship('QuoteItem', back_populates='item',
+                                   foreign_keys='QuoteItem.item_id',
+                                   cascade='all, delete-orphan')
+    package_components = db.relationship('PackageComponent', back_populates='package',
+                                         foreign_keys='PackageComponent.package_id',
+                                         cascade='all, delete-orphan', lazy='selectin')
 
     @property
     def total_purchase_cost(self):
@@ -106,6 +123,14 @@ class Item(db.Model):
         if self.is_external:
             return round(self.total_revenue - self.total_cost, 2)
         return round(self.total_revenue - self.total_purchase_cost, 2)
+
+    @property
+    def component_price_sum(self):
+        """Sum of default rental prices of all components (for proportional splitting)"""
+        if not self.is_package:
+            return 0
+        return sum(pc.component_item.default_rental_price_per_day * pc.quantity
+                   for pc in self.package_components)
 
 
 class Quote(db.Model):
@@ -181,9 +206,11 @@ class QuoteItem(db.Model):
     discount_exempt = db.Column(db.Boolean, default=False)  # If True, discount is not applied to this item
     custom_item_name = db.Column(db.String(200), nullable=True)
     is_custom = db.Column(db.Boolean, default=False)
+    package_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)  # If this is a component expanded from a package
 
     quote = db.relationship('Quote', back_populates='quote_items')
-    item = db.relationship('Item', back_populates='quote_items')
+    item = db.relationship('Item', foreign_keys=[item_id], back_populates='quote_items')
+    package = db.relationship('Item', foreign_keys=[package_id])  # The package this component belongs to
 
     @property
     def display_name(self):
