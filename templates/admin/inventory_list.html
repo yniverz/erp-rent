@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="actions-bar">
-    <h1 style="margin:0; flex:1;">Inventar</h1>
+    <h1 class="m-0 flex-1">Inventar</h1>
     <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">+ Artikel hinzufügen</a>
 </div>
 
@@ -29,7 +29,7 @@
         {% if cat_id != current_category.id %}
             {% set current_category.id = cat_id %}
             <tr>
-                <td colspan="9" style="background:#f0f4f8; font-weight:700; font-size:1.05em; padding:12px 16px; color:#1e40af; border-top:2px solid #cbd5e1;">
+                <td colspan="9" class="category-header-row">
                     {{ item.category.name if item.category else 'Ohne Kategorie' }}
                 </td>
             </tr>
@@ -38,16 +38,16 @@
             <td>
                 <strong>{{ item.name }}</strong>
                 {% if item.image_filename %}
-                    <span style="color:#059669;" title="Has image">&#128247;</span>
+                    <span class="text-success" title="Has image">&#128247;</span>
                 {% endif %}
                 {% if item.is_external %}
-                    <span class="badge" style="background:#8b5cf6; color:white; font-size:0.7em; vertical-align:middle;">Extern</span>
+                    <span class="badge badge-external">Extern</span>
                 {% endif %}
             </td>
             <td>
                 {{ item.category.name if item.category else '—' }}
                 {% if item.subcategories %}
-                    <br><small style="color:#6b7280;">+ {{ item.subcategories|map(attribute='name')|join(', ') }}</small>
+                    <br><small class="text-muted">+ {{ item.subcategories|map(attribute='name')|join(', ') }}</small>
                 {% endif %}
             </td>
             <td>{{ item.owner.display_name or item.owner.username }}</td>
@@ -62,26 +62,26 @@
             </td>
             <td>
                 {% if item.visible_in_shop %}
-                    <span style="color:#059669;">&#10003;</span>
+                    <span class="text-success">&#10003;</span>
                 {% else %}
-                    <span style="color:#dc2626;">&#10007;</span>
+                    <span class="text-danger">&#10007;</span>
                 {% endif %}
             </td>
             <td>&euro;{{ "%.2f"|format(item.total_revenue) }}</td>
             <td>
                 {% if current_user.can_edit_item(item) %}
                     <a href="{{ url_for('admin.inventory_edit', item_id=item.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
-                    <form method="POST" action="{{ url_for('admin.inventory_delete', item_id=item.id) }}" style="display:inline;" onsubmit="return confirm('{{ item.name }} löschen?');">
+                    <form method="POST" action="{{ url_for('admin.inventory_delete', item_id=item.id) }}" class="d-inline" onsubmit="return confirm('{{ item.name }} löschen?');">
                         <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                     </form>
                 {% else %}
-                    <span style="color:#9ca3af; font-size:0.85em;">Nur ansehen</span>
+                    <span class="text-muted text-sm">Nur ansehen</span>
                 {% endif %}
             </td>
         </tr>
         {% endfor %}
         {% if not items %}
-        <tr><td colspan="9" style="text-align:center; color:#6b7280; padding:30px;">Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.</td></tr>
+        <tr><td colspan="9" class="empty-state">Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.</td></tr>
         {% endif %}
     </tbody>
 </table>

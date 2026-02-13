@@ -1,0 +1,86 @@
+/* ===== Admin – Autocomplete & Quote Edit Components ===== */
+
+/* ── Autocomplete ── */
+.autocomplete-wrapper { position: relative; }
+.autocomplete-list {
+    position: absolute;
+    z-index: 100;
+    left: 0;
+    right: 0;
+    top: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: var(--shadow-md);
+    display: none;
+}
+.autocomplete-list div {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.95em;
+}
+.autocomplete-list div:hover,
+.autocomplete-list div.active {
+    background: var(--color-accent-light);
+    color: var(--color-accent);
+}
+.customer-save-feedback { font-size: 0.85em; margin-left: 8px; }
+
+/* ── Quote section spacing ── */
+.quote-section      { margin-bottom: 30px; }
+
+/* ── Quote item styling ── */
+.item-row-disabled  { opacity: 0.5; }
+.exempt-label       { font-size: 0.8em; color: var(--color-text-muted); white-space: nowrap; }
+.exempt-label input { vertical-align: middle; }
+
+/* ── Schedule page ── */
+.schedule-table th,
+.schedule-table td  { padding: 10px 14px; font-size: 0.9em; }
+.schedule-bar       { height: 8px; border-radius: 4px; margin-top: 4px; }
+.schedule-bar.draft      { background: #fbbf24; }
+.schedule-bar.finalized  { background: #3b82f6; }
+.schedule-bar.paid       { background: #10b981; }
+
+/* View toggle */
+.view-toggle        { display: flex; gap: 8px; margin-bottom: 20px; }
+.view-toggle .btn   { padding: 6px 16px; font-size: 0.88em; }
+.view-toggle .btn.active-view { background: var(--color-accent); color: white; }
+
+/* Calendar */
+.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.cal-header h2 { margin: 0; font-size: 1.4em; }
+.cal-nav { display: flex; gap: 8px; align-items: center; }
+.cal-nav .btn { padding: 6px 14px; font-size: 0.88em; }
+
+.cal-grid { width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); margin-bottom: 24px; }
+.cal-grid th { background: var(--color-primary); color: white; padding: 10px 8px; text-align: center; font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.3px; }
+.cal-grid td { border: 1px solid var(--color-gray-200); padding: 4px; vertical-align: top; height: 110px; width: 14.28%; }
+.cal-grid td.empty { background: var(--color-gray-50); }
+.cal-grid td.today { background: rgba(201, 168, 76, 0.1); }
+.cal-day-num { font-size: 0.85em; font-weight: 600; color: var(--color-gray-700); padding: 2px 6px; }
+.cal-day-num.today-num { background: var(--color-accent); color: white; border-radius: 50%; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; }
+
+.cal-event { display: block; padding: 2px 6px; margin: 1px 0; border-radius: 4px; font-size: 0.73em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; cursor: pointer; line-height: 1.5; }
+.cal-event:hover { filter: brightness(0.9); }
+
+.cal-event.status-paid      { background: var(--color-success-light); color: var(--color-success-dark); border-left: 3px solid #10b981; }
+.cal-event.status-finalized { background: var(--badge-finalized-bg); color: var(--badge-finalized-text); border-left: 3px solid #3b82f6; }
+.cal-event.status-draft     { background: var(--color-warning-light); color: var(--color-warning-dark); border-left: 3px solid #f59e0b; }
+.cal-event.status-inquiry   { background: var(--color-gray-100); color: var(--color-gray-500); border-left: 3px solid var(--border-color); }
+
+.cal-more { font-size: 0.72em; color: var(--color-text-muted); padding: 1px 6px; cursor: default; }
+
+.cal-legend { display: flex; gap: 18px; margin-bottom: 16px; flex-wrap: wrap; }
+.cal-legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.84em; color: var(--color-gray-700); }
+.cal-legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+.cal-legend-dot.paid      { background: #10b981; }
+.cal-legend-dot.finalized { background: #3b82f6; }
+.cal-legend-dot.draft     { background: #f59e0b; }
+.cal-legend-dot.inquiry   { background: var(--border-color); }
+
+#calendar-view, #table-view { display: none; }
+#calendar-view.show, #table-view.show { display: block; }

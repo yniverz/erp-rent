@@ -4,8 +4,8 @@
 
 {% block content %}
 <div class="actions-bar">
-    <h1 style="margin:0; flex:1;">Angebot: {{ quote.reference_number }}</h1>
-    <span class="badge badge-{{ quote.status }}" style="font-size: 1em; padding: 6px 16px;">{{ quote.status|capitalize }}</span>
+    <h1 class="m-0 flex-1">Angebot: {{ quote.reference_number }}</h1>
+    <span class="badge badge-{{ quote.status }} badge-lg">{{ quote.status|capitalize }}</span>
 </div>
 
 <div class="card">
@@ -13,7 +13,7 @@
         <div>
             <p><strong>Kunde:</strong> {{ quote.customer_name }}</p>
             {% if quote.recipient_lines %}
-                <p style="white-space: pre-line; color: #6b7280;">{{ quote.recipient_lines }}</p>
+                <p class="text-muted text-pre-line">{{ quote.recipient_lines }}</p>
             {% endif %}
         </div>
         <div>
@@ -33,8 +33,8 @@
     </div>
 
     {% if quote.notes %}
-        <p style="margin-top: 14px;"><strong>Notizen:</strong></p>
-        <p style="white-space: pre-line; color:#6b7280;">{{ quote.notes }}</p>
+        <p class="mt-14"><strong>Notizen:</strong></p>
+        <p class="text-muted text-pre-line">{{ quote.notes }}</p>
     {% endif %}
 </div>
 
@@ -51,10 +51,10 @@
                 <td>
                     {{ qi.display_name }}
                     {% if qi.item and qi.item.is_external %}
-                        <small style="color:#8b5cf6;">&#x2197; Extern</small>
+                        <small class="text-external">&#x2197; Extern</small>
                     {% endif %}
                     {% if qi.discount_exempt and quote.discount_percent > 0 %}
-                        <br><small style="color:#d97706;">Kein Rabatt</small>
+                        <br><small class="text-warning">Kein Rabatt</small>
                     {% endif %}
                 </td>
                 <td>{{ qi.item.owner.display_name or qi.item.owner.username if qi.item and qi.item.owner else '—' }}</td>
@@ -70,7 +70,7 @@
                 <td>
                     &euro;{{ "%.2f"|format(qi.total_price) }}
                     {% if qi.item and qi.item.is_external and qi.rental_cost_per_day %}
-                        <br><small style="color:#dc2626;">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
+                        <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
                     {% endif %}
                 </td>
             </tr>
@@ -127,7 +127,7 @@
 <!-- Actions -->
 <div class="card no-print">
     <h2>Aktionen</h2>
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+    <div class="d-flex gap-10 flex-wrap">
         {% if quote.status == 'finalized' %}
             <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
                 <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?');">Als bezahlt markieren</button>

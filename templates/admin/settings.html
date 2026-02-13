@@ -8,7 +8,7 @@
 <div class="card">
     <form method="POST">
         <h2>Unternehmensinformationen</h2>
-        <p style="color: #6b7280; margin-bottom: 16px;">Wird in PDFs und der öffentlichen Storefront verwendet.</p>
+        <p class="text-muted mb-16">Wird in PDFs und der öffentlichen Storefront verwendet.</p>
 
         <div class="form-group">
             <label>Firmenname</label>
@@ -30,7 +30,7 @@
             <textarea name="bank_lines" rows="3" placeholder="Bank: ...&#10;IBAN: ...&#10;BIC: ...">{{ settings.bank_lines or '' }}</textarea>
         </div>
 
-        <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+        <hr class="section-divider">
 
         <h2>Öffentlicher Shop</h2>
 
@@ -39,10 +39,10 @@
             <textarea name="shop_description" rows="2" placeholder="Kurze Beschreibung für die Storefront...">{{ settings.shop_description or '' }}</textarea>
         </div>
 
-        <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+        <hr class="section-divider">
 
         <h2>Rechtliche Links</h2>
-        <p style="color: #6b7280; margin-bottom: 16px;">Diese werden im Footer der öffentlichen Storefront angezeigt.</p>
+        <p class="text-muted mb-16">Diese werden im Footer der öffentlichen Storefront angezeigt.</p>
 
         <div class="form-row">
             <div class="form-group">
@@ -55,17 +55,17 @@
             </div>
         </div>
 
-        <hr style="margin: 28px 0; border: none; border-top: 1px solid #e5e7eb;">
+        <hr class="section-divider">
 
         <h2>Benachrichtigungen</h2>
 
         <div class="form-group">
             <label>Benachrichtigungs-E-Mail</label>
             <input type="email" name="notification_email" value="{{ settings.notification_email or '' }}" placeholder="Empfängt Anfrage-Benachrichtigungen">
-            <small style="color:#6b7280;">E-Mail-Adresse, die Benachrichtigungen erhält, wenn Kunden Anfragen absenden. SMTP muss über Umgebungsvariablen konfiguriert sein (SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).</small>
+            <small class="help-text">E-Mail-Adresse, die Benachrichtigungen erhält, wenn Kunden Anfragen absenden. SMTP muss über Umgebungsvariablen konfiguriert sein (SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).</small>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Einstellungen speichern</button>
+        <button type="submit" class="btn btn-primary mt-10">Einstellungen speichern</button>
     </form>
 </div>
 {% endblock %}

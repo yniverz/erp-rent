@@ -2,29 +2,33 @@
 
 {% block title %}Anfrage gesendet - {{ site_settings.business_name or 'Verleih' }}{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-inquiry-sent.css') }}">
+{% endblock %}
+
 {% block content %}
-<div style="text-align: center; padding: 60px 20px;">
-    <div style="font-size: 4em; margin-bottom: 20px;">&#9989;</div>
-    <h1 style="margin-bottom: 14px; font-size: 2em;">Vielen Dank!</h1>
-    <p style="font-size: 1.15em; color: #374151; margin-bottom: 10px;">Ihre Mietanfrage wurde empfangen.</p>
-    <p style="color: #6b7280; max-width: 500px; margin: 0 auto 30px;">
+<div class="confirmation-wrapper">
+    <div class="confirmation-icon">&#9989;</div>
+    <h1>Vielen Dank!</h1>
+    <p class="confirmation-subtitle">Ihre Mietanfrage wurde empfangen.</p>
+    <p class="confirmation-detail">
         Wir prüfen Ihre Anfrage und melden uns bei <strong>{{ inquiry.customer_email }}</strong> mit Verfügbarkeit und Preisdetails.
     </p>
 
-    <div style="background: white; border-radius: 12px; padding: 24px; max-width: 500px; margin: 0 auto 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: left;">
-        <h3 style="margin-bottom: 14px;">Anfrageübersicht</h3>
+    <div class="confirmation-summary">
+        <h3>Anfrageübersicht</h3>
         <p><strong>Name:</strong> {{ inquiry.customer_name }}</p>
         {% if inquiry.desired_start_date and inquiry.desired_end_date %}
             <p><strong>Zeitraum:</strong> {{ inquiry.desired_start_date.strftime('%d.%m.%Y') }} &ndash; {{ inquiry.desired_end_date.strftime('%d.%m.%Y') }}</p>
         {% endif %}
-        <p style="margin-top: 10px;"><strong>Artikel:</strong></p>
-        <ul style="margin-left: 20px;">
+        <p class="mt-10"><strong>Artikel:</strong></p>
+        <ul>
             {% for inq_item in inquiry.items %}
                 <li>{{ inq_item.quantity }}x {{ inq_item.item_name_snapshot }}
                     {% if inq_item.price_snapshot is not none %}
-                        <span style="color: #6b7280;">(&euro;{{ "%.2f"|format(inq_item.price_snapshot) }}/day)</span>
+                        <span class="text-muted">(&euro;{{ "%.2f"|format(inq_item.price_snapshot) }}/day)</span>
                     {% else %}
-                        <span style="color: #d97706;">(Preis auf Anfrage)</span>
+                        <span class="text-warning">(Preis auf Anfrage)</span>
                     {% endif %}
                 </li>
             {% endfor %}

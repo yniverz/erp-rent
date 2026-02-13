@@ -23,12 +23,12 @@
             </div>
             <div class="form-group">
                 <label>Unterkategorien</label>
-                <select name="subcategory_ids" multiple style="min-height: 100px;">
+                <select name="subcategory_ids" multiple class="select-tall">
                     {% for cat in categories %}
                         <option value="{{ cat.id }}" {{ 'selected' if item and cat in item.subcategories }}>{{ cat.name }}</option>
                     {% endfor %}
                 </select>
-                <small style="color:#6b7280;">Artikel erscheint auch unter diesen Kategorien beim Filtern (Strg/Cmd + Klick für Mehrfachauswahl)</small>
+                <small class="help-text">Artikel erscheint auch unter diesen Kategorien beim Filtern (Strg/Cmd + Klick für Mehrfachauswahl)</small>
             </div>
         </div>
 
@@ -51,9 +51,9 @@
         <div class="form-group">
             <div class="checkbox-group">
                 <input type="checkbox" name="is_external" id="is_external" {{ 'checked' if item and item.is_external }} onchange="toggleExternalFields()">
-                <label for="is_external" style="margin:0; font-weight:normal;">Externer Artikel (angemietet)</label>
+                <label for="is_external" class="m-0 font-normal">Externer Artikel (angemietet)</label>
             </div>
-            <small style="color:#6b7280;">Aktivieren, wenn dieser Artikel von einem externen Anbieter angemietet wird</small>
+            <small class="help-text">Aktivieren, wenn dieser Artikel von einem externen Anbieter angemietet wird</small>
         </div>
 
         <div class="form-row">
@@ -65,7 +65,7 @@
                 <label>Gesamte Anschaffungskosten (&euro;)</label>
                 <input type="number" name="total_cost" step="0.01" min="0" value="{{ item.total_purchase_cost if item else '' }}" placeholder="Gesamtkosten für alle Einheiten">
             </div>
-            <div class="form-group" id="rental-cost-group" style="display:none;">
+            <div class="form-group d-none" id="rental-cost-group">
                 <label>Mietkosten pro Tag pro Stück (&euro;)</label>
                 <input type="number" name="default_rental_cost" step="0.01" min="0" value="{{ item.default_rental_cost_per_day if item else '' }}" placeholder="Was Sie pro Tag/Stück zahlen">
             </div>
@@ -91,14 +91,14 @@
             <div class="form-group">
                 <div class="checkbox-group">
                     <input type="checkbox" name="show_price_publicly" id="show_price" {{ 'checked' if not item or item.show_price_publicly }}>
-                    <label for="show_price" style="margin:0; font-weight:normal;">Preis öffentlich anzeigen</label>
+                    <label for="show_price" class="m-0 font-normal">Preis öffentlich anzeigen</label>
                 </div>
-                <small style="color:#6b7280;">Deaktivieren, um "Preis auf Anfrage" im Shop anzuzeigen</small>
+                <small class="help-text">Deaktivieren, um "Preis auf Anfrage" im Shop anzuzeigen</small>
             </div>
             <div class="form-group">
                 <div class="checkbox-group">
                     <input type="checkbox" name="visible_in_shop" id="visible" {{ 'checked' if not item or item.visible_in_shop }}>
-                    <label for="visible" style="margin:0; font-weight:normal;">Im öffentlichen Shop sichtbar</label>
+                    <label for="visible" class="m-0 font-normal">Im öffentlichen Shop sichtbar</label>
                 </div>
             </div>
         </div>
@@ -106,19 +106,19 @@
         <div class="form-group">
             <label>Artikelbild</label>
             {% if item and item.image_filename %}
-                <div style="margin-bottom: 10px;">
-                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" style="max-width: 200px; max-height: 150px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                    <div class="checkbox-group" style="margin-top: 6px;">
+                <div class="mb-10">
+                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" class="image-preview">
+                    <div class="checkbox-group mt-6">
                         <input type="checkbox" name="remove_image" id="remove_image">
-                        <label for="remove_image" style="margin:0; font-weight:normal; color: #dc2626;">Aktuelles Bild entfernen</label>
+                        <label for="remove_image" class="m-0 font-normal text-danger">Aktuelles Bild entfernen</label>
                     </div>
                 </div>
             {% endif %}
             <input type="file" name="image" accept="image/*">
-            <small style="color:#6b7280;">Akzeptierte Formate: PNG, JPG, GIF, WebP (max. 16MB)</small>
+            <small class="help-text">Akzeptierte Formate: PNG, JPG, GIF, WebP (max. 16MB)</small>
         </div>
 
-        <div style="display: flex; gap: 10px; margin-top: 24px;">
+        <div class="d-flex gap-10 mt-24">
             <button type="submit" class="btn btn-primary">{{ 'Artikel aktualisieren' if item else 'Artikel hinzufügen' }}</button>
             <a href="{{ url_for('admin.inventory_list') }}" class="btn btn-outline">Abbrechen</a>
         </div>
@@ -128,8 +128,8 @@
 <script>
 function toggleExternalFields() {
     var isExternal = document.getElementById('is_external').checked;
-    document.getElementById('purchase-cost-group').style.display = isExternal ? 'none' : '';
-    document.getElementById('rental-cost-group').style.display = isExternal ? '' : 'none';
+    document.getElementById('purchase-cost-group').classList.toggle('d-none', isExternal);
+    document.getElementById('rental-cost-group').classList.toggle('d-none', !isExternal);
 }
 // Run on page load
 toggleExternalFields();

@@ -28,7 +28,7 @@
                 {% if inq.desired_start_date and inq.desired_end_date %}
                     {{ inq.desired_start_date.strftime('%d.%m.%Y') }} – {{ inq.desired_end_date.strftime('%d.%m.%Y') }}
                 {% else %}
-                    <span style="color:#6b7280;">Nicht angegeben</span>
+                    <span class="text-muted">Nicht angegeben</span>
                 {% endif %}
             </td>
             <td>{{ inq.items|length }}</td>
@@ -40,7 +40,7 @@
         </tr>
         {% endfor %}
         {% if not inquiries %}
-        <tr><td colspan="8" style="text-align:center; color:#6b7280; padding:30px;">Noch keine Anfragen.</td></tr>
+        <tr><td colspan="8" class="empty-state">Noch keine Anfragen.</td></tr>
         {% endif %}
     </tbody>
 </table>

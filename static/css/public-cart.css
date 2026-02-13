@@ -1,0 +1,32 @@
+/* ===== Public – Cart Page ===== */
+
+.cart-page h1          { font-size: 1.8em; margin-bottom: 24px; }
+
+.cart-empty            { text-align: center; padding: 60px 20px; color: var(--color-text-muted); }
+.cart-empty h2         { margin-bottom: 12px; }
+
+.cart-table            { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: var(--bg-card); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); }
+.cart-table th         { background: var(--color-primary); color: white; padding: 14px 18px; text-align: left; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.3px; }
+.cart-table td         { padding: 14px 18px; border-bottom: 1px solid var(--color-gray-100); vertical-align: middle; }
+.cart-table tr:last-child td { border-bottom: none; }
+.cart-table .item-row  { display: flex; align-items: center; gap: 14px; }
+.cart-table .item-thumb { width: 50px; height: 50px; border-radius: var(--radius-sm); object-fit: contain; background: var(--bg-card); }
+.cart-table input[type="number"] { width: 80px; text-align: center; }
+
+.cart-summary          { background: var(--bg-card); border-radius: var(--radius-xl); padding: 24px; box-shadow: var(--shadow-card); margin-bottom: 30px; }
+.summary-row           { display: flex; justify-content: space-between; padding: 8px 0; font-size: 1em; }
+.summary-row.total     { font-size: 1.3em; font-weight: 700; border-top: 2px solid var(--color-gray-200); margin-top: 10px; padding-top: 14px; }
+.summary-note          { font-size: 0.88em; color: var(--color-on-request); margin-top: 8px; }
+
+.inquiry-form          { background: var(--bg-card); border-radius: var(--radius-xl); padding: 30px; box-shadow: var(--shadow-card); }
+.inquiry-form h2       { margin-bottom: 20px; font-size: 1.3em; }
+
+.cart-actions          { display: flex; gap: 10px; margin-bottom: 20px; }
+.btn-gray              { background: var(--color-gray-500); }
+.btn-gray:hover        { background: var(--color-gray-600); }
+
+@media (max-width: 768px) {
+    .cart-table         { font-size: 0.9em; }
+    .cart-table th,
+    .cart-table td      { padding: 10px 12px; }
+}

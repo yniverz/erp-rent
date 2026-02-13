@@ -3,36 +3,7 @@
 {% block title %}Warenkorb - {{ site_settings.business_name or 'Verleih' }}{% endblock %}
 
 {% block extra_head %}
-<style>
-    .cart-page h1 { font-size: 1.8em; margin-bottom: 24px; }
-
-    .cart-empty { text-align: center; padding: 60px 20px; color: #6b7280; }
-    .cart-empty h2 { margin-bottom: 12px; }
-
-    .cart-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .cart-table th { background: #1a1a2e; color: white; padding: 14px 18px; text-align: left; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.3px; }
-    .cart-table td { padding: 14px 18px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-    .cart-table tr:last-child td { border-bottom: none; }
-    .cart-table .item-row { display: flex; align-items: center; gap: 14px; }
-    .cart-table .item-thumb { width: 50px; height: 50px; border-radius: 6px; object-fit: contain; background: #fff; }
-    .cart-table input[type="number"] { width: 80px; text-align: center; }
-    .on-request-text { color: #d97706; font-weight: 600; font-size: 0.9em; }
-
-    .cart-summary { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 30px; }
-    .summary-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 1em; }
-    .summary-row.total { font-size: 1.3em; font-weight: 700; border-top: 2px solid #e5e7eb; margin-top: 10px; padding-top: 14px; }
-    .summary-note { font-size: 0.88em; color: #d97706; margin-top: 8px; }
-
-    .inquiry-form { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .inquiry-form h2 { margin-bottom: 20px; font-size: 1.3em; }
-
-    .cart-actions { display: flex; gap: 10px; margin-bottom: 20px; }
-
-    @media (max-width: 768px) {
-        .cart-table { font-size: 0.9em; }
-        .cart-table th, .cart-table td { padding: 10px 12px; }
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-cart.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -43,7 +14,7 @@
         <div class="cart-empty">
             <h2>Ihr Warenkorb ist leer</h2>
             <p>Stöbern Sie in unserem Katalog, um Geräte für Ihre Veranstaltung zu finden.</p>
-            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary" style="margin-top: 16px;">Katalog durchstöbern</a>
+            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary mt-16">Katalog durchstöbern</a>
         </div>
     {% else %}
         <form method="POST" action="{{ url_for('public.cart_update') }}">
@@ -67,7 +38,7 @@
                                 {% endif %}
                                 <div>
                                     <strong>{{ ci.item.name }}</strong>
-                                    {% if ci.item.category %}<br><small style="color:#6b7280;">{{ ci.item.category.name }}</small>{% endif %}
+                                    {% if ci.item.category %}<br><small class="text-muted">{{ ci.item.category.name }}</small>{% endif %}
                                 </div>
                             </div>
                         </td>
@@ -98,7 +69,7 @@
 
             <div class="cart-actions">
                 <button type="submit" class="btn btn-outline btn-sm">Mengen aktualisieren</button>
-                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm" style="background:#6b7280;">Weiter stöbern</a>
+                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm btn-gray">Weiter stöbern</a>
             </div>
         </form>
 
@@ -110,12 +81,12 @@
             {% if has_on_request %}
                 <div class="summary-note">&#9888; Einige Artikel sind mit "Preis auf Anfrage" gekennzeichnet. Der endgültige Preis wird nach Ihrer Anfrage mitgeteilt.</div>
             {% endif %}
-            <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Die Endsumme hängt vom Mietzeitraum ab und wird nach Prüfung bestätigt.</p>
+            <p class="help-text mt-8">Die Endsumme hängt vom Mietzeitraum ab und wird nach Prüfung bestätigt.</p>
         </div>
 
         <div class="inquiry-form">
             <h2>Mietanfrage senden</h2>
-            <p style="color: #6b7280; margin-bottom: 20px; font-size: 0.95em;">Geben Sie Ihre Daten und gewünschten Termine ein. Wir melden uns mit Verfügbarkeit und einem Angebot bei Ihnen.</p>
+            <p class="text-muted mb-20 text-095">Geben Sie Ihre Daten und gewünschten Termine ein. Wir melden uns mit Verfügbarkeit und einem Angebot bei Ihnen.</p>
 
             <form method="POST" action="{{ url_for('public.submit_inquiry') }}">
                 <div class="form-row">
@@ -151,14 +122,14 @@
                     <label>Nachricht / Zusätzliche Infos</label>
                     <textarea name="message" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
                 </div>
-                <div id="inquiry-errors" style="color: #dc2626; font-size: 0.9em; margin-bottom: 12px; display: none;"></div>
-                <button type="submit" class="btn btn-success" style="font-size: 1.05em; padding: 14px 32px;">Anfrage absenden</button>
+                <div id="inquiry-errors" class="text-danger text-sm mb-12 d-none"></div>
+                <button type="submit" class="btn btn-success btn-submit-lg">Anfrage absenden</button>
             </form>
         </div>
     {% endif %}
 </div>
 
-<form id="remove-form" method="POST" style="display:none;">
+<form id="remove-form" method="POST" class="d-none">
 </form>
 {% endblock %}
 
@@ -219,10 +190,10 @@ function removeItem(itemId) {
                 if (errors.length > 0) {
                     e.preventDefault();
                     errDiv.innerHTML = errors.join('<br>');
-                    errDiv.style.display = 'block';
+                    errDiv.classList.remove('d-none');
                     errDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 } else {
-                    errDiv.style.display = 'none';
+                    errDiv.classList.add('d-none');
                 }
             });
         }

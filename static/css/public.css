@@ -1,0 +1,87 @@
+/* ===== Public Storefront Styles ===== */
+
+body { background: var(--bg-body); }
+
+/* ── Header ── */
+header {
+    background: var(--color-primary);
+    color: white;
+    padding: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-heavy);
+}
+.header-inner {
+    max-width: var(--container-max-public);
+    margin: 0 auto;
+    padding: 15px var(--spacing-page);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.logo {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: white;
+    text-decoration: none;
+}
+.logo:hover { opacity: 0.9; }
+
+.header-nav          { display: flex; align-items: center; gap: 20px; }
+.header-nav a        { color: rgba(255,255,255,0.85); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
+.header-nav a:hover  { color: white; }
+
+.cart-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.1);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    transition: background 0.2s;
+}
+.cart-link:hover { background: rgba(255,255,255,0.2); }
+.cart-badge {
+    background: var(--color-danger);
+    color: white;
+    font-size: 0.75em;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.header-nav-login {
+    background: rgba(255,255,255,0.1);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+}
+
+/* ── Container ── */
+.container {
+    max-width: var(--container-max-public);
+    margin: 0 auto;
+    padding: 30px var(--spacing-page);
+    min-height: calc(100vh - 160px);
+}
+
+/* ── Footer ── */
+footer {
+    background: var(--color-primary);
+    color: rgba(255,255,255,0.7);
+    padding: 25px var(--spacing-page);
+    text-align: center;
+    font-size: 0.9em;
+}
+footer a       { color: rgba(255,255,255,0.85); text-decoration: none; margin: 0 12px; }
+footer a:hover { color: white; text-decoration: underline; }
+.footer-inner  { max-width: var(--container-max-public); margin: 0 auto; }
+.footer-links  { margin-bottom: 10px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .header-inner { flex-direction: column; gap: 10px; }
+}

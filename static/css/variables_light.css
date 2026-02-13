@@ -1,0 +1,95 @@
+/* ===== CSS Custom Properties (Theme Variables) ===== */
+/* Light + Gold scheme – same brand palette, light surfaces  */
+:root {
+    /* ── Primary brand colors ── */
+    --color-primary:          #1a1610;
+    --color-primary-hover:    #2a2318;
+    --color-primary-rgb:      26, 22, 16;
+
+    /* ── Accent / interactive  (gold) ── */
+    --color-accent:           #b8952f;
+    --color-accent-hover:     #a07e1e;
+    --color-accent-light:     #faf3e0;
+    --color-accent-rgb:       184, 149, 47;
+
+    /* ── Semantic colours ── */
+    --color-success:          #059669;
+    --color-success-hover:    #047857;
+    --color-success-light:    #d1fae5;
+    --color-success-dark:     #065f46;
+
+    --color-danger:           #dc2626;
+    --color-danger-hover:     #b91c1c;
+    --color-danger-light:     #fee2e2;
+    --color-danger-dark:      #991b1b;
+
+    --color-warning:          #b8952f;
+    --color-warning-hover:    #a07e1e;
+    --color-warning-light:    #fef9e7;
+    --color-warning-dark:     #78621a;
+
+    --color-info-bg:          #e8f4fd;
+    --color-info-text:        #0c5460;
+    --color-info-border:      #b6e0f3;
+
+    /* ── Neutral palette (light-mode grays – warm tint) ── */
+    --color-gray-50:          #faf9f7;
+    --color-gray-100:         #f3f1ed;
+    --color-gray-200:         #e8e4dc;
+    --color-gray-300:         #d0ccc4;
+    --color-gray-400:         #b0aaa0;
+    --color-gray-500:         #8a8580;
+    --color-gray-600:         #5a5550;
+    --color-gray-700:         #3a3530;
+    --color-gray-800:         #222018;
+    --color-gray-900:         #1a1610;
+
+    /* ── Surfaces / backgrounds ── */
+    --bg-body:                #f5f3ef;
+    --bg-body-admin:          #f0ece6;
+    --bg-card:                #ffffff;
+    --bg-muted:               #faf9f7;
+
+    /* ── Typography ── */
+    --font-family:            'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --line-height:            1.6;
+    --color-text:             #2a2318;
+    --color-text-muted:       var(--color-gray-500);
+    --color-text-heading:     var(--color-gray-900);
+
+    /* ── Borders / radii / shadows ── */
+    --border-color:           var(--color-gray-300);
+    --radius-sm:              6px;
+    --radius-md:              8px;
+    --radius-lg:              10px;
+    --radius-xl:              12px;
+    --shadow-sm:              0 1px 3px rgba(0,0,0,0.06);
+    --shadow-md:              0 4px 12px rgba(0,0,0,0.10);
+    --shadow-heavy:           0 2px 10px rgba(0,0,0,0.12);
+    --shadow-card:            0 1px 3px rgba(0,0,0,0.08);
+
+    /* ── Layout ── */
+    --container-max-public:   1200px;
+    --container-max-admin:    1400px;
+    --spacing-page:           20px;
+
+    /* ── Status badge colors ── */
+    --badge-draft-bg:         var(--color-warning-light);
+    --badge-draft-text:       var(--color-warning-dark);
+    --badge-finalized-bg:     #e8f4fd;
+    --badge-finalized-text:   #1e5a8a;
+    --badge-paid-bg:          var(--color-success-light);
+    --badge-paid-text:        var(--color-success-dark);
+    --badge-new-bg:           var(--color-warning-light);
+    --badge-new-text:         var(--color-warning-dark);
+    --badge-contacted-bg:     #e8f4fd;
+    --badge-contacted-text:   #1e5a8a;
+    --badge-converted-bg:     var(--color-success-light);
+    --badge-converted-text:   var(--color-success-dark);
+    --badge-closed-bg:        var(--color-gray-100);
+    --badge-closed-text:      var(--color-gray-500);
+
+    /* ── Misc / extras ── */
+    --color-external:         #7c3aed;
+    --color-on-request:       var(--color-warning);
+}

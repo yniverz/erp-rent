@@ -2,33 +2,10 @@
 
 {% block title %}Angebot {{ quote.reference_number }} bearbeiten - Verwaltung{% endblock %}
 
-{% block extra_head %}
-<style>
-    .quote-section { margin-bottom: 30px; }
-    .item-row-disabled { opacity: 0.5; }
-    .exempt-label { font-size: 0.8em; color: #6b7280; white-space: nowrap; }
-    .exempt-label input { vertical-align: middle; }
-    .autocomplete-wrapper { position: relative; }
-    .autocomplete-list {
-        position: absolute; z-index: 100; left: 0; right: 0; top: 100%;
-        background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;
-        max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.1);
-        display: none;
-    }
-    .autocomplete-list div {
-        padding: 8px 12px; cursor: pointer; font-size: 0.95em;
-    }
-    .autocomplete-list div:hover, .autocomplete-list div.active {
-        background: #e0e7ff; color: #1e40af;
-    }
-    .customer-save-feedback { font-size: 0.85em; margin-left: 8px; }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="actions-bar">
-    <h1 style="margin:0; flex:1;">Angebot bearbeiten: {{ quote.reference_number or 'Entwurf' }}</h1>
-    <span class="badge badge-{{ quote.status }}" style="font-size: 1em; padding: 6px 16px;">{{ quote.status|capitalize }}</span>
+    <h1 class="m-0 flex-1">Angebot bearbeiten: {{ quote.reference_number or 'Entwurf' }}</h1>
+    <span class="badge badge-{{ quote.status }} badge-lg">{{ quote.status|capitalize }}</span>
 </div>
 
 {% if quote.inquiry %}
@@ -67,9 +44,9 @@
             <label>Empfängeradresse</label>
             <textarea name="recipient_lines" id="recipient_lines" rows="3">{{ quote.recipient_lines or '' }}</textarea>
         </div>
-        <div style="margin-bottom: 16px;">
+        <div class="mb-16">
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
-            <button type="button" class="btn btn-danger btn-sm" id="delete-customer-btn" style="display:none;">Kunde löschen</button>
+            <button type="button" class="btn btn-danger btn-sm d-none" id="delete-customer-btn">Kunde löschen</button>
             <span class="customer-save-feedback" id="save-feedback"></span>
         </div>
         <div class="form-group">
@@ -84,30 +61,30 @@
 <div class="card quote-section">
     <h2>Inventar-Artikel</h2>
     {% if not quote.start_date or not quote.end_date %}
-        <p style="color: #d97706;">&#9888; Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen.</p>
+        <p class="text-warning">&#9888; Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen.</p>
     {% else %}
-        <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-bottom: 14px;">
+        <form method="POST" class="d-flex gap-10 align-end mb-14">
             <input type="hidden" name="action" value="update_quote">
             <input type="hidden" name="customer_name" value="{{ quote.customer_name }}">
             <input type="hidden" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}">
             <input type="hidden" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
             <input type="hidden" name="recipient_lines" value="{{ quote.recipient_lines or '' }}">
             <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
-            <div style="display: flex; gap: 6px; align-items: center;">
-                <span style="color:#6b7280;">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}{% if quote.rental_days_override %} <strong style="color:#2563eb;">(manuell)</strong>{% endif %}</span>
-                <label style="color:#6b7280; font-size: 0.9em; margin:0;">— Überschreiben:</label>
-                <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" style="width: 80px;" placeholder="—">
-                <span style="color:#6b7280; font-size: 0.9em;">Tage</span>
+            <div class="d-flex gap-6 align-center">
+                <span class="text-muted">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}{% if quote.rental_days_override %} <strong class="text-accent">(manuell)</strong>{% endif %}</span>
+                <label class="text-muted text-sm m-0">— Überschreiben:</label>
+                <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" class="w-80" placeholder="—">
+                <span class="text-muted text-sm">Tage</span>
                 <button type="submit" class="btn btn-sm btn-outline">Speichern</button>
             </div>
         </form>
 
         <!-- Add Item Dropdown -->
-        <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-bottom: 20px;">
+        <form method="POST" class="d-flex gap-10 align-end mb-20">
             <input type="hidden" name="action" value="add_item">
-            <div class="form-group" style="margin:0; flex:1;">
+            <div class="form-group m-0 flex-1">
                 <label>Artikel hinzufügen</label>
-                <select name="item_id" style="width:100%;">
+                <select name="item_id" class="w-full">
                     <option value="">— Artikel auswählen —</option>
                     {% set existing_ids = quote.quote_items|rejectattr('is_custom')|map(attribute='item_id')|list %}
 
@@ -181,22 +158,22 @@
                     <tr>
                         <td>
                             <strong>{{ qi.item.name }}</strong>
-                            {% if qi.item.is_external %}<br><small style="color:#8b5cf6;">&#x2197; Extern</small>{% endif %}
-                            {% if qi.item.category %}<br><small style="color:#6b7280;">{{ qi.item.category.name }}</small>{% endif %}
-                            <br><small style="color:#6b7280;">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
+                            {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
+                            {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
+                            <br><small class="text-muted">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
                         </td>
                         <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
-                        <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" step="{{ qi.item.rental_step }}" style="width:80px;"></td>
-                        <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" style="width:100px;"></td>
+                        <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" step="{{ qi.item.rental_step }}" class="w-80"></td>
+                        <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
                             {% if qi.item.is_external %}
-                                <input type="number" name="cost_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" style="width:100px;">
+                                <input type="number" name="cost_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
                             {% else %}
-                                <span style="color:#9ca3af;">—</span>
+                                <span class="text-muted">—</span>
                                 <input type="hidden" name="cost_{{ qi.item_id }}" value="0">
                             {% endif %}
                         </td>
-                        <td style="text-align:center;">
+                        <td class="text-center">
                             <label class="exempt-label" title="Vom Rabatt ausgenommen">
                                 <input type="checkbox" name="discount_exempt_{{ qi.item_id }}" {{ 'checked' if qi.discount_exempt }}>
                                 Kein Rabatt
@@ -205,7 +182,7 @@
                         <td>
                             &euro;{{ "%.2f"|format(qi.total_price) }}
                             {% if qi.item.is_external and qi.rental_cost_per_day %}
-                                <br><small style="color:#dc2626;">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
+                                <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
                             {% endif %}
                         </td>
                         <td>
@@ -218,7 +195,7 @@
             <button type="submit" class="btn btn-primary">Artikel speichern</button>
         </form>
         {% else %}
-            <p style="color: #6b7280; margin-top: 10px;">Noch keine Artikel hinzugefügt. Verwenden Sie das Dropdown oben.</p>
+            <p class="text-muted mt-10">Noch keine Artikel hinzugefügt. Verwenden Sie das Dropdown oben.</p>
         {% endif %}
     {% endif %}
 </div>
@@ -240,7 +217,7 @@
                         <td>{{ qi.custom_item_name }}</td>
                         <td>{{ qi.quantity }}</td>
                         <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
-                        <td style="text-align:center;">
+                        <td class="text-center">
                             <label class="exempt-label" title="Vom Rabatt ausgenommen">
                                 <input type="checkbox" name="discount_exempt_custom_{{ qi.id }}" {{ 'checked' if qi.discount_exempt }}>
                                 Kein Rabatt
@@ -254,21 +231,21 @@
                     {% endfor %}
                 </tbody>
             </table>
-            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Positionen speichern</button>
+            <button type="submit" class="btn btn-primary mt-10">Positionen speichern</button>
         </form>
     {% endif %}
 
-    <form method="POST" style="display: flex; gap: 10px; align-items: end; margin-top: 14px;">
+    <form method="POST" class="d-flex gap-10 align-end mt-14">
         <input type="hidden" name="action" value="add_custom">
-        <div class="form-group" style="margin:0; flex:1;">
+        <div class="form-group m-0 flex-1">
             <label>Name</label>
             <input type="text" name="custom_name" placeholder="z.B. Aufbauzeit">
         </div>
-        <div class="form-group" style="margin:0; width:100px;">
+        <div class="form-group m-0 w-100">
             <label>Menge</label>
             <input type="number" name="custom_quantity" value="1" min="1">
         </div>
-        <div class="form-group" style="margin:0; width:120px;">
+        <div class="form-group m-0 w-120">
             <label>Preis/Tag</label>
             <input type="number" name="custom_price" step="0.01" min="0">
         </div>
@@ -285,23 +262,23 @@
             <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
         </div>
 
-        <form method="POST" style="margin: 10px 0;">
+        <form method="POST" class="mb-10 mt-10">
             <input type="hidden" name="action" value="update_discount">
-            <div class="price-row" style="align-items: center;">
-                <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="price-row align-center">
+                <div class="d-flex gap-8 align-center">
                     <span>Rabatt</span>
-                    <input type="text" name="discount_label" value="{{ quote.discount_label or '' }}" placeholder="Bezeichnung (optional)" style="width: 200px; font-size: 0.9em;">
+                    <input type="text" name="discount_label" value="{{ quote.discount_label or '' }}" placeholder="Bezeichnung (optional)" class="w-200 text-sm">
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="number" name="final_discount_percent" id="discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" style="width: 120px;">
+                <div class="d-flex gap-8 align-center">
+                    <input type="number" name="final_discount_percent" id="discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" class="w-120">
                     <span>%</span>
                 </div>
             </div>
-            <div class="price-row" style="align-items: center; margin-top: 8px;">
+            <div class="price-row align-center mt-8">
                 <span>oder Gesamtpreis</span>
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div class="d-flex gap-8 align-center">
                     <span>&euro;</span>
-                    <input type="number" name="target_total" id="target_total" value="" step="0.01" min="0" style="width: 140px;" placeholder="{{ '%.2f'|format(quote.total) }}">
+                    <input type="number" name="target_total" id="target_total" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total) }}">
                     <button type="submit" class="btn btn-sm btn-outline">Übernehmen</button>
                 </div>
             </div>
@@ -350,13 +327,13 @@
         </div>
     </div>
 
-    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-        <form method="POST" style="display:inline;">
+    <div class="d-flex gap-10 flex-wrap mt-20">
+        <form method="POST" class="d-inline">
             <input type="hidden" name="action" value="finalize">
             <button type="submit" class="btn btn-success" onclick="return confirm('Angebot finalisieren?');">Angebot finalisieren</button>
         </form>
         <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
-        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" style="display:inline;" onsubmit="return confirm('Dieses Angebot löschen?');">
+        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
         </form>
     </div>
@@ -442,8 +419,8 @@
             if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
             else {
                 feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
-                feedback.style.color = '#059669';
-                deleteBtn.style.display = 'inline-block';
+                feedback.style.color = '#3ecf8e';
+                deleteBtn.classList.remove('d-none');
                 setTimeout(() => feedback.textContent = '', 3000);
             }
         })
@@ -464,8 +441,8 @@
             if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
             else {
                 feedback.textContent = 'Kunde gelöscht.';
-                feedback.style.color = '#059669';
-                deleteBtn.style.display = 'none';
+                feedback.style.color = '#3ecf8e';
+                deleteBtn.classList.add('d-none');
                 setTimeout(() => feedback.textContent = '', 3000);
             }
         })
@@ -475,12 +452,12 @@
     // Check if current customer exists on page load
     function checkCustomerExists() {
         const name = nameInput.value.trim();
-        if (name.length < 1) { deleteBtn.style.display = 'none'; return; }
+        if (name.length < 1) { deleteBtn.classList.add('d-none'); return; }
         fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(name))
             .then(r => r.json())
             .then(data => {
                 const match = data.find(c => c.name.toLowerCase() === name.toLowerCase());
-                deleteBtn.style.display = match ? 'inline-block' : 'none';
+                deleteBtn.classList.toggle('d-none', !match);
             })
             .catch(() => {});
     }

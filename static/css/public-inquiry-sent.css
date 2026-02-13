@@ -1,0 +1,39 @@
+/* ===== Public – Inquiry Sent Confirmation ===== */
+
+.confirmation-wrapper {
+    text-align: center;
+    padding: 60px 20px;
+}
+.confirmation-icon {
+    font-size: 4em;
+    margin-bottom: 20px;
+}
+.confirmation-wrapper h1 {
+    margin-bottom: 14px;
+    font-size: 2em;
+}
+.confirmation-subtitle {
+    font-size: 1.15em;
+    color: var(--color-gray-700);
+    margin-bottom: 10px;
+}
+.confirmation-detail {
+    color: var(--color-text-muted);
+    max-width: 500px;
+    margin: 0 auto 30px;
+}
+.confirmation-summary {
+    background: var(--bg-card);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    max-width: 500px;
+    margin: 0 auto 30px;
+    box-shadow: var(--shadow-card);
+    text-align: left;
+}
+.confirmation-summary h3 {
+    margin-bottom: 14px;
+}
+.confirmation-summary ul {
+    margin-left: 20px;
+}

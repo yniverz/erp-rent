@@ -5,15 +5,15 @@
 {% block content %}
 <h1>Kategorien</h1>
 
-<div class="card" style="margin-bottom: 24px;">
+<div class="card mb-24">
     <h3>Kategorie hinzufügen</h3>
-    <form method="POST" style="display: flex; gap: 12px; align-items: end;">
+    <form method="POST" class="d-flex gap-12 align-end">
         <input type="hidden" name="action" value="add">
-        <div class="form-group" style="margin:0; flex:1;">
+        <div class="form-group m-0 flex-1">
             <label>Name</label>
             <input type="text" name="name" required placeholder="z.B. Beleuchtung">
         </div>
-        <div class="form-group" style="margin:0; width:120px;">
+        <div class="form-group m-0 w-120">
             <label>Reihenfolge</label>
             <input type="number" name="display_order" value="0">
         </div>
@@ -34,19 +34,19 @@
         {% for cat in categories %}
         <tr>
             <td>
-                <form method="POST" style="display: flex; gap: 8px; align-items: center;" id="edit-form-{{ cat.id }}">
+                <form method="POST" class="d-flex gap-8 align-center" id="edit-form-{{ cat.id }}">
                     <input type="hidden" name="action" value="edit">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
-                    <input type="text" name="name" value="{{ cat.name }}" style="width:200px;">
+                    <input type="text" name="name" value="{{ cat.name }}" class="w-200">
                 </form>
             </td>
             <td>
-                <input type="number" name="display_order" value="{{ cat.display_order }}" style="width:80px;" form="edit-form-{{ cat.id }}">
+                <input type="number" name="display_order" value="{{ cat.display_order }}" class="w-80" form="edit-form-{{ cat.id }}">
             </td>
             <td>{{ cat.items.count() }}</td>
             <td>
                 <button type="submit" form="edit-form-{{ cat.id }}" class="btn btn-sm btn-outline">Speichern</button>
-                <form method="POST" style="display:inline;" onsubmit="return confirm('Kategorie {{ cat.name }} löschen? Artikel werden abgetrennt.');">
+                <form method="POST" class="d-inline" onsubmit="return confirm('Kategorie {{ cat.name }} löschen? Artikel werden abgetrennt.');">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
                     <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
@@ -55,7 +55,7 @@
         </tr>
         {% endfor %}
         {% if not categories %}
-        <tr><td colspan="4" style="text-align:center; color:#6b7280; padding:20px;">Noch keine Kategorien.</td></tr>
+        <tr><td colspan="4" class="empty-state">Noch keine Kategorien.</td></tr>
         {% endif %}
     </tbody>
 </table>

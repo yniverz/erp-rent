@@ -3,52 +3,7 @@
 {% block title %}{{ site_settings.business_name or 'Verleih' }} - Katalog{% endblock %}
 
 {% block extra_head %}
-<style>
-    .catalog-header { margin-bottom: 30px; }
-    .catalog-header h1 { font-size: 2em; margin-bottom: 8px; }
-    .catalog-header p { color: #6b7280; font-size: 1.05em; }
-
-    .catalog-layout { display: flex; gap: 30px; }
-
-    .sidebar { width: 220px; flex-shrink: 0; }
-    .sidebar h3 { font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; margin-bottom: 12px; }
-    .category-list { list-style: none; }
-    .category-list li { margin-bottom: 4px; }
-    .category-list a { display: block; padding: 8px 14px; border-radius: 6px; text-decoration: none; color: #374151; font-size: 0.95em; transition: all 0.15s; }
-    .category-list a:hover { background: #e5e7eb; }
-    .category-list a.active { background: #2563eb; color: white; font-weight: 600; }
-
-    .items-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; align-content: start; }
-
-    .item-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: all 0.2s; display: flex; flex-direction: column; }
-    .item-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-2px); }
-
-    .item-image { width: 100%; height: 200px; object-fit: contain; background: #fff; display: flex; align-items: center; justify-content: center; }
-    .item-image img { width: 100%; height: 100%; object-fit: contain; }
-    .item-image .placeholder { color: #9ca3af; font-size: 3em; }
-
-    .item-info { padding: 18px; flex: 1; display: flex; flex-direction: column; }
-    .item-category-tag { font-size: 0.78em; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .item-name { font-size: 1.1em; font-weight: 600; margin-bottom: 6px; color: #111827; }
-    .item-description { font-size: 0.88em; color: #6b7280; margin-bottom: 12px; flex: 1; }
-    .item-price { font-size: 1.15em; font-weight: 700; color: #059669; margin-bottom: 14px; }
-    .item-price.on-request { color: #d97706; font-weight: 600; font-size: 0.95em; }
-
-    .add-to-cart-form { display: flex; gap: 8px; }
-    .add-to-cart-form input[type="number"] { width: 70px; text-align: center; padding: 8px; }
-    .add-to-cart-form button { flex: 1; }
-
-    .no-items { text-align: center; padding: 60px 20px; color: #6b7280; }
-    .no-items h2 { margin-bottom: 10px; }
-
-    @media (max-width: 768px) {
-        .catalog-layout { flex-direction: column; }
-        .sidebar { width: 100%; }
-        .category-list { display: flex; flex-wrap: wrap; gap: 6px; }
-        .category-list li { margin-bottom: 0; }
-        .items-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-catalog.css') }}">
 {% endblock %}
 
 {% block content %}

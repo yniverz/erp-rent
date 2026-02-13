@@ -2,25 +2,6 @@
 
 {% block title %}Angebot erstellen - Verwaltung{% endblock %}
 
-{% block extra_head %}
-<style>
-    .autocomplete-wrapper { position: relative; }
-    .autocomplete-list {
-        position: absolute; z-index: 100; left: 0; right: 0; top: 100%;
-        background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;
-        max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.1);
-        display: none;
-    }
-    .autocomplete-list div {
-        padding: 8px 12px; cursor: pointer; font-size: 0.95em;
-    }
-    .autocomplete-list div:hover, .autocomplete-list div.active {
-        background: #e0e7ff; color: #1e40af;
-    }
-    .customer-save-feedback { font-size: 0.85em; margin-left: 8px; }
-</style>
-{% endblock %}
-
 {% block content %}
 <h1>Neues Angebot erstellen</h1>
 
@@ -35,7 +16,7 @@
             <label>Empfängeradresse</label>
             <textarea name="recipient_lines" id="recipient_lines" rows="3"></textarea>
         </div>
-        <div style="margin-bottom: 16px;">
+        <div class="mb-16">
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
             <span class="customer-save-feedback" id="save-feedback"></span>
         </div>
@@ -49,7 +30,7 @@
                 <input type="date" name="end_date">
             </div>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div class="d-flex gap-10">
             <button type="submit" class="btn btn-success">Angebot erstellen</button>
             <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Abbrechen</a>
         </div>
@@ -135,7 +116,7 @@
             if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
             else {
                 feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
-                feedback.style.color = '#059669';
+                feedback.style.color = '#3ecf8e';
                 setTimeout(() => feedback.textContent = '', 3000);
             }
         })
