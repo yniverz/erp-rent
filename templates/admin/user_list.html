@@ -36,7 +36,7 @@
                     <span class="badge badge-draft">Mitglied</span>
                 {% endif %}
             </td>
-            <td>{{ user.items.count() }}</td>
+            <td>{{ user.ownerships.count() }}</td>
             <td>
                 {% if user.active %}
                     <span class="text-success">&#10003;</span>
