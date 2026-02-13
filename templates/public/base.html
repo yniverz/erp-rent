@@ -22,7 +22,7 @@
             <div class="header-nav">
                 <a href="{{ url_for('public.catalog') }}">Katalog</a>
                 <a href="{{ url_for('public.cart') }}" class="cart-link">
-                    &#128722; Warenkorb
+                    &#128722;
                     <span class="cart-badge" id="cart-badge">{{ cart_count|default(0) }}</span>
                 </a>
                 <a href="{{ url_for('auth.login') }}" class="header-nav-login">Anmelden</a>
