@@ -96,7 +96,7 @@
                 <td>{{ quote.customer_name }}</td>
                 <td>{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '—' }}</td>
                 <td>{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '—' }}</td>
-                <td>{{ quote.date_based_rental_days() }}{% if quote.rental_days_override %} <small class="text-muted" title="Abrechnung: {{ quote.calculate_rental_days() }} Tage">({{ quote.calculate_rental_days() }})</small>{% endif %}</td>
+                <td>{{ quote.calculate_rental_days() }}</td>
                 <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
                 <td>
                     {% for qi in quote.quote_items[:3] %}
