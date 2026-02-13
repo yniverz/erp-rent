@@ -143,23 +143,23 @@ def _draw_header(canvas, doc, *,
         except Exception:
             pass  # silently skip broken logo
 
-    # ── Sender lines (small, above recipient) ──
+    # ── Sender line (small, above recipient) ──
+    sender_str = issuer_name
+    if issuer_address:
+        sender_str += " – " + " – ".join(issuer_address[:2])
+    canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(CLR_GREY_DARK)
     y_sender = PAGE_H - MARGIN_TOP - 35 * mm
-    # Bold name
-    canvas.setFont("Helvetica-Bold", 6.5)
-    canvas.drawString(MARGIN_LEFT, y_sender, issuer_name)
-    # Address / contact below
-    if issuer_address:
-        detail_str = " – ".join(issuer_address[:2])
-        canvas.setFont("Helvetica", 6.5)
-        canvas.drawString(MARGIN_LEFT, y_sender - 8, detail_str)
+    canvas.drawString(MARGIN_LEFT, y_sender, sender_str)
 
     # ── Recipient block ──
-    canvas.setFont("Helvetica", 10)
     canvas.setFillColor(CLR_BLACK)
     y_recip = y_sender - 14
     for i, line in enumerate(recipient_lines[:6]):
+        if i == 0:
+            canvas.setFont("Helvetica-Bold", 10)
+        else:
+            canvas.setFont("Helvetica", 10)
         canvas.drawString(MARGIN_LEFT, y_recip - i * 13, line)
 
     # ── Meta block (right side, below logo) ──

@@ -1212,7 +1212,12 @@ def _extract_common_pdf_data(quote, site_settings):
     address_lines = [l.strip() for l in (site_settings.address_lines or '').split('\n') if l.strip()] if site_settings else []
     contact_lines_list = [l.strip() for l in (site_settings.contact_lines or '').split('\n') if l.strip()] if site_settings else []
     bank_lines_list = [l.strip() for l in (site_settings.bank_lines or '').split('\n') if l.strip()] if site_settings else []
-    recipient = [l.strip() for l in (quote.recipient_lines or quote.customer_name).split('\n') if l.strip()]
+    recipient = [l.strip() for l in (quote.recipient_lines or '').split('\n') if l.strip()]
+    # Prepend customer name above address lines
+    if quote.customer_name and quote.customer_name.strip():
+        customer_name = quote.customer_name.strip()
+        if not recipient or recipient[0] != customer_name:
+            recipient.insert(0, customer_name)
     tax_number = site_settings.tax_number if site_settings else None
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
     payment_terms_days = (site_settings.payment_terms_days or 14) if site_settings else 14
