@@ -61,6 +61,7 @@
                         </td>
                         <td>&euro;{{ "%.2f"|format(pkg_components|sum(attribute='total_price')) }}</td>
                     </tr>
+                    {% for pqi in pkg_components %}
                     <tr class="package-component-row">
                         <td class="pl-30">
                             ↳ {{ pqi.display_name }}
