@@ -184,10 +184,11 @@
             <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
             <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
-            <a href="{{ url_for('admin.ueberlassungsbestaetigung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Überlassungsbestätigung</a>
-            <a href="{{ url_for('admin.quote_receipt', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Kostenbeteiligung (alt)</a>
         {% elif quote.status == 'draft' %}
             <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF (Entwurf)</a>
+            <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
+            <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
+            <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
         {% endif %}
 
         {% if quote.status == 'draft' %}
