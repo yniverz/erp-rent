@@ -112,10 +112,10 @@
                                     ({{ '∞' if avail == -1 else avail }} verf.)
                                     — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
                                 </option>
-                            {% endfor %}
-                        </optgroup>
-                        {% endif %}
-                    {% endfor %}
+                            {% endif %}
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}
                 </select>
             </div>
             <button type="submit" class="btn btn-primary">Hinzufügen</button>
