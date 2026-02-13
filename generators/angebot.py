@@ -103,8 +103,7 @@ def build_angebot_pdf(
                      issuer_address=issuer_address,
                      recipient_lines=recipient_lines,
                      meta_lines=meta_lines,
-                     logo_path=logo_path,
-                     contact_lines=contact_lines)
+                     logo_path=logo_path)
         _draw_footer(canvas, doc,
                      issuer_name=issuer_name,
                      issuer_address=issuer_address,

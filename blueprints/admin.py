@@ -426,8 +426,10 @@ def quote_edit(quote_id):
                     quote.rental_days = int(request.form.get('rental_days', 1))
 
                 # Manual rental days override
-                override_str = request.form.get('rental_days_override', '').strip()
-                quote.rental_days_override = int(override_str) if override_str else None
+                # Only update if the form explicitly includes the field
+                if 'rental_days_override' in request.form:
+                    override_str = request.form.get('rental_days_override', '').strip()
+                    quote.rental_days_override = int(override_str) if override_str else None
 
                 quote.recipient_lines = request.form.get('recipient_lines', '')
                 quote.notes = request.form.get('notes', '')

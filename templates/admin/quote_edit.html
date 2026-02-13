@@ -483,6 +483,9 @@
                 feedback.style.color = '#3ecf8e';
                 deleteBtn.classList.remove('d-none');
                 setTimeout(() => feedback.textContent = '', 3000);
+                // Also save the quote details
+                const quoteForm = saveBtn.closest('form');
+                if (quoteForm) quoteForm.submit();
             }
         })
         .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });

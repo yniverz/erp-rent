@@ -105,8 +105,7 @@ def _draw_header(canvas, doc, *,
                  issuer_address: list[str],
                  recipient_lines: list[str],
                  meta_lines: list[tuple[str, str]],
-                 logo_path: str | None = None,
-                 contact_lines: list[str] | None = None):
+                 logo_path: str | None = None):
     """Draw the standard header block (sender line, recipient, meta, logo)."""
     canvas.saveState()
 
@@ -148,8 +147,6 @@ def _draw_header(canvas, doc, *,
     sender_str = issuer_name
     if issuer_address:
         sender_str += " – " + " – ".join(issuer_address[:2])
-    if contact_lines:
-        sender_str += " – " + " – ".join(contact_lines[:2])
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(CLR_GREY_DARK)
     y_sender = PAGE_H - MARGIN_TOP - 35 * mm
