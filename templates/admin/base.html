@@ -57,5 +57,23 @@
     </div>
 
     {% block extra_js %}{% endblock %}
+    <script>
+    // Scroll position persistence per path
+    (function() {
+        const key = 'scrollPos:' + window.location.pathname;
+        // Restore scroll position if available
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            window.scrollTo(0, parseInt(saved, 10));
+        }
+        // Save scroll position before unload
+        window.addEventListener('scroll', function() {
+            localStorage.setItem(key, window.scrollY);
+        });
+        window.addEventListener('beforeunload', function() {
+            localStorage.setItem(key, window.scrollY);
+        });
+    })();
+    </script>
 </body>
 </html>
