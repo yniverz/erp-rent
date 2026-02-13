@@ -383,11 +383,19 @@ class SiteSettings(db.Model):
     address_lines = db.Column(db.Text, nullable=True)
     contact_lines = db.Column(db.Text, nullable=True)
     bank_lines = db.Column(db.Text, nullable=True)
+    # Tax / invoicing
+    tax_number = db.Column(db.String(100), nullable=True)  # Steuernummer or USt-IdNr
+    tax_mode = db.Column(db.String(20), default='kleinunternehmer')  # 'kleinunternehmer' or 'regular'
+    payment_terms_days = db.Column(db.Integer, default=14)
+    quote_validity_days = db.Column(db.Integer, default=14)
+    logo_filename = db.Column(db.String(300), nullable=True)  # Uploaded logo file
     # Public storefront
     shop_description = db.Column(db.Text, nullable=True)
     # Legal links
     imprint_url = db.Column(db.String(500), nullable=True)
     privacy_url = db.Column(db.String(500), nullable=True)
+    # AGB / Terms & Conditions (basic markdown)
+    terms_and_conditions_text = db.Column(db.Text, nullable=True)
     # Notification
     notification_email = db.Column(db.String(200), nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

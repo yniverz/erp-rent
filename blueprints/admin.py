@@ -1,5 +1,5 @@
 from io import BytesIO
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
 from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file
@@ -1024,11 +1024,40 @@ def settings():
             settings_record.address_lines = request.form.get('address_lines', '')
             settings_record.contact_lines = request.form.get('contact_lines', '')
             settings_record.bank_lines = request.form.get('bank_lines', '')
+            settings_record.tax_number = request.form.get('tax_number', '').strip()
+            settings_record.tax_mode = request.form.get('tax_mode', 'kleinunternehmer').strip()
+            settings_record.payment_terms_days = int(request.form.get('payment_terms_days', '14') or 14)
+            settings_record.quote_validity_days = int(request.form.get('quote_validity_days', '14') or 14)
             settings_record.shop_description = request.form.get('shop_description', '')
             settings_record.imprint_url = request.form.get('imprint_url', '').strip()
             settings_record.privacy_url = request.form.get('privacy_url', '').strip()
+            settings_record.terms_and_conditions_text = request.form.get('terms_and_conditions_text', '').strip() or None
             settings_record.notification_email = request.form.get('notification_email', '').strip()
             settings_record.updated_at = datetime.utcnow()
+
+            # Handle logo upload
+            if request.form.get('remove_logo'):
+                if settings_record.logo_filename:
+                    old_path = os.path.join(get_upload_path(), settings_record.logo_filename)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    settings_record.logo_filename = None
+            logo_file = request.files.get('logo')
+            if logo_file and logo_file.filename:
+                from werkzeug.utils import secure_filename as sf
+                ext = os.path.splitext(logo_file.filename)[1].lower()
+                if ext in ('.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif'):
+                    # Remove old logo
+                    if settings_record.logo_filename:
+                        old_path = os.path.join(get_upload_path(), settings_record.logo_filename)
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
+                    filename = f'company_logo{ext}'
+                    logo_file.save(os.path.join(get_upload_path(), filename))
+                    settings_record.logo_filename = filename
+                else:
+                    flash('Ung\u00fcltiges Logo-Format. Erlaubt: PNG, JPEG, SVG, WebP, GIF', 'error')
+
             db.session.commit()
             flash('Einstellungen gespeichert!', 'success')
         except Exception as e:
@@ -1036,6 +1065,19 @@ def settings():
             flash(f'Fehler: {str(e)}', 'error')
 
     return render_template('admin/settings.html', settings=settings_record)
+
+
+@admin_bp.route('/logo')
+@login_required
+def serve_logo():
+    """Serve the uploaded company logo"""
+    site_settings = SiteSettings.query.first()
+    if not site_settings or not site_settings.logo_filename:
+        abort(404)
+    logo_path = os.path.join(get_upload_path(), site_settings.logo_filename)
+    if not os.path.exists(logo_path):
+        abort(404)
+    return send_file(logo_path)
 
 
 # ============= REPORTS =============
@@ -1161,6 +1203,255 @@ def schedule():
 
 
 # ============= PDF GENERATORS =============
+
+def _extract_common_pdf_data(quote, site_settings):
+    """Extract common data used across all PDF generators."""
+    issuer_name = site_settings.business_name if site_settings and site_settings.business_name else "Ihr Unternehmen"
+    address_lines = [l.strip() for l in (site_settings.address_lines or '').split('\n') if l.strip()] if site_settings else []
+    contact_lines_list = [l.strip() for l in (site_settings.contact_lines or '').split('\n') if l.strip()] if site_settings else []
+    bank_lines_list = [l.strip() for l in (site_settings.bank_lines or '').split('\n') if l.strip()] if site_settings else []
+    recipient = [l.strip() for l in (quote.recipient_lines or quote.customer_name).split('\n') if l.strip()]
+    tax_number = site_settings.tax_number if site_settings else None
+    tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
+    payment_terms_days = (site_settings.payment_terms_days or 14) if site_settings else 14
+    quote_validity_days = (site_settings.quote_validity_days or 14) if site_settings else 14
+
+    # Logo path
+    logo_path = None
+    if site_settings and site_settings.logo_filename:
+        lp = os.path.join(get_upload_path(), site_settings.logo_filename)
+        if os.path.exists(lp):
+            logo_path = lp
+
+    # Date strings
+    start_str = quote.start_date.strftime("%d.%m.%Y") if quote.start_date else None
+    end_str = quote.end_date.strftime("%d.%m.%Y") if quote.end_date else None
+    rental_days = quote.calculate_rental_days()
+
+    return {
+        'issuer_name': issuer_name,
+        'issuer_address': address_lines,
+        'contact_lines': contact_lines_list,
+        'bank_lines': bank_lines_list,
+        'recipient_lines': recipient,
+        'tax_number': tax_number,
+        'tax_mode': tax_mode,
+        'payment_terms_days': payment_terms_days,
+        'quote_validity_days': quote_validity_days,
+        'logo_path': logo_path,
+        'start_date_str': start_str,
+        'end_date_str': end_str,
+        'rental_days': rental_days,
+    }
+
+
+def _extract_positions(quote):
+    """Extract positions from a quote, grouping bundle components under their package.
+
+    Returns a list of dicts:
+    - Regular item: { 'name', 'quantity', 'price_per_day', 'total', 'is_bundle': False }
+    - Bundle: { 'name', 'quantity', 'price_per_day': 0, 'total', 'is_bundle': True,
+                'bundle_components': [{'name', 'quantity'}] }
+    """
+    positions = []
+    seen_package_ids = set()
+
+    for qi in quote.quote_items:
+        if qi.package_id:
+            if qi.package_id in seen_package_ids:
+                continue
+            seen_package_ids.add(qi.package_id)
+            # Gather all components for this package
+            components = [q for q in quote.quote_items if q.package_id == qi.package_id]
+            bundle_total = sum(c.total_price for c in components)
+            bundle_qty = 1  # Packages are listed once
+            # Determine package name
+            pkg_name = qi.package.name if qi.package else "Paket"
+            positions.append({
+                'name': pkg_name,
+                'quantity': bundle_qty,
+                'price_per_day': 0,
+                'total': bundle_total,
+                'is_bundle': True,
+                'bundle_components': [
+                    {'name': c.display_name, 'quantity': c.quantity}
+                    for c in components
+                ],
+            })
+        else:
+            positions.append({
+                'name': qi.display_name,
+                'quantity': qi.quantity,
+                'price_per_day': qi.rental_price_per_day,
+                'total': qi.total_price,
+                'is_bundle': False,
+            })
+
+    return positions
+
+
+def _extract_items_for_lieferschein(quote):
+    """Extract items for the Lieferschein (no prices, just names and quantities)."""
+    items = []
+    seen_package_ids = set()
+
+    for qi in quote.quote_items:
+        if qi.package_id:
+            if qi.package_id in seen_package_ids:
+                continue
+            seen_package_ids.add(qi.package_id)
+            components = [q for q in quote.quote_items if q.package_id == qi.package_id]
+            pkg_name = qi.package.name if qi.package else "Paket"
+            items.append({
+                'name': pkg_name,
+                'quantity': 1,
+                'is_bundle': True,
+                'bundle_components': [
+                    {'name': c.display_name, 'quantity': c.quantity}
+                    for c in components
+                ],
+            })
+        else:
+            items.append({
+                'name': qi.display_name,
+                'quantity': qi.quantity,
+                'is_bundle': False,
+            })
+
+    return items
+
+
+def _send_pdf_response(pdf_bytes, filename):
+    """Send a PDF response with no-cache headers."""
+    response = send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=filename,
+        max_age=0,
+    )
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+# ── Angebot PDF ──
+
+@admin_bp.route('/quotes/<int:quote_id>/angebot.pdf')
+@login_required
+def angebot_pdf(quote_id):
+    """Generate Angebot (Quote) PDF"""
+    from generators.angebot import build_angebot_pdf
+
+    quote = Quote.query.get_or_404(quote_id)
+    site_settings = SiteSettings.query.first()
+    data = _extract_common_pdf_data(quote, site_settings)
+    positions = _extract_positions(quote)
+
+    pdf_bytes = build_angebot_pdf(
+        issuer_name=data['issuer_name'],
+        issuer_address=data['issuer_address'],
+        contact_lines=data['contact_lines'],
+        bank_lines=data['bank_lines'],
+        tax_number=data['tax_number'],
+        tax_mode=data['tax_mode'],
+        logo_path=data['logo_path'],
+        recipient_lines=data['recipient_lines'],
+        reference_number=quote.reference_number or f"AN-{quote.id:04d}",
+        start_date_str=data['start_date_str'],
+        end_date_str=data['end_date_str'],
+        rental_days=data['rental_days'],
+        positions=positions,
+        discount_percent=quote.discount_percent or 0,
+        discount_label=quote.discount_label,
+        discount_amount=quote.discount_amount,
+        subtotal=quote.subtotal,
+        total=quote.total,
+        payment_terms_days=data['payment_terms_days'],
+        quote_validity_days=data['quote_validity_days'],
+        notes=quote.notes,
+        terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
+    )
+    return _send_pdf_response(pdf_bytes, f"angebot_{quote.reference_number}.pdf")
+
+
+# ── Rechnung PDF ──
+
+@admin_bp.route('/quotes/<int:quote_id>/rechnung.pdf')
+@login_required
+def rechnung_pdf(quote_id):
+    """Generate Rechnung (Invoice) PDF"""
+    from generators.rechnung import build_rechnung_pdf
+
+    quote = Quote.query.get_or_404(quote_id)
+    site_settings = SiteSettings.query.first()
+    data = _extract_common_pdf_data(quote, site_settings)
+    positions = _extract_positions(quote)
+
+    rechnungs_datum = quote.finalized_at.strftime("%d.%m.%Y") if quote.finalized_at else datetime.now().strftime("%d.%m.%Y")
+
+    pdf_bytes = build_rechnung_pdf(
+        issuer_name=data['issuer_name'],
+        issuer_address=data['issuer_address'],
+        contact_lines=data['contact_lines'],
+        bank_lines=data['bank_lines'],
+        tax_number=data['tax_number'],
+        tax_mode=data['tax_mode'],
+        logo_path=data['logo_path'],
+        recipient_lines=data['recipient_lines'],
+        reference_number=quote.reference_number or f"RE-{quote.id:04d}",
+        rechnungs_datum=rechnungs_datum,
+        start_date_str=data['start_date_str'],
+        end_date_str=data['end_date_str'],
+        rental_days=data['rental_days'],
+        positions=positions,
+        discount_percent=quote.discount_percent or 0,
+        discount_label=quote.discount_label,
+        discount_amount=quote.discount_amount,
+        subtotal=quote.subtotal,
+        total=quote.total,
+        payment_terms_days=data['payment_terms_days'],
+        notes=quote.notes,
+    )
+    return _send_pdf_response(pdf_bytes, f"rechnung_{quote.reference_number}.pdf")
+
+
+# ── Lieferschein PDF ──
+
+@admin_bp.route('/quotes/<int:quote_id>/lieferschein.pdf')
+@login_required
+def lieferschein_pdf(quote_id):
+    """Generate Lieferschein (Delivery Note / Handover Protocol) PDF"""
+    from generators.lieferschein import build_lieferschein_pdf
+
+    quote = Quote.query.get_or_404(quote_id)
+    site_settings = SiteSettings.query.first()
+    data = _extract_common_pdf_data(quote, site_settings)
+    items = _extract_items_for_lieferschein(quote)
+
+    # Kaution from query param (optional)
+    kaution = request.args.get('kaution', None, type=float)
+
+    pdf_bytes = build_lieferschein_pdf(
+        issuer_name=data['issuer_name'],
+        issuer_address=data['issuer_address'],
+        contact_lines=data['contact_lines'],
+        bank_lines=data['bank_lines'],
+        tax_number=data['tax_number'],
+        logo_path=data['logo_path'],
+        recipient_lines=data['recipient_lines'],
+        reference_number=quote.reference_number or f"LS-{quote.id:04d}",
+        start_date_str=data['start_date_str'],
+        end_date_str=data['end_date_str'],
+        items=items,
+        kaution=kaution,
+        notes=quote.notes,
+    )
+    return _send_pdf_response(pdf_bytes, f"lieferschein_{quote.reference_number}.pdf")
+
+
+# ── Legacy PDF generators (kept for backwards compatibility) ──
 
 @admin_bp.route('/quotes/<int:quote_id>/ueberlassungsbestaetigung.pdf')
 @login_required

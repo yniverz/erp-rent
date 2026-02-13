@@ -217,6 +217,31 @@ with app.app_context():
         conn.commit()
         conn.close()
 
+    # Migrate SiteSettings new columns
+    if os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        def column_exists2(table, column):
+            cursor.execute(f"PRAGMA table_info({table})")
+            return any(row[1] == column for row in cursor.fetchall())
+
+        if not column_exists2('site_settings', 'tax_number'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_number VARCHAR(100)")
+        if not column_exists2('site_settings', 'tax_mode'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_mode VARCHAR(20) DEFAULT 'kleinunternehmer'")
+        if not column_exists2('site_settings', 'payment_terms_days'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN payment_terms_days INTEGER DEFAULT 14")
+        if not column_exists2('site_settings', 'quote_validity_days'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN quote_validity_days INTEGER DEFAULT 14")
+        if not column_exists2('site_settings', 'logo_filename'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN logo_filename VARCHAR(300)")
+        if not column_exists2('site_settings', 'terms_and_conditions_text'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN terms_and_conditions_text TEXT")
+
+        conn.commit()
+        conn.close()
+
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
     os.makedirs(uploads_dir, exist_ok=True)

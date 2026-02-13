@@ -6,7 +6,7 @@
 <h1>Seiteneinstellungen</h1>
 
 <div class="card">
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
         <h2>Unternehmensinformationen</h2>
         <p class="text-muted mb-16">Wird in PDFs und der öffentlichen Storefront verwendet.</p>
 
@@ -28,6 +28,46 @@
         <div class="form-group">
             <label>Bankverbindung</label>
             <textarea name="bank_lines" rows="3" placeholder="Bank: ...&#10;IBAN: ...&#10;BIC: ...">{{ settings.bank_lines or '' }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Steuernummer / USt-IdNr</label>
+            <input type="text" name="tax_number" value="{{ settings.tax_number or '' }}" placeholder="DE123456789 oder 12/345/67890">
+        </div>
+
+        <div class="form-group">
+            <label>Umsatzsteuer-Modus</label>
+            <select name="tax_mode">
+                <option value="kleinunternehmer" {{ 'selected' if (settings.tax_mode or 'kleinunternehmer') == 'kleinunternehmer' }}>Kleinunternehmer (&sect;19 UStG) &ndash; keine MwSt</option>
+                <option value="regular" {{ 'selected' if settings.tax_mode == 'regular' }}>Regul&auml;r &ndash; 19% MwSt ausweisen</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Zahlungsziel (Tage)</label>
+                <input type="number" name="payment_terms_days" value="{{ settings.payment_terms_days or 14 }}" min="1" max="365">
+            </div>
+            <div class="form-group">
+                <label>Angebots-G&uuml;ltigkeit (Tage)</label>
+                <input type="number" name="quote_validity_days" value="{{ settings.quote_validity_days or 14 }}" min="1" max="365">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Firmenlogo</label>
+            {% if settings.logo_filename %}
+                <div class="mb-8">
+                    <img src="{{ url_for('admin.serve_logo') }}" alt="Logo" style="max-height: 80px; max-width: 300px;">
+                    <br>
+                    <small class="text-muted">Aktuell: {{ settings.logo_filename }}</small>
+                </div>
+            {% endif %}
+            <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif">
+            <small class="help-text">PNG, JPEG, SVG, WebP oder GIF. Wird auf PDFs oben rechts angezeigt.</small>
+            {% if settings.logo_filename %}
+                <label class="mt-4" style="font-weight:normal;"><input type="checkbox" name="remove_logo" value="1"> Logo entfernen</label>
+            {% endif %}
         </div>
 
         <hr class="section-divider">
@@ -53,6 +93,16 @@
                 <label>Datenschutz-URL</label>
                 <input type="url" name="privacy_url" value="{{ settings.privacy_url or '' }}" placeholder="https://...">
             </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <h2>Allgemeine Geschäftsbedingungen (AGB)</h2>
+        <p class="text-muted mb-16">Werden dem Angebot als Anlage angehängt. Einfaches Markdown: <code>#</code> für Überschriften, <code>##</code> für Unterüberschriften, Leerzeile für Absätze.</p>
+
+        <div class="form-group">
+            <label>AGB-Text</label>
+            <textarea name="terms_and_conditions_text" rows="12" placeholder="# Allgemeine Geschäftsbedingungen&#10;&#10;## §1 Geltungsbereich&#10;Diese AGB gelten für...">{{ settings.terms_and_conditions_text or '' }}</textarea>
         </div>
 
         <hr class="section-divider">
