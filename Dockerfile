@@ -5,11 +5,14 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install system dependencies for lxml (needed by svglib)
+# Install system dependencies for lxml/Pillow
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    python3-dev \
     libxml2-dev \
     libxslt1-dev \
+    zlib1g-dev \
+    libjpeg62-turbo-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
