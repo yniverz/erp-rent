@@ -34,7 +34,7 @@
 
         <div class="form-group">
             <label>Beschreibung</label>
-            <textarea name="description" placeholder="Sichtbar in der öffentlichen Storefront...">{{ item.description if item else '' }}</textarea>
+            <textarea name="description" placeholder="Sichtbar in der öffentlichen Storefront...">{{ item.description if item and item.description is not none else '' }}</textarea>
         </div>
 
         <div class="form-group">
