@@ -210,8 +210,6 @@ def submit_inquiry():
             errors.append(f'Artikel (ID {item_id_str}) nicht gefunden.')
         elif quantity < 1:
             errors.append(f'Ungültige Menge für {item.name}.')
-        elif item.rental_step > 1 and quantity % item.rental_step != 0:
-            errors.append(f'Die Menge für {item.name} muss ein Vielfaches von {item.rental_step} sein.')
 
     if errors:
         for err in errors:

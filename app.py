@@ -1,6 +1,6 @@
 from flask import Flask, send_file
 from flask_login import LoginManager
-from models import db, User, SiteSettings, PackageComponent
+from models import db, User, SiteSettings, PackageComponent, ItemOwnership
 from dotenv import load_dotenv
 import os
 import io
@@ -102,7 +102,7 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 with app.app_context():
     db.create_all()
 
-    # Migrate: add new columns if they don't exist (for existing databases)
+    # Migrate: add new columns/tables if they don't exist (for existing databases)
     import sqlite3
     db_path = os.path.join(os.path.dirname(__file__), 'instance', 'erp_rent.db')
     if os.path.exists(db_path):
@@ -113,13 +113,9 @@ with app.app_context():
             cursor.execute(f"PRAGMA table_info({table})")
             return any(row[1] == column for row in cursor.fetchall())
 
-        # Item table migrations
-        if not column_exists('item', 'is_external'):
-            cursor.execute("ALTER TABLE item ADD COLUMN is_external BOOLEAN DEFAULT 0")
-        if not column_exists('item', 'default_rental_cost_per_day'):
-            cursor.execute("ALTER TABLE item ADD COLUMN default_rental_cost_per_day FLOAT DEFAULT 0")
-        if not column_exists('item', 'total_cost'):
-            cursor.execute("ALTER TABLE item ADD COLUMN total_cost FLOAT DEFAULT 0")
+        def table_exists(name):
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,))
+            return cursor.fetchone() is not None
 
         # QuoteItem table migrations
         if not column_exists('quote_item', 'rental_cost_per_day'):
@@ -134,8 +130,7 @@ with app.app_context():
             cursor.execute("ALTER TABLE quote ADD COLUMN discount_label VARCHAR(200)")
 
         # Customer table migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customer'")
-        if not cursor.fetchone():
+        if not table_exists('customer'):
             cursor.execute("""
                 CREATE TABLE customer (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,8 +141,7 @@ with app.app_context():
             """)
 
         # Item subcategories association table migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='item_subcategories'")
-        if not cursor.fetchone():
+        if not table_exists('item_subcategories'):
             cursor.execute("""
                 CREATE TABLE item_subcategories (
                     item_id INTEGER NOT NULL,
@@ -158,6 +152,14 @@ with app.app_context():
                 )
             """)
 
+        # Item table migrations (needed before ownership migration reads these columns)
+        if not column_exists('item', 'is_external'):
+            cursor.execute("ALTER TABLE item ADD COLUMN is_external BOOLEAN DEFAULT 0")
+        if not column_exists('item', 'default_rental_cost_per_day'):
+            cursor.execute("ALTER TABLE item ADD COLUMN default_rental_cost_per_day FLOAT DEFAULT 0")
+        if not column_exists('item', 'total_cost'):
+            cursor.execute("ALTER TABLE item ADD COLUMN total_cost FLOAT DEFAULT 0")
+
         # Package support migrations
         if not column_exists('item', 'is_package'):
             cursor.execute("ALTER TABLE item ADD COLUMN is_package BOOLEAN DEFAULT 0")
@@ -166,8 +168,7 @@ with app.app_context():
             cursor.execute("ALTER TABLE quote_item ADD COLUMN package_id INTEGER REFERENCES item(id)")
 
         # PackageComponent table migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='package_component'")
-        if not cursor.fetchone():
+        if not table_exists('package_component'):
             cursor.execute("""
                 CREATE TABLE package_component (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +179,40 @@ with app.app_context():
                     FOREIGN KEY (component_item_id) REFERENCES item(id)
                 )
             """)
+
+        # ItemOwnership table migration
+        if not table_exists('item_ownership'):
+            cursor.execute("""
+                CREATE TABLE item_ownership (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 0,
+                    external_price_per_day FLOAT,
+                    purchase_cost FLOAT DEFAULT 0,
+                    UNIQUE(item_id, user_id),
+                    FOREIGN KEY (item_id) REFERENCES item(id),
+                    FOREIGN KEY (user_id) REFERENCES user(id)
+                )
+            """)
+
+            # Migrate existing items: create ownership entries from old owner_id + total_quantity
+            if column_exists('item', 'owner_id'):
+                cursor.execute("""
+                    SELECT id, owner_id, total_quantity, is_external,
+                           default_rental_cost_per_day, unit_purchase_cost
+                    FROM item WHERE owner_id IS NOT NULL
+                """)
+                for row in cursor.fetchall():
+                    item_id, owner_id, total_qty, is_ext, rental_cost, purchase_cost = row
+                    ext_price = rental_cost if is_ext else None
+                    p_cost = 0 if is_ext else ((purchase_cost or 0) * (total_qty or 0))
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO item_ownership
+                            (item_id, user_id, quantity, external_price_per_day, purchase_cost)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (item_id, owner_id, total_qty or 0, ext_price, p_cost))
+                print("Migrated existing items to ItemOwnership table")
 
         conn.commit()
         conn.close()

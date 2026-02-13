@@ -53,7 +53,15 @@
                     <br><small class="text-muted">+ {{ item.subcategories|map(attribute='name')|join(', ') }}</small>
                 {% endif %}
             </td>
-            <td>{{ item.owner.display_name or item.owner.username }}</td>
+            <td>
+                {% if item.ownerships %}
+                    {% for o in item.ownerships %}
+                        <span{% if o.is_external %} class="text-external"{% endif %}>{{ o.user.display_name or o.user.username }}{% if o.is_external %} ↗{% endif %}</span>{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </td>
             <td>{{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
             <td>&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }}</td>
             <td>

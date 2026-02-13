@@ -18,8 +18,6 @@ class User(UserMixin, db.Model):
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    items = db.relationship('Item', back_populates='owner', lazy='dynamic')
-
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
@@ -34,7 +32,9 @@ class User(UserMixin, db.Model):
         """Check if this user can edit a given item"""
         if self.is_admin or self.can_edit_all:
             return True
-        return item.owner_id == self.id
+        # Can edit if user has an ownership entry for this item
+        from models import ItemOwnership
+        return ItemOwnership.query.filter_by(item_id=item.id, user_id=self.id).first() is not None
 
 
 # Association table for item subcategories (many-to-many)
@@ -64,20 +64,40 @@ class Category(db.Model):
     items = db.relationship('Item', back_populates='category', lazy='dynamic')
 
 
+class ItemOwnership(db.Model):
+    """Per-user ownership/supply of an item.
+    If external_price_per_day is set, this user is an external provider for this item.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=0)  # -1 for unlimited
+    external_price_per_day = db.Column(db.Float, nullable=True)  # If set, this user is external provider
+    purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost (sum) for this owner's stock
+
+    __table_args__ = (db.UniqueConstraint('item_id', 'user_id', name='uq_item_user'),)
+
+    item = db.relationship('Item', back_populates='ownerships')
+    user = db.relationship('User')
+
+    @property
+    def is_external(self):
+        return self.external_price_per_day is not None
+
+    @property
+    def total_purchase_cost(self):
+        if self.is_external:
+            return 0
+        return round(self.purchase_cost or 0, 2)
+
+
 class Item(db.Model):
     """Inventory item model"""
     id = db.Column(db.Integer, primary_key=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
-    total_quantity = db.Column(db.Integer, nullable=False)  # -1 for unlimited
-    set_size = db.Column(db.Integer, default=1)
-    rental_step = db.Column(db.Integer, default=1)
-    unit_purchase_cost = db.Column(db.Float, nullable=False, default=0)
     default_rental_price_per_day = db.Column(db.Float, nullable=False, default=0)
-    is_external = db.Column(db.Boolean, default=False)  # True = rented from external source
-    default_rental_cost_per_day = db.Column(db.Float, default=0)  # What we pay externally per day per item
     show_price_publicly = db.Column(db.Boolean, default=True)  # False = "on request"
     visible_in_shop = db.Column(db.Boolean, default=True)
     image_filename = db.Column(db.String(300), nullable=True)
@@ -86,9 +106,10 @@ class Item(db.Model):
     is_package = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    owner = db.relationship('User', back_populates='items')
     category = db.relationship('Category', back_populates='items')
     subcategories = db.relationship('Category', secondary=item_subcategories, lazy='selectin')
+    ownerships = db.relationship('ItemOwnership', back_populates='item',
+                                  cascade='all, delete-orphan', lazy='selectin')
     quote_items = db.relationship('QuoteItem', back_populates='item',
                                    foreign_keys='QuoteItem.item_id',
                                    cascade='all, delete-orphan')
@@ -97,17 +118,70 @@ class Item(db.Model):
                                          cascade='all, delete-orphan', lazy='selectin')
 
     @property
+    def total_quantity(self):
+        """Sum of all ownership quantities.
+        If any external has -1 and no internal owners have quantity, return -1.
+        Otherwise sum all finite quantities (ignoring external -1s).
+        """
+        if not self.ownerships:
+            return 0
+        internal_qty = 0
+        has_internal = False
+        has_infinite_external = False
+        finite_total = 0
+        for o in self.ownerships:
+            if o.is_external:
+                if o.quantity == -1:
+                    has_infinite_external = True
+                else:
+                    finite_total += o.quantity
+            else:
+                has_internal = True
+                if o.quantity == -1:
+                    return -1  # Internal unlimited = item is unlimited
+                internal_qty += o.quantity
+                finite_total += o.quantity
+        if not has_internal and has_infinite_external:
+            return -1
+        return finite_total
+
+    @property
+    def internal_quantity(self):
+        """Sum of quantities from non-external owners."""
+        total = 0
+        for o in self.ownerships:
+            if not o.is_external:
+                if o.quantity == -1:
+                    return -1
+                total += o.quantity
+        return total
+
+    @property
+    def is_external(self):
+        """True if there are ONLY external providers (no internal owners with quantity)."""
+        if not self.ownerships:
+            return False
+        for o in self.ownerships:
+            if not o.is_external and o.quantity > 0:
+                return False
+        return any(o.is_external and o.quantity != 0 for o in self.ownerships)
+
+    @property
+    def external_ownerships_sorted(self):
+        """External ownerships sorted by price (cheapest first)."""
+        return sorted(
+            [o for o in self.ownerships if o.is_external],
+            key=lambda o: o.external_price_per_day or 0
+        )
+
+    @property
     def total_purchase_cost(self):
-        if self.is_external:
-            return 0
-        if self.total_quantity == -1:
-            return 0
-        return round(self.total_quantity * self.unit_purchase_cost, 2)
+        return round(sum(o.total_purchase_cost for o in self.ownerships), 2)
 
     @property
     def is_paid_off(self):
         if self.is_external:
-            return False  # External items have no payoff concept
+            return False
         return self.total_revenue >= self.total_purchase_cost
 
     @property
@@ -119,10 +193,8 @@ class Item(db.Model):
 
     @property
     def total_profit(self):
-        """Net profit: revenue minus costs (purchase cost or external rental cost)"""
-        if self.is_external:
-            return round(self.total_revenue - self.total_cost, 2)
-        return round(self.total_revenue - self.total_purchase_cost, 2)
+        """Net profit: revenue minus costs (purchase cost + external rental cost)"""
+        return round(self.total_revenue - self.total_purchase_cost - self.total_cost, 2)
 
     @property
     def component_price_sum(self):
@@ -131,6 +203,39 @@ class Item(db.Model):
             return 0
         return sum(pc.component_item.default_rental_price_per_day * pc.quantity
                    for pc in self.package_components)
+
+    def calculate_external_cost(self, quantity_needed):
+        """Calculate the blended external cost per day for a given quantity.
+        Uses internal stock first, then cheapest external sources.
+        Returns (external_cost_per_day_total, breakdown) where breakdown
+        is a list of (ownership, qty_used) tuples.
+        """
+        internal_qty = self.internal_quantity
+        if internal_qty == -1:
+            # Unlimited internal, no external cost
+            return 0, []
+
+        remaining = max(0, quantity_needed - internal_qty)
+        if remaining == 0:
+            return 0, []
+
+        total_cost = 0
+        breakdown = []
+        for o in self.external_ownerships_sorted:
+            if remaining <= 0:
+                break
+            if o.quantity == -1:
+                # Unlimited external
+                total_cost += remaining * (o.external_price_per_day or 0)
+                breakdown.append((o, remaining))
+                remaining = 0
+            else:
+                use = min(remaining, o.quantity)
+                total_cost += use * (o.external_price_per_day or 0)
+                breakdown.append((o, use))
+                remaining -= use
+
+        return round(total_cost, 2), breakdown
 
 
 class Quote(db.Model):

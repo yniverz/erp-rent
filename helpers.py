@@ -2,7 +2,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from models import db, Item, Quote, QuoteItem, PackageComponent
+from models import db, Item, Quote, QuoteItem, PackageComponent, ItemOwnership
 from sqlalchemy import and_, or_
 
 

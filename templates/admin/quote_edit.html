@@ -109,33 +109,6 @@
                                     {{ item.name }}
                                     {% if item.is_external %} ↗ Extern{% endif %}
                                     ({{ '∞' if avail == -1 else avail }} verf.)
-                                    — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
-                                </option>
-                            {% endif %}
-                        {% endfor %}
-                    </optgroup>
-                    {% endif %}
-
-                    {# Items grouped by category #}
-                    {% for cat in categories %}
-                        {% set cat_items = items|selectattr('category')|selectattr('category.id', 'equalto', cat.id)|list %}
-                        {% set available_cat_items = [] %}
-                        {% for item in cat_items %}
-                            {% if item.is_package %}
-                                {% if item.id not in existing_package_ids %}
-                                    {% if available_cat_items.append(item) %}{% endif %}
-                                {% endif %}
-                            {% elif item.id not in existing_ids %}
-                                {% if available_cat_items.append(item) %}{% endif %}
-                            {% endif %}
-                        {% endfor %}
-                        {% if available_cat_items %}
-                        <optgroup label="{{ cat.name }}">
-                            {% for item in available_cat_items %}
-                                {% set avail = item_availability.get(item.id, 0) %}
-                                <option value="{{ item.id }}" {{ 'disabled' if avail == 0 }}>
-                                    {% if item.is_package %}📦 {% endif %}{{ item.name }}
-                                    {% if item.is_external %} ↗ Extern{% endif %}
                                     ({{ '∞' if avail == -1 else avail }} verf.)
                                     — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
                                 </option>
@@ -194,18 +167,12 @@
                             ↳ {{ qi.item.name }}
                             {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
                             {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
-                            <br><small class="text-muted">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
                         </td>
                         <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
                         <td><input type="number" name="quantity_pkg_{{ qi.id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
                         <td><input type="number" name="price_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
-                            {% if qi.item.is_external %}
-                                <input type="number" name="cost_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
-                            {% else %}
-                                <span class="text-muted">—</span>
-                                <input type="hidden" name="cost_pkg_{{ qi.id }}" value="0">
-                            {% endif %}
+                            <input type="number" name="cost_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
                         </td>
                         <td class="text-center">
                             <label class="exempt-label" title="Vom Rabatt ausgenommen">
@@ -215,7 +182,7 @@
                         </td>
                         <td>
                             &euro;{{ "%.2f"|format(qi.total_price) }}
-                            {% if qi.item.is_external and qi.rental_cost_per_day %}
+                            {% if qi.rental_cost_per_day %}
                                 <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
                             {% endif %}
                         </td>
@@ -235,18 +202,12 @@
                             <strong>{{ qi.item.name }}</strong>
                             {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
                             {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
-                            <br><small class="text-muted">{{ qi.item.owner.display_name or qi.item.owner.username }}</small>
                         </td>
                         <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}</td>
-                        <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" step="{{ qi.item.rental_step }}" class="w-80"></td>
+                        <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
                         <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
-                            {% if qi.item.is_external %}
-                                <input type="number" name="cost_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
-                            {% else %}
-                                <span class="text-muted">—</span>
-                                <input type="hidden" name="cost_{{ qi.item_id }}" value="0">
-                            {% endif %}
+                            <input type="number" name="cost_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
                         </td>
                         <td class="text-center">
                             <label class="exempt-label" title="Vom Rabatt ausgenommen">
@@ -256,7 +217,7 @@
                         </td>
                         <td>
                             &euro;{{ "%.2f"|format(qi.total_price) }}
-                            {% if qi.item.is_external and qi.rental_cost_per_day %}
+                            {% if qi.rental_cost_per_day %}
                                 <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
                             {% endif %}
                         </td>

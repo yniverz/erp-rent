@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
@@ -116,36 +116,12 @@ def inventory_add():
     if request.method == 'POST':
         try:
             name = request.form.get('name', '').strip()
-            total_quantity = int(request.form.get('total_quantity', 0))
-            set_size = int(request.form.get('set_size', 1))
-            rental_step = int(request.form.get('rental_step', 1))
             default_rental_price = float(request.form.get('default_rental_price', 0))
             description = request.form.get('description', '').strip()
             category_id = request.form.get('category_id', type=int) or None
             show_price = request.form.get('show_price_publicly') == 'on'
             visible = request.form.get('visible_in_shop') == 'on'
-            is_external = request.form.get('is_external') == 'on'
             is_package = request.form.get('is_package') == 'on'
-
-            # Owner: admin or can_edit_all can assign to any user, others assign to themselves
-            if current_user.is_admin or current_user.can_edit_all:
-                owner_id = request.form.get('owner_id', type=int) or current_user.id
-            else:
-                owner_id = current_user.id
-
-            # Packages don't have purchase cost or external fields
-            if is_package:
-                unit_purchase_cost = 0
-                default_rental_cost = 0
-                total_quantity = -1  # availability derived from components
-                is_external = False
-            elif is_external:
-                unit_purchase_cost = 0
-                default_rental_cost = float(request.form.get('default_rental_cost', 0))
-            else:
-                total_cost = float(request.form.get('total_cost', 0))
-                unit_purchase_cost = 0 if total_quantity == -1 else (total_cost / total_quantity if total_quantity > 0 else 0)
-                default_rental_cost = 0
 
             # Handle image upload
             image_filename = None
@@ -158,16 +134,9 @@ def inventory_add():
 
             item = Item(
                 name=name,
-                owner_id=owner_id,
                 category_id=category_id,
                 description=description or None,
-                total_quantity=total_quantity,
-                set_size=set_size,
-                rental_step=rental_step,
-                unit_purchase_cost=unit_purchase_cost,
                 default_rental_price_per_day=default_rental_price,
-                is_external=is_external,
-                default_rental_cost_per_day=default_rental_cost,
                 show_price_publicly=show_price,
                 visible_in_shop=visible,
                 image_filename=image_filename,
@@ -193,6 +162,30 @@ def inventory_add():
                             quantity=comp_qty
                         )
                         db.session.add(pc)
+            else:
+                # Handle ownership entries
+                ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
+                ownership_quantities = request.form.getlist('ownership_quantities', type=int)
+                ownership_ext_prices = request.form.getlist('ownership_ext_prices')
+                ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
+
+                for i, uid in enumerate(ownership_user_ids):
+                    if not uid:
+                        continue
+                    qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
+                    ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
+                    purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
+                    ext_price = float(ext_price_str) if ext_price_str.strip() else None
+                    purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
+
+                    ownership = ItemOwnership(
+                        item_id=item.id,
+                        user_id=uid,
+                        quantity=qty,
+                        external_price_per_day=ext_price,
+                        purchase_cost=purchase_cost
+                    )
+                    db.session.add(ownership)
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -224,25 +217,16 @@ def inventory_edit(item_id):
     if request.method == 'POST':
         try:
             item.name = request.form.get('name', '').strip()
-            item.total_quantity = int(request.form.get('total_quantity', 0))
-            item.set_size = int(request.form.get('set_size', 1))
-            item.rental_step = int(request.form.get('rental_step', 1))
             item.default_rental_price_per_day = float(request.form.get('default_rental_price', 0))
             item.description = request.form.get('description', '').strip() or None
             item.category_id = request.form.get('category_id', type=int) or None
             item.show_price_publicly = request.form.get('show_price_publicly') == 'on'
             item.visible_in_shop = request.form.get('visible_in_shop') == 'on'
-            item.is_external = request.form.get('is_external') == 'on'
             item.is_package = request.form.get('is_package') == 'on'
 
-            if current_user.is_admin or current_user.can_edit_all:
-                item.owner_id = request.form.get('owner_id', type=int) or item.owner_id
-
             if item.is_package:
-                item.unit_purchase_cost = 0
-                item.default_rental_cost_per_day = 0
-                item.total_quantity = -1
-                item.is_external = False
+                # Clear ownerships for packages
+                ItemOwnership.query.filter_by(item_id=item.id).delete()
 
                 # Update package components
                 PackageComponent.query.filter_by(package_id=item.id).delete()
@@ -256,14 +240,31 @@ def inventory_edit(item_id):
                             quantity=comp_qty
                         )
                         db.session.add(pc)
-            elif item.is_external:
-                item.unit_purchase_cost = 0
-                item.default_rental_cost_per_day = float(request.form.get('default_rental_cost', 0))
             else:
-                item.default_rental_cost_per_day = 0
-                if 'total_cost' in request.form and request.form.get('total_cost'):
-                    total_cost = float(request.form.get('total_cost'))
-                    item.unit_purchase_cost = 0 if item.total_quantity == -1 else (total_cost / item.total_quantity if item.total_quantity > 0 else 0)
+                # Update ownership entries
+                ItemOwnership.query.filter_by(item_id=item.id).delete()
+                ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
+                ownership_quantities = request.form.getlist('ownership_quantities', type=int)
+                ownership_ext_prices = request.form.getlist('ownership_ext_prices')
+                ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
+
+                for i, uid in enumerate(ownership_user_ids):
+                    if not uid:
+                        continue
+                    qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
+                    ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
+                    purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
+                    ext_price = float(ext_price_str) if ext_price_str.strip() else None
+                    purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
+
+                    ownership = ItemOwnership(
+                        item_id=item.id,
+                        user_id=uid,
+                        quantity=qty,
+                        external_price_per_day=ext_price,
+                        purchase_cost=purchase_cost
+                    )
+                    db.session.add(ownership)
 
             # Handle image upload
             if 'image' in request.files:
@@ -458,12 +459,15 @@ def quote_edit(quote_id):
                                             adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
                                         else:
                                             adjusted_price = 0
+                                        # Calculate blended external cost
+                                        ext_cost_total, _ = pc.component_item.calculate_external_cost(pc.quantity)
+                                        ext_cost_per_unit = round(ext_cost_total / pc.quantity, 2) if pc.quantity > 0 else 0
                                         qi = QuoteItem(
                                             quote_id=quote.id,
                                             item_id=pc.component_item_id,
                                             quantity=pc.quantity,
                                             rental_price_per_day=adjusted_price,
-                                            rental_cost_per_day=pc.component_item.default_rental_cost_per_day if pc.component_item.is_external else 0,
+                                            rental_cost_per_day=ext_cost_per_unit,
                                             is_custom=False,
                                             package_id=item.id
                                         )
@@ -477,12 +481,16 @@ def quote_edit(quote_id):
                                 if existing:
                                     flash(f'{item.name} ist bereits im Angebot.', 'info')
                                 else:
+                                    # Calculate blended external cost for initial quantity
+                                    initial_qty = 1
+                                    ext_cost_total, _ = item.calculate_external_cost(initial_qty)
+                                    ext_cost_per_unit = round(ext_cost_total / initial_qty, 2) if initial_qty > 0 else 0
                                     qi = QuoteItem(
                                         quote_id=quote.id,
                                         item_id=item.id,
-                                        quantity=item.rental_step or 1,
+                                        quantity=initial_qty,
                                         rental_price_per_day=item.default_rental_price_per_day,
-                                        rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
+                                        rental_cost_per_day=ext_cost_per_unit,
                                         is_custom=False
                                     )
                                     db.session.add(qi)
@@ -532,13 +540,9 @@ def quote_edit(quote_id):
                                 errors.append(f'{qi.item.name}: Nur {available} verfügbar (gesamt: {qi.item.total_quantity})')
                                 continue
 
-                            if not qi.package_id and qi.item.rental_step > 1 and quantity % qi.item.rental_step != 0:
-                                errors.append(f'{qi.item.name}: Menge muss ein Vielfaches von {qi.item.rental_step} sein')
-                                continue
-
                             qi.quantity = quantity
                             qi.rental_price_per_day = price
-                            qi.rental_cost_per_day = cost if qi.item.is_external else 0
+                            qi.rental_cost_per_day = cost
                             qi.discount_exempt = exempt
                         else:
                             db.session.delete(qi)
@@ -707,7 +711,7 @@ def quote_mark_paid(quote_id):
                     item_revenue = round(quote_item.total_price * multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue + item_revenue, 2)
                     # Accumulate external rental costs
-                    if quote_item.item.is_external and quote_item.rental_cost_per_day:
+                    if quote_item.rental_cost_per_day:
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost + item_cost, 2)
 
@@ -735,7 +739,7 @@ def quote_unpay(quote_id):
                     item_revenue = round(quote_item.total_price * multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
                     # Reverse external rental costs
-                    if quote_item.item.is_external and quote_item.rental_cost_per_day:
+                    if quote_item.rental_cost_per_day:
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
@@ -765,7 +769,7 @@ def quote_delete(quote_id):
                     item_revenue = round(quote_item.total_price * multiplier, 2)
                     quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
                     # Reverse external rental costs
-                    if quote_item.item.is_external and quote_item.rental_cost_per_day:
+                    if quote_item.rental_cost_per_day:
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
@@ -851,23 +855,27 @@ def inquiry_convert(inquiry_id):
                         else:
                             adjusted_price = 0
                         for _ in range(inq_item.quantity):
+                            ext_cost_total, _ = pc.component_item.calculate_external_cost(pc.quantity)
+                            ext_cost_per_unit = round(ext_cost_total / pc.quantity, 2) if pc.quantity > 0 else 0
                             qi = QuoteItem(
                                 quote_id=quote.id,
                                 item_id=pc.component_item_id,
                                 quantity=pc.quantity,
                                 rental_price_per_day=adjusted_price,
-                                rental_cost_per_day=pc.component_item.default_rental_cost_per_day if pc.component_item.is_external else 0,
+                                rental_cost_per_day=ext_cost_per_unit,
                                 is_custom=False,
                                 package_id=item.id
                             )
                             db.session.add(qi)
                 else:
+                    ext_cost_total, _ = item.calculate_external_cost(inq_item.quantity)
+                    ext_cost_per_unit = round(ext_cost_total / inq_item.quantity, 2) if inq_item.quantity > 0 else 0
                     qi = QuoteItem(
                         quote_id=quote.id,
                         item_id=item.id,
                         quantity=inq_item.quantity,
                         rental_price_per_day=item.default_rental_price_per_day,
-                        rental_cost_per_day=item.default_rental_cost_per_day if item.is_external else 0,
+                        rental_cost_per_day=ext_cost_per_unit,
                         is_custom=False
                     )
                     db.session.add(qi)
@@ -995,11 +1003,11 @@ def user_delete(user_id):
 
     user = User.query.get_or_404(user_id)
     try:
-        # Reassign items to current admin
-        Item.query.filter_by(owner_id=user.id).update({'owner_id': current_user.id})
+        # Delete ownership entries for this user
+        ItemOwnership.query.filter_by(user_id=user.id).delete()
         db.session.delete(user)
         db.session.commit()
-        flash(f'Benutzer "{user.username}" gelöscht. Artikel wurden Ihnen zugewiesen.', 'success')
+        flash(f'Benutzer "{user.username}" gelöscht. Artikelzuordnungen wurden entfernt.', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Fehler: {str(e)}', 'error')
@@ -1058,11 +1066,15 @@ def report_payoff():
     owned_items = [i for i in items if not i.is_external]
     external_items = [i for i in items if i.is_external]
 
+    # Get all ownerships for the report
+    all_ownerships = ItemOwnership.query.all()
+
     return render_template('admin/payoff_report.html',
                            items=items,
                            owned_items=owned_items,
                            external_items=external_items,
                            users=users,
+                           all_ownerships=all_ownerships,
                            misc_revenue=misc_revenue)
 
 

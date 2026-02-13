@@ -32,28 +32,9 @@
             </div>
         </div>
 
-        {% if current_user.is_admin or current_user.can_edit_all %}
-        <div class="form-group">
-            <label>Eigentümer</label>
-            <select name="owner_id">
-                {% for u in users %}
-                    <option value="{{ u.id }}" {{ 'selected' if (item and item.owner_id == u.id) or (not item and u.id == current_user.id) }}>{{ u.display_name or u.username }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        {% endif %}
-
         <div class="form-group">
             <label>Beschreibung</label>
             <textarea name="description" placeholder="Sichtbar in der öffentlichen Storefront...">{{ item.description if item else '' }}</textarea>
-        </div>
-
-        <div class="form-group">
-            <div class="checkbox-group">
-                <input type="checkbox" name="is_external" id="is_external" {{ 'checked' if item and item.is_external }} onchange="toggleExternalFields()">
-                <label for="is_external" class="m-0 font-normal">Externer Artikel (angemietet)</label>
-            </div>
-            <small class="help-text">Aktivieren, wenn dieser Artikel von einem externen Anbieter angemietet wird</small>
         </div>
 
         <div class="form-group">
@@ -62,32 +43,6 @@
                 <label for="is_package" class="m-0 font-normal">Paket / Bundle</label>
             </div>
             <small class="help-text">Aktivieren, um diesen Artikel als Paket aus mehreren Komponenten zusammenzustellen</small>
-        </div>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label>Gesamtmenge (-1 = unbegrenzt)</label>
-                <input type="number" name="total_quantity" value="{{ item.total_quantity if item else 1 }}" min="-1" required>
-            </div>
-            <div class="form-group" id="purchase-cost-group">
-                <label>Gesamte Anschaffungskosten (&euro;)</label>
-                <input type="number" name="total_cost" step="0.01" min="0" value="{{ item.total_purchase_cost if item else '' }}" placeholder="Gesamtkosten für alle Einheiten">
-            </div>
-            <div class="form-group d-none" id="rental-cost-group">
-                <label>Mietkosten pro Tag pro Stück (&euro;)</label>
-                <input type="number" name="default_rental_cost" step="0.01" min="0" value="{{ item.default_rental_cost_per_day if item else '' }}" placeholder="Was Sie pro Tag/Stück zahlen">
-            </div>
-        </div>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label>Set-Größe</label>
-                <input type="number" name="set_size" value="{{ item.set_size if item else 1 }}" min="1">
-            </div>
-            <div class="form-group">
-                <label>Mietschritt</label>
-                <input type="number" name="rental_step" value="{{ item.rental_step if item else 1 }}" min="1">
-            </div>
         </div>
 
         <div class="form-group">
@@ -124,6 +79,44 @@
             {% endif %}
             <input type="file" name="image" accept="image/*">
             <small class="help-text">Akzeptierte Formate: PNG, JPG, GIF, WebP (max. 16MB)</small>
+        </div>
+
+        <!-- Ownership Section (hidden when is_package is checked) -->
+        <div id="ownership-section">
+            <h3>Eigentümer / Anbieter</h3>
+            <p class="help-text mb-10">Pro Benutzer: Menge und optional einen externen Mietpreis (= externer Anbieter). Gesamtmenge ergibt sich aus der Summe.</p>
+            <table id="ownership-table">
+                <thead>
+                    <tr>
+                        <th>Benutzer</th>
+                        <th>Menge (-1 = ∞)</th>
+                        <th>Ext. Preis/Tag/Stk (&euro;)</th>
+                        <th>Ansch.kosten ges. (&euro;)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="ownership-tbody">
+                    {% if item and item.ownerships %}
+                        {% for o in item.ownerships %}
+                        <tr>
+                            <td>
+                                <select name="ownership_user_ids" class="w-full">
+                                    <option value="">— Benutzer wählen —</option>
+                                    {% for u in users %}
+                                        <option value="{{ u.id }}" {{ 'selected' if u.id == o.user_id }}>{{ u.display_name or u.username }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-80"></td>
+                            <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern"></td>
+                            <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00"></td>
+                            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addOwnershipRow()">+ Eigentümer hinzufügen</button>
         </div>
 
         <div class="d-flex gap-10 mt-24">
@@ -164,29 +157,35 @@
 </div>
 
 <script>
-function toggleExternalFields() {
-    var isExternal = document.getElementById('is_external').checked;
-    var isPackage = document.getElementById('is_package').checked;
-    document.getElementById('purchase-cost-group').classList.toggle('d-none', isExternal || isPackage);
-    document.getElementById('rental-cost-group').classList.toggle('d-none', !isExternal || isPackage);
-    if (isPackage) {
-        document.getElementById('is_external').checked = false;
-    }
-}
-
 function togglePackageFields() {
     var isPackage = document.getElementById('is_package').checked;
     document.getElementById('package-components-section').classList.toggle('d-none', !isPackage);
-    document.getElementById('purchase-cost-group').classList.toggle('d-none', isPackage);
-    document.getElementById('rental-cost-group').classList.toggle('d-none', true);
+    document.getElementById('ownership-section').classList.toggle('d-none', isPackage);
     if (isPackage) {
-        document.getElementById('is_external').checked = false;
-        // If no component rows yet, add one
         if (document.getElementById('components-tbody').children.length === 0) {
             addComponentRow();
         }
     }
-    toggleExternalFields();
+}
+
+function addOwnershipRow() {
+    var tbody = document.getElementById('ownership-tbody');
+    var row = document.createElement('tr');
+    row.innerHTML = `
+        <td>
+            <select name="ownership_user_ids" class="w-full">
+                <option value="">— Benutzer wählen —</option>
+                {% for u in users %}
+                <option value="{{ u.id }}">{{ u.display_name or u.username }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-80"></td>
+        <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-100" placeholder="leer = intern"></td>
+        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00"></td>
+        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+    `;
+    tbody.appendChild(row);
 }
 
 function addComponentRow() {
@@ -208,7 +207,6 @@ function addComponentRow() {
 }
 
 // Run on page load
-toggleExternalFields();
 togglePackageFields();
 </script>
 {% endblock %}
