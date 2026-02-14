@@ -30,8 +30,18 @@
         {% if cat_id != current_category.id %}
             {% set current_category.id = cat_id %}
             <tr>
-                <td colspan="10" class="category-header-row">
-                    {{ item.category.name if item.category else 'Ohne Kategorie' }}
+                <td colspan="10" class="category-header-row" style="padding-left: {{ (item.category.depth * 24 + 16) if item.category else 16 }}px">
+                    {% if item.category %}
+                        {% if item.category.ancestors %}
+                            <span class="category-ancestors">
+                                {% for a in item.category.ancestors %}{{ a.name }}{% if not loop.last %} › {% endif %}{% endfor %}
+                                 › 
+                            </span>
+                        {% endif %}
+                        {{ item.category.name }}
+                    {% else %}
+                        Ohne Kategorie
+                    {% endif %}
                 </td>
             </tr>
         {% endif %}

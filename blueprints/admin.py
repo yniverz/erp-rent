@@ -138,14 +138,12 @@ def categories():
 @login_required
 def inventory_list():
     """List all inventory items"""
-    items = Item.query.outerjoin(Category).order_by(
-        db.case((Item.category_id.is_(None), 1), else_=0),
-        Category.display_order,
-        Category.name,
-        Item.name
-    ).all()
+    items = Item.query.all()
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
+    # Build a mapping from category_id -> tree position for hierarchical sorting
+    cat_order = {cat.id: idx for idx, (cat, depth) in enumerate(category_tree)}
+    items.sort(key=lambda item: (cat_order.get(item.category_id, len(cat_order)), item.name))
     return render_template('admin/inventory_list.html', items=items, categories=categories, category_tree=category_tree)
 
 

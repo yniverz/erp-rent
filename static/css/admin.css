@@ -169,6 +169,11 @@ textarea, select {
     color: var(--color-accent);
     border-top: 2px solid var(--color-gray-300);
 }
+.category-header-row .category-ancestors {
+    font-weight: 400;
+    color: var(--color-text-muted);
+    font-size: 0.92em;
+}
 
 /* ── Empty-state row ── */
 .empty-state {
