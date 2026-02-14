@@ -4,18 +4,52 @@
 .catalog-header h1           { font-size: 2em; margin-bottom: 8px; }
 .catalog-header p            { color: var(--color-text-muted); font-size: 1.05em; }
 
+/* ===== Top-level Category Cards Grid ===== */
+.main-content-area           { flex: 1; min-width: 0; }
+.category-cards-grid         { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+
+.category-card               { background: var(--bg-card); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); transition: all 0.2s; text-decoration: none; color: inherit; display: flex; flex-direction: column; }
+.category-card:hover         { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+.category-card-image         { width: 100%; height: 200px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.category-card-image img     { width: 100%; height: 100%; object-fit: cover; }
+.category-card-image .placeholder { color: var(--color-gray-400); font-size: 3em; }
+
+.category-card-info          { padding: 18px; }
+.category-card-name          { font-size: 1.2em; font-weight: 700; color: var(--color-gray-900); margin-bottom: 4px; }
+.category-card-sub           { font-size: 0.85em; color: var(--color-text-muted); }
+
+/* ===== Catalog Layout (Sidebar + Items) ===== */
 .catalog-layout              { display: flex; gap: 30px; }
 
-.sidebar                     { width: 220px; flex-shrink: 0; }
+.sidebar                     { width: 240px; flex-shrink: 0; }
 .sidebar h3                  { font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 12px; }
 
-.category-list               { list-style: none; }
-.category-list li            { margin-bottom: 4px; }
-.category-list a             { display: block; padding: 8px 14px; border-radius: var(--radius-sm); text-decoration: none; color: var(--color-gray-700); font-size: 0.95em; transition: all 0.15s; }
-.category-list a:hover       { background: var(--color-gray-200); }
-.category-list a.active      { background: var(--color-accent); color: white; font-weight: 600; }
+/* ===== Collapsible Category Tree ===== */
+.category-tree               { list-style: none; padding-left: 0; margin: 0; }
+.category-tree .category-tree { padding-left: 16px; }
+.category-tree.collapsed     { display: none; }
 
+.category-tree li            { margin-bottom: 2px; }
+.tree-item                   { display: flex; align-items: center; gap: 2px; }
+
+.tree-toggle                 { background: none; border: none; cursor: pointer; padding: 4px 4px; font-size: 0.85em; color: var(--color-gray-500); line-height: 1; width: 22px; text-align: center; flex-shrink: 0; transition: transform 0.15s; }
+.tree-toggle .toggle-icon    { display: inline-block; transition: transform 0.15s; }
+.tree-toggle.open .toggle-icon { transform: rotate(90deg); }
+.tree-spacer                 { display: inline-block; width: 22px; flex-shrink: 0; }
+
+.category-tree a             { display: block; padding: 6px 10px; border-radius: var(--radius-sm); text-decoration: none; color: var(--color-gray-700); font-size: 0.92em; transition: all 0.15s; flex: 1; }
+.category-tree a:hover       { background: var(--color-gray-200); }
+.category-tree a.active      { background: var(--color-accent); color: white; font-weight: 600; }
+
+/* ===== Subcategory chips (shown above items grid) ===== */
+.subcategory-chips           { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; grid-column: 1 / -1; }
+.subcategory-chip            { display: inline-block; padding: 6px 16px; border-radius: 20px; background: var(--color-gray-200); color: var(--color-gray-700); text-decoration: none; font-size: 0.9em; font-weight: 500; transition: all 0.15s; }
+.subcategory-chip:hover      { background: var(--color-accent); color: white; }
+
+/* ===== Items Grid ===== */
 .items-grid                  { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; align-content: start; }
+.items-grid h2               { grid-column: 1 / -1; }
 
 .item-card                   { background: var(--bg-card); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); transition: all 0.2s; display: flex; flex-direction: column; }
 .item-card:hover             { box-shadow: var(--shadow-md); transform: translateY(-2px); }
@@ -39,13 +73,14 @@
 .add-to-cart-form input[type="number"] { width: 70px; text-align: center; padding: 8px; }
 .add-to-cart-form button     { flex: 1; }
 
-.no-items                    { text-align: center; padding: 60px 20px; color: var(--color-text-muted); }
+.no-items                    { text-align: center; padding: 60px 20px; color: var(--color-text-muted); grid-column: 1 / -1; }
 .no-items h2                 { margin-bottom: 10px; }
 
 @media (max-width: 768px) {
     .catalog-layout          { flex-direction: column; }
     .sidebar                 { width: 100%; }
-    .category-list           { display: flex; flex-wrap: wrap; gap: 6px; }
-    .category-list li        { margin-bottom: 0; }
+    .category-tree-root      { display: flex; flex-wrap: wrap; gap: 6px; }
+    .category-tree-root > li { margin-bottom: 0; }
+    .category-cards-grid     { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
     .items-grid              { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 }

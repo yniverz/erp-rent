@@ -62,8 +62,17 @@ def categories():
             if action == 'add':
                 name = request.form.get('name', '').strip()
                 order = request.form.get('display_order', 0, type=int)
+                parent_id = request.form.get('parent_id', type=int) or None
                 if name:
-                    cat = Category(name=name, display_order=order)
+                    # Handle image upload
+                    image_filename = None
+                    if 'image' in request.files:
+                        file = request.files['image']
+                        if file and file.filename and allowed_image_file(file.filename):
+                            ext = file.filename.rsplit('.', 1)[1].lower()
+                            image_filename = f"{uuid.uuid4().hex}.{ext}"
+                            file.save(os.path.join(get_upload_path(), image_filename))
+                    cat = Category(name=name, display_order=order, parent_id=parent_id, image_filename=image_filename)
                     db.session.add(cat)
                     db.session.commit()
                     flash(f'Kategorie "{name}" erstellt.', 'success')
@@ -72,13 +81,45 @@ def categories():
                 cat = Category.query.get_or_404(cat_id)
                 cat.name = request.form.get('name', '').strip()
                 cat.display_order = request.form.get('display_order', 0, type=int)
+                new_parent_id = request.form.get('parent_id', type=int) or None
+                # Prevent circular references
+                if new_parent_id:
+                    descendant_ids = cat.all_descendant_ids()
+                    if new_parent_id in descendant_ids:
+                        flash('Kann keine Unterkategorie von sich selbst sein.', 'error')
+                        return redirect(url_for('admin.categories'))
+                cat.parent_id = new_parent_id
+                # Handle image
+                if 'image' in request.files:
+                    file = request.files['image']
+                    if file and file.filename and allowed_image_file(file.filename):
+                        if cat.image_filename:
+                            old_path = os.path.join(get_upload_path(), cat.image_filename)
+                            if os.path.exists(old_path):
+                                os.remove(old_path)
+                        ext = file.filename.rsplit('.', 1)[1].lower()
+                        cat.image_filename = f"{uuid.uuid4().hex}.{ext}"
+                        file.save(os.path.join(get_upload_path(), cat.image_filename))
+                if request.form.get('remove_image') == 'on' and cat.image_filename:
+                    old_path = os.path.join(get_upload_path(), cat.image_filename)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    cat.image_filename = None
                 db.session.commit()
                 flash(f'Kategorie "{cat.name}" aktualisiert.', 'success')
             elif action == 'delete':
                 cat_id = request.form.get('category_id', type=int)
                 cat = Category.query.get_or_404(cat_id)
+                # Re-parent children to this category's parent
+                for child in cat.children:
+                    child.parent_id = cat.parent_id
                 # Unassign items from this category
                 Item.query.filter_by(category_id=cat_id).update({'category_id': None})
+                # Remove image
+                if cat.image_filename:
+                    old_path = os.path.join(get_upload_path(), cat.image_filename)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
                 db.session.delete(cat)
                 db.session.commit()
                 flash('Kategorie gelöscht.', 'success')
@@ -87,7 +128,8 @@ def categories():
             flash(f'Fehler: {str(e)}', 'error')
 
     cats = Category.query.order_by(Category.display_order, Category.name).all()
-    return render_template('admin/categories.html', categories=cats)
+    category_tree = Category.get_tree(cats)
+    return render_template('admin/categories.html', categories=cats, category_tree=category_tree)
 
 
 # ============= INVENTORY =============
@@ -103,7 +145,8 @@ def inventory_list():
         Item.name
     ).all()
     categories = Category.query.order_by(Category.display_order, Category.name).all()
-    return render_template('admin/inventory_list.html', items=items, categories=categories)
+    category_tree = Category.get_tree(categories)
+    return render_template('admin/inventory_list.html', items=items, categories=categories, category_tree=category_tree)
 
 
 @admin_bp.route('/inventory/add', methods=['GET', 'POST'])
@@ -111,6 +154,7 @@ def inventory_list():
 def inventory_add():
     """Add new inventory item"""
     categories = Category.query.order_by(Category.display_order, Category.name).all()
+    category_tree = Category.get_tree(categories)
     users = User.query.filter_by(active=True).order_by(User.username).all()
 
     if request.method == 'POST':
@@ -198,6 +242,7 @@ def inventory_add():
     return render_template('admin/inventory_form.html',
                            item=None,
                            categories=categories,
+                           category_tree=category_tree,
                            users=users,
                            all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
@@ -208,6 +253,7 @@ def inventory_edit(item_id):
     """Edit inventory item"""
     item = Item.query.get_or_404(item_id)
     categories = Category.query.order_by(Category.display_order, Category.name).all()
+    category_tree = Category.get_tree(categories)
     users = User.query.filter_by(active=True).order_by(User.username).all()
 
     if not current_user.can_edit_item(item):
@@ -301,6 +347,7 @@ def inventory_edit(item_id):
     return render_template('admin/inventory_form.html',
                            item=item,
                            categories=categories,
+                           category_tree=category_tree,
                            users=users,
                            all_items=Item.query.filter(Item.is_package == False, Item.id != item.id).order_by(Item.name).all())
 
@@ -398,6 +445,7 @@ def quote_edit(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     items = Item.query.order_by(Item.name).all()
     categories = Category.query.order_by(Category.display_order, Category.name).all()
+    category_tree = Category.get_tree(categories)
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -414,7 +462,7 @@ def quote_edit(quote_id):
                 if start_date and end_date and start_date > end_date:
                     flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
 
                 quote.start_date = start_date
                 quote.end_date = end_date
@@ -503,7 +551,7 @@ def quote_edit(quote_id):
                 if not quote.start_date or not quote.end_date:
                     flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel bearbeiten!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
 
                 errors = []
                 for qi in quote.quote_items:
@@ -615,7 +663,7 @@ def quote_edit(quote_id):
                 if not quote.start_date or not quote.end_date:
                     flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
 
                 validation_warnings = []
                 for quote_item in quote.quote_items:
@@ -659,7 +707,7 @@ def quote_edit(quote_id):
         for item in items:
             item_availability[item.id] = item.total_quantity
 
-    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, item_availability=item_availability)
+    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
 
 
 @admin_bp.route('/quotes/<int:quote_id>')

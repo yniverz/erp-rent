@@ -159,6 +159,12 @@ with app.app_context():
                 )
             """)
 
+        # Category hierarchy migration
+        if not column_exists('category', 'parent_id'):
+            cursor.execute("ALTER TABLE category ADD COLUMN parent_id INTEGER REFERENCES category(id)")
+        if not column_exists('category', 'image_filename'):
+            cursor.execute("ALTER TABLE category ADD COLUMN image_filename VARCHAR(300)")
+
         # Item table migrations (needed before ownership migration reads these columns)
         if not column_exists('item', 'is_external'):
             cursor.execute("ALTER TABLE item ADD COLUMN is_external BOOLEAN DEFAULT 0")

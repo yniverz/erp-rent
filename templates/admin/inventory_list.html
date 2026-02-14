@@ -48,7 +48,11 @@
                 {% endif %}
             </td>
             <td>
-                {{ item.category.name if item.category else '—' }}
+                {% if item.category %}
+                    {% for a in item.category.ancestors %}{{ a.name }} › {% endfor %}{{ item.category.name }}
+                {% else %}
+                    —
+                {% endif %}
                 {% if item.subcategories %}
                     <br><small class="text-muted">+ {{ item.subcategories|map(attribute='name')|join(', ') }}</small>
                 {% endif %}

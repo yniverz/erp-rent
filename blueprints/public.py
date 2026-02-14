@@ -11,39 +11,56 @@ public_bp = Blueprint('public', __name__)
 @public_bp.route('/')
 def catalog():
     """Public storefront catalog"""
-    # Show categories that have at least one visible item (via main category or subcategory)
-    categories = Category.query.filter(
-        db.or_(
-            Category.items.any(Item.visible_in_shop == True),
-            Category.id.in_(
-                db.session.query(item_subcategories.c.category_id).join(
-                    Item, Item.id == item_subcategories.c.item_id
-                ).filter(Item.visible_in_shop == True)
-            )
-        )
-    ).order_by(Category.display_order, Category.name).all()
     selected_category = request.args.get('category', type=int)
 
-    query = Item.query.filter_by(visible_in_shop=True)
-    if selected_category:
-        query = query.filter(
-            db.or_(
-                Item.category_id == selected_category,
-                Item.subcategories.any(Category.id == selected_category)
-            )
-        )
-    items = query.order_by(Item.name).all()
+    # Build full category tree for sidebar
+    all_categories = Category.query.order_by(Category.display_order, Category.name).all()
+    category_tree = Category.get_tree(all_categories)
+
+    # Top-level categories (for main page cards)
+    top_level_categories = [c for c in all_categories if c.parent_id is None]
 
     # Get cart from session
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
 
-    return render_template('public/catalog.html',
-                           items=items,
-                           categories=categories,
-                           selected_category=selected_category,
-                           cart=cart,
-                           cart_count=cart_count)
+    if selected_category:
+        # Find the selected category and all its descendants
+        cat = Category.query.get(selected_category)
+        if cat:
+            descendant_ids = cat.all_descendant_ids()
+            query = Item.query.filter_by(visible_in_shop=True).filter(
+                db.or_(
+                    Item.category_id.in_(descendant_ids),
+                    Item.subcategories.any(Category.id.in_(descendant_ids))
+                )
+            )
+        else:
+            query = Item.query.filter_by(visible_in_shop=True)
+        items = query.order_by(Item.name).all()
+
+        return render_template('public/catalog.html',
+                               items=items,
+                               categories=all_categories,
+                               category_tree=category_tree,
+                               top_level_categories=top_level_categories,
+                               selected_category=selected_category,
+                               selected_cat=cat,
+                               cart=cart,
+                               cart_count=cart_count,
+                               show_items=True)
+    else:
+        # Main page: show top-level category cards
+        return render_template('public/catalog.html',
+                               items=[],
+                               categories=all_categories,
+                               category_tree=category_tree,
+                               top_level_categories=top_level_categories,
+                               selected_category=None,
+                               selected_cat=None,
+                               cart=cart,
+                               cart_count=cart_count,
+                               show_items=False)
 
 
 @public_bp.route('/item/<int:item_id>')

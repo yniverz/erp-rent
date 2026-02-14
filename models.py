@@ -58,12 +58,62 @@ class PackageComponent(db.Model):
 
 
 class Category(db.Model):
-    """Category for organizing inventory items"""
+    """Category for organizing inventory items – supports unlimited nesting"""
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
     display_order = db.Column(db.Integer, default=0)
+    parent_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
+    image_filename = db.Column(db.String(300), nullable=True)
 
+    parent = db.relationship('Category', remote_side=[id], backref=db.backref('children', lazy='selectin', order_by='Category.display_order, Category.name'))
     items = db.relationship('Item', back_populates='category', lazy='dynamic')
+
+    @property
+    def ancestors(self):
+        """Return list of ancestors from root down to (not including) self."""
+        result = []
+        current = self.parent
+        while current:
+            result.append(current)
+            current = current.parent
+        result.reverse()
+        return result
+
+    @property
+    def depth(self):
+        """Return nesting depth (0 = top-level)."""
+        d = 0
+        current = self.parent
+        while current:
+            d += 1
+            current = current.parent
+        return d
+
+    def all_descendant_ids(self):
+        """Return set of all descendant category ids (including self)."""
+        ids = {self.id}
+        for child in self.children:
+            ids |= child.all_descendant_ids()
+        return ids
+
+    @staticmethod
+    def get_tree(categories=None):
+        """Return categories as a flat list with depth info, suitable for <select> rendering.
+        Each entry is (category, depth).
+        """
+        if categories is None:
+            categories = Category.query.order_by(Category.display_order, Category.name).all()
+        root_cats = [c for c in categories if c.parent_id is None]
+        result = []
+
+        def _walk(cat, depth):
+            result.append((cat, depth))
+            for child in sorted(cat.children, key=lambda c: (c.display_order, c.name)):
+                _walk(child, depth + 1)
+
+        for cat in sorted(root_cats, key=lambda c: (c.display_order, c.name)):
+            _walk(cat, 0)
+        return result
 
 
 class ItemOwnership(db.Model):

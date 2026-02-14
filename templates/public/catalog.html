@@ -16,20 +16,120 @@
     {% endif %}
 </div>
 
+{% if not show_items %}
+{# ===== MAIN PAGE: Sidebar tree + Top-level category cards ===== #}
 <div class="catalog-layout">
-    {% if categories %}
     <div class="sidebar">
         <h3>Kategorien</h3>
-        <ul class="category-list">
-            <li><a href="{{ url_for('public.catalog') }}" class="{{ 'active' if not selected_category }}">Alle Artikel</a></li>
-            {% for cat in categories %}
-                <li><a href="{{ url_for('public.catalog', category=cat.id) }}" class="{{ 'active' if selected_category == cat.id }}">{{ cat.name }}</a></li>
+        {% macro render_tree(cats, depth) %}
+        <ul class="category-tree{% if depth == 0 %} category-tree-root{% endif %}">
+            {% for cat in cats %}
+            {% set is_active = (selected_category == cat.id) %}
+            {% set is_ancestor = selected_cat and cat.id in (selected_cat.ancestors | map(attribute='id') | list) %}
+            {% set has_children = cat.children | length > 0 %}
+            <li class="{% if is_active %}active{% endif %}{% if is_ancestor %} ancestor{% endif %}">
+                <div class="tree-item">
+                    {% if has_children %}
+                    <button class="tree-toggle{% if is_active or is_ancestor %} open{% endif %}" onclick="this.classList.toggle('open');this.closest('li').querySelector(':scope > .category-tree').classList.toggle('collapsed')">
+                        <span class="toggle-icon">▸</span>
+                    </button>
+                    {% else %}
+                    <span class="tree-spacer"></span>
+                    {% endif %}
+                    <a href="{{ url_for('public.catalog', category=cat.id) }}" class="{% if is_active %}active{% endif %}">{{ cat.name }}</a>
+                </div>
+                {% if has_children %}
+                    {{ render_tree(cat.children | sort(attribute='display_order,name'), depth + 1) }}
+                {% endif %}
+            </li>
             {% endfor %}
         </ul>
+        {% endmacro %}
+
+        {% set root_cats = categories | selectattr('parent_id', 'none') | sort(attribute='display_order,name') | list %}
+        {{ render_tree(root_cats, 0) }}
     </div>
-    {% endif %}
+
+    <div class="main-content-area">
+        <div class="category-cards-grid">
+            {% for cat in top_level_categories %}
+            <a href="{{ url_for('public.catalog', category=cat.id) }}" class="category-card">
+                <div class="category-card-image">
+                    {% if cat.image_filename %}
+                        <img src="{{ url_for('public.uploaded_file', filename=cat.image_filename) }}" alt="{{ cat.name }}" loading="lazy">
+                    {% else %}
+                        <span class="placeholder">&#128194;</span>
+                    {% endif %}
+                </div>
+                <div class="category-card-info">
+                    <div class="category-card-name">{{ cat.name }}</div>
+                    {% if cat.children %}
+                        <!-- <div class="category-card-sub">{{ cat.children|length }} Unterkategorie{{ 'n' if cat.children|length != 1 }}</div> -->
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+            {% if not top_level_categories %}
+            <div class="no-items">
+                <h2>Keine Kategorien</h2>
+                <p>Momentan keine Kategorien verfügbar.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% else %}
+{# ===== CATEGORY VIEW: Sidebar tree + items grid ===== #}
+<div class="catalog-layout">
+    <div class="sidebar">
+        <h3>Kategorien</h3>
+        {% macro render_tree(cats, depth) %}
+        <ul class="category-tree{% if depth == 0 %} category-tree-root{% endif %}">
+            {% for cat in cats %}
+            {% set is_active = (selected_category == cat.id) %}
+            {% set is_ancestor = selected_cat and cat.id in (selected_cat.ancestors | map(attribute='id') | list) %}
+            {% set has_children = cat.children | length > 0 %}
+            <li class="{% if is_active %}active{% endif %}{% if is_ancestor %} ancestor{% endif %}">
+                <div class="tree-item">
+                    {% if has_children %}
+                    <button class="tree-toggle{% if is_active or is_ancestor %} open{% endif %}" onclick="this.classList.toggle('open');this.closest('li').querySelector(':scope > .category-tree').classList.toggle('collapsed')">
+                        <span class="toggle-icon">▸</span>
+                    </button>
+                    {% else %}
+                    <span class="tree-spacer"></span>
+                    {% endif %}
+                    <a href="{{ url_for('public.catalog', category=cat.id) }}" class="{% if is_active %}active{% endif %}">{{ cat.name }}</a>
+                </div>
+                {% if has_children %}
+                    {{ render_tree(cat.children | sort(attribute='display_order,name'), depth + 1) }}
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endmacro %}
+
+        <ul class="category-tree category-tree-root">
+            <li><a href="{{ url_for('public.catalog') }}">← Alle Kategorien</a></li>
+        </ul>
+        {% set root_cats = categories | selectattr('parent_id', 'none') | sort(attribute='display_order,name') | list %}
+        {{ render_tree(root_cats, 0) }}
+    </div>
 
     <div class="items-grid">
+        {% if selected_cat %}
+            <h2 class="mb-16">{{ selected_cat.name }}</h2>
+
+            {# Show child categories as small cards if they exist #}
+            {% if selected_cat.children %}
+            <div class="subcategory-chips">
+                {% for child in selected_cat.children | sort(attribute='display_order,name') %}
+                <a href="{{ url_for('public.catalog', category=child.id) }}" class="subcategory-chip">{{ child.name }}</a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endif %}
+
         {% if items %}
             {% for item in items %}
             <div class="item-card">
@@ -71,11 +171,12 @@
         {% else %}
             <div class="no-items">
                 <h2>Keine Artikel gefunden</h2>
-                <p>{% if selected_category %}Noch keine Artikel in dieser Kategorie.{% else %}Momentan keine Artikel verfügbar.{% endif %}</p>
+                <p>Noch keine Artikel in dieser Kategorie.</p>
             </div>
         {% endif %}
     </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -103,6 +204,15 @@ document.querySelectorAll('[data-ajax-cart]').forEach(form => {
         })
         .catch(() => {});
     });
+});
+
+// Auto-collapse non-active branches
+document.querySelectorAll('.category-tree li').forEach(li => {
+    const subtree = li.querySelector(':scope > .category-tree');
+    const toggle = li.querySelector(':scope > .tree-item > .tree-toggle');
+    if (subtree && toggle && !toggle.classList.contains('open')) {
+        subtree.classList.add('collapsed');
+    }
 });
 </script>
 {% endblock %}

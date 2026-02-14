@@ -16,16 +16,16 @@
                 <label>Kategorie</label>
                 <select name="category_id">
                     <option value="">— Keine Kategorie —</option>
-                    {% for cat in categories %}
-                        <option value="{{ cat.id }}" {{ 'selected' if item and item.category_id == cat.id }}>{{ cat.name }}</option>
+                    {% for cat, depth in category_tree %}
+                        <option value="{{ cat.id }}" {{ 'selected' if item and item.category_id == cat.id }}>{{ '\u00A0\u00A0\u00A0\u00A0' * depth }}{{ '↳ ' if depth > 0 }}{{ cat.name }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="form-group">
-                <label>Unterkategorien</label>
+                <label>Zusätzliche Kategorien</label>
                 <select name="subcategory_ids" multiple class="select-tall">
-                    {% for cat in categories %}
-                        <option value="{{ cat.id }}" {{ 'selected' if item and cat in item.subcategories }}>{{ cat.name }}</option>
+                    {% for cat, depth in category_tree %}
+                        <option value="{{ cat.id }}" {{ 'selected' if item and cat in item.subcategories }}>{{ '\u00A0\u00A0\u00A0\u00A0' * depth }}{{ '↳ ' if depth > 0 }}{{ cat.name }}</option>
                     {% endfor %}
                 </select>
                 <small class="help-text">Artikel erscheint auch unter diesen Kategorien beim Filtern (Strg/Cmd + Klick für Mehrfachauswahl)</small>

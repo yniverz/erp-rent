@@ -7,15 +7,28 @@
 
 <div class="card mb-24">
     <h3>Kategorie hinzufügen</h3>
-    <form method="POST" class="d-flex gap-12 align-end">
+    <form method="POST" enctype="multipart/form-data" class="d-flex gap-12 align-end flex-wrap">
         <input type="hidden" name="action" value="add">
-        <div class="form-group m-0 flex-1">
+        <div class="form-group m-0 flex-1" style="min-width:160px">
             <label>Name</label>
             <input type="text" name="name" required placeholder="z.B. Beleuchtung">
+        </div>
+        <div class="form-group m-0" style="min-width:180px">
+            <label>Übergeordnete Kategorie</label>
+            <select name="parent_id">
+                <option value="">— Keine (Hauptkategorie) —</option>
+                {% for cat, depth in category_tree %}
+                    <option value="{{ cat.id }}">{{ '—' * depth }} {{ cat.name }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="form-group m-0 w-120">
             <label>Reihenfolge</label>
             <input type="number" name="display_order" value="0">
+        </div>
+        <div class="form-group m-0">
+            <label>Bild</label>
+            <input type="file" name="image" accept="image/*">
         </div>
         <button type="submit" class="btn btn-primary">Hinzufügen</button>
     </form>
@@ -25,28 +38,54 @@
     <thead>
         <tr>
             <th>Name</th>
+            <th>Übergeordnet</th>
             <th>Reihenfolge</th>
+            <th>Bild</th>
             <th>Artikel</th>
             <th>Aktionen</th>
         </tr>
     </thead>
     <tbody>
-        {% for cat in categories %}
+        {% for cat, depth in category_tree %}
         <tr>
             <td>
-                <form method="POST" class="d-flex gap-8 align-center" id="edit-form-{{ cat.id }}">
+                <form method="POST" enctype="multipart/form-data" class="d-flex gap-8 align-center" id="edit-form-{{ cat.id }}">
                     <input type="hidden" name="action" value="edit">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
+                    <span style="display:inline-block;width:{{ depth * 20 }}px"></span>
+                    {% if depth > 0 %}↳{% endif %}
                     <input type="text" name="name" value="{{ cat.name }}" class="w-200">
                 </form>
             </td>
             <td>
+                <select name="parent_id" form="edit-form-{{ cat.id }}" style="min-width:150px">
+                    <option value="">— Keine —</option>
+                    {% for pcat, pdepth in category_tree %}
+                        {% if pcat.id != cat.id %}
+                        <option value="{{ pcat.id }}" {{ 'selected' if cat.parent_id == pcat.id }}>{{ '—' * pdepth }} {{ pcat.name }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </td>
+            <td>
                 <input type="number" name="display_order" value="{{ cat.display_order }}" class="w-80" form="edit-form-{{ cat.id }}">
+            </td>
+            <td>
+                {% if cat.image_filename %}
+                    <img src="{{ url_for('public.uploaded_file', filename=cat.image_filename) }}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;vertical-align:middle">
+                    <div class="checkbox-group mt-4" style="font-size:0.8em">
+                        <input type="checkbox" name="remove_image" id="rm-img-{{ cat.id }}" form="edit-form-{{ cat.id }}">
+                        <label for="rm-img-{{ cat.id }}" class="m-0 font-normal text-danger">Entfernen</label>
+                    </div>
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+                <input type="file" name="image" accept="image/*" form="edit-form-{{ cat.id }}" style="font-size:0.8em;margin-top:4px;max-width:140px">
             </td>
             <td>{{ cat.items.count() }}</td>
             <td>
                 <button type="submit" form="edit-form-{{ cat.id }}" class="btn btn-sm btn-outline">Speichern</button>
-                <form method="POST" class="d-inline" onsubmit="return confirm('Kategorie {{ cat.name }} löschen? Artikel werden abgetrennt.');">
+                <form method="POST" class="d-inline" onsubmit="return confirm('Kategorie {{ cat.name }} löschen? Unterkategorien werden dem Elternelement zugeordnet.');">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
                     <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
@@ -54,8 +93,8 @@
             </td>
         </tr>
         {% endfor %}
-        {% if not categories %}
-        <tr><td colspan="4" class="empty-state">Noch keine Kategorien.</td></tr>
+        {% if not category_tree %}
+        <tr><td colspan="6" class="empty-state">Noch keine Kategorien.</td></tr>
         {% endif %}
     </tbody>
 </table>
