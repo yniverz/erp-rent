@@ -12,6 +12,7 @@ public_bp = Blueprint('public', __name__)
 def catalog():
     """Public storefront catalog"""
     selected_category = request.args.get('category', type=int)
+    search_query = request.args.get('q', '').strip()
 
     # Build full category tree for sidebar
     all_categories = Category.query.order_by(Category.display_order, Category.name).all()
@@ -23,6 +24,32 @@ def catalog():
     # Get cart from session
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
+
+    if search_query:
+        # Search across all visible items by name, description, and category
+        terms = search_query.lower().split()
+        query = Item.query.filter_by(visible_in_shop=True)
+        for term in terms:
+            term_filter = db.or_(
+                Item.name.ilike(f'%{term}%'),
+                Item.description.ilike(f'%{term}%'),
+                Item.category.has(Category.name.ilike(f'%{term}%')),
+                Item.subcategories.any(Category.name.ilike(f'%{term}%'))
+            )
+            query = query.filter(term_filter)
+        items = query.order_by(Item.name).all()
+
+        return render_template('public/catalog.html',
+                               items=items,
+                               categories=all_categories,
+                               category_tree=category_tree,
+                               top_level_categories=top_level_categories,
+                               selected_category=selected_category,
+                               selected_cat=None,
+                               cart=cart,
+                               cart_count=cart_count,
+                               search_query=search_query,
+                               show_items=True)
 
     if selected_category:
         # Find the selected category and all its descendants
@@ -48,6 +75,7 @@ def catalog():
                                selected_cat=cat,
                                cart=cart,
                                cart_count=cart_count,
+                               search_query='',
                                show_items=True)
     else:
         # Main page: show top-level category cards
@@ -60,6 +88,7 @@ def catalog():
                                selected_cat=None,
                                cart=cart,
                                cart_count=cart_count,
+                               search_query='',
                                show_items=False)
 
 
