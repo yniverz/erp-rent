@@ -51,14 +51,14 @@
                     {% if ev.type == 'quote' %}
                     <a class="cal-event status-{{ ev.status }}"
                        href="{{ url_for('admin.quote_view', quote_id=ev.id) if ev.status != 'draft' else url_for('admin.quote_edit', quote_id=ev.id) }}"
-                       title="{{ ev.customer }} ({{ ev.status|capitalize }})">
-                        {{ ev.label }}
+                       title="{{ ev.customer }}{% if ev.notes %} – {{ ev.notes }}{% endif %} ({{ ev.status|capitalize }})">
+                        {{ ev.label }}{% if ev.notes %} – {{ ev.notes[:30] }}{% if ev.notes|length > 30 %}…{% endif %}{% endif %}
                     </a>
                     {% else %}
                     <a class="cal-event status-inquiry"
                        href="{{ url_for('admin.inquiry_view', inquiry_id=ev.id) }}"
-                       title="{{ ev.customer }} (Anfrage)">
-                        {{ ev.label }}
+                       title="{{ ev.customer }}{% if ev.notes %} – {{ ev.notes }}{% endif %} (Anfrage)">
+                        {{ ev.label }}{% if ev.notes %} – {{ ev.notes[:30] }}{% if ev.notes|length > 30 %}…{% endif %}{% endif %}
                     </a>
                     {% endif %}
                     {% endfor %}

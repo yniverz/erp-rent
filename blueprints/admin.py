@@ -1238,6 +1238,7 @@ def schedule():
         cal_events.append({
             'label': q.customer_name,
             'customer': q.customer_name,
+            'notes': q.notes or '',
             'start': q.start_date.date() if hasattr(q.start_date, 'date') else q.start_date,
             'end': q.end_date.date() if hasattr(q.end_date, 'date') else q.end_date,
             'status': q.status,
@@ -1248,6 +1249,7 @@ def schedule():
         cal_events.append({
             'label': inq.customer_name,
             'customer': inq.customer_name,
+            'notes': inq.message or '',
             'start': inq.desired_start_date.date() if hasattr(inq.desired_start_date, 'date') else inq.desired_start_date,
             'end': inq.desired_end_date.date() if hasattr(inq.desired_end_date, 'date') else inq.desired_end_date,
             'status': 'inquiry',
