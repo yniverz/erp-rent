@@ -166,6 +166,7 @@ def inventory_add():
             show_price = request.form.get('show_price_publicly') == 'on'
             visible = request.form.get('visible_in_shop') == 'on'
             is_package = request.form.get('is_package') == 'on'
+            show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
 
             # Handle image upload
             image_filename = None
@@ -184,7 +185,8 @@ def inventory_add():
                 show_price_publicly=show_price,
                 visible_in_shop=visible,
                 image_filename=image_filename,
-                is_package=is_package
+                is_package=is_package,
+                show_bundle_discount=show_bundle_discount
             )
 
             # Handle subcategories
@@ -269,6 +271,7 @@ def inventory_edit(item_id):
             item.show_price_publicly = request.form.get('show_price_publicly') == 'on'
             item.visible_in_shop = request.form.get('visible_in_shop') == 'on'
             item.is_package = request.form.get('is_package') == 'on'
+            item.show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
 
             if item.is_package:
                 # Clear ownerships for packages

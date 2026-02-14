@@ -156,6 +156,7 @@ class Item(db.Model):
     total_revenue = db.Column(db.Float, default=0.0)
     total_cost = db.Column(db.Float, default=0.0)  # Accumulated external rental costs
     is_package = db.Column(db.Boolean, default=False)
+    show_bundle_discount = db.Column(db.Boolean, default=False)  # Show bundle price as discount in shop
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     category = db.relationship('Category', back_populates='items')

@@ -68,6 +68,9 @@
 .item-description            { font-size: 0.88em; color: var(--color-text-muted); margin-bottom: 12px; flex: 1; }
 .item-price                  { font-size: 1.15em; font-weight: 700; color: var(--color-success); margin-bottom: 14px; }
 .item-price.on-request       { color: var(--color-on-request); font-weight: 600; font-size: 0.95em; }
+.item-price.bundle-discount  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item-price .price-original  { text-decoration: line-through; color: var(--color-text-muted); font-weight: 500; font-size: 0.9em; }
+.item-price .price-discounted { color: #dc2626; font-weight: 700; }
 
 .add-to-cart-form            { display: flex; gap: 8px; }
 .add-to-cart-form input[type="number"] { width: 70px; text-align: center; padding: 8px; }

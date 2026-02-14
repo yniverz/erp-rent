@@ -50,6 +50,14 @@
             <input type="number" name="default_rental_price" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required>
         </div>
 
+        <div class="form-group" id="bundle-discount-option" style="display:none;">
+            <div class="checkbox-group">
+                <input type="checkbox" name="show_bundle_discount" id="show_bundle_discount" {{ 'checked' if item and item.show_bundle_discount }}>
+                <label for="show_bundle_discount" class="m-0 font-normal">Paketrabatt im Shop anzeigen</label>
+            </div>
+            <small class="help-text">Zeigt den Paketpreis als Rabatt an, wenn er günstiger ist als die Summe der Einzelpreise</small>
+        </div>
+
         <div class="form-row">
             <div class="form-group">
                 <div class="checkbox-group">
@@ -161,6 +169,7 @@ function togglePackageFields() {
     var isPackage = document.getElementById('is_package').checked;
     document.getElementById('package-components-section').classList.toggle('d-none', !isPackage);
     document.getElementById('ownership-section').classList.toggle('d-none', isPackage);
+    document.getElementById('bundle-discount-option').style.display = isPackage ? '' : 'none';
     if (isPackage) {
         if (document.getElementById('components-tbody').children.length === 0) {
             addComponentRow();

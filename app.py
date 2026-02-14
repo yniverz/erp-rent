@@ -177,6 +177,10 @@ with app.app_context():
         if not column_exists('item', 'is_package'):
             cursor.execute("ALTER TABLE item ADD COLUMN is_package BOOLEAN DEFAULT 0")
 
+        # Bundle discount display migration
+        if not column_exists('item', 'show_bundle_discount'):
+            cursor.execute("ALTER TABLE item ADD COLUMN show_bundle_discount BOOLEAN DEFAULT 0")
+
         if not column_exists('quote_item', 'package_id'):
             cursor.execute("ALTER TABLE quote_item ADD COLUMN package_id INTEGER REFERENCES item(id)")
 

@@ -56,7 +56,14 @@
         {% endif %}
 
         {% if item.show_price_publicly %}
-            <div class="detail-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</div>
+            {% if item.is_package and item.show_bundle_discount and item.package_components and item.default_rental_price_per_day < item.component_price_sum %}
+                <div class="detail-price bundle-discount">
+                    <span class="price-original">&euro;{{ "%.2f"|format(item.component_price_sum) }}</span>
+                    <span class="price-discounted">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</span>
+                </div>
+            {% else %}
+                <div class="detail-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</div>
+            {% endif %}
         {% else %}
             <div class="detail-price on-request">Preis auf Anfrage</div>
         {% endif %}
