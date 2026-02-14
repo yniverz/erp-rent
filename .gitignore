@@ -6,7 +6,6 @@
 
 .venv/
 *.db
-.vscode/
 
 # User-specific files
 *.rsuser
