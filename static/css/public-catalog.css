@@ -53,6 +53,7 @@
 .subcategory-chips           { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; grid-column: 1 / -1; }
 .subcategory-chip            { display: inline-block; padding: 6px 16px; border-radius: 20px; background: var(--color-gray-200); color: var(--color-gray-700); text-decoration: none; font-size: 0.9em; font-weight: 500; transition: all 0.15s; }
 .subcategory-chip:hover      { background: var(--color-accent); color: white; }
+.subcategory-chip.active     { background: var(--color-accent); color: white; }
 
 /* ===== Items Grid ===== */
 .items-grid                  { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; align-content: start; }

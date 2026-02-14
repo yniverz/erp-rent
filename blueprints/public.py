@@ -12,6 +12,7 @@ public_bp = Blueprint('public', __name__)
 def catalog():
     """Public storefront catalog"""
     selected_category = request.args.get('category', type=int)
+    misc = request.args.get('misc', type=int, default=0)
     search_query = request.args.get('q', '').strip()
 
     # Build full category tree for sidebar
@@ -49,22 +50,43 @@ def catalog():
                                cart=cart,
                                cart_count=cart_count,
                                search_query=search_query,
-                               show_items=True)
+                               show_items=True,
+                               misc=False,
+                               has_direct_items=False)
 
     if selected_category:
         # Find the selected category and all its descendants
         cat = Category.query.get(selected_category)
         if cat:
-            descendant_ids = cat.all_descendant_ids()
-            query = Item.query.filter_by(visible_in_shop=True).filter(
-                db.or_(
-                    Item.category_id.in_(descendant_ids),
-                    Item.subcategories.any(Category.id.in_(descendant_ids))
+            if misc and cat.children:
+                # "Sonstiges" virtual category: only items directly in this category
+                query = Item.query.filter_by(visible_in_shop=True).filter(
+                    db.or_(
+                        Item.category_id == cat.id,
+                        Item.subcategories.any(Category.id == cat.id)
+                    )
                 )
-            )
+            else:
+                descendant_ids = cat.all_descendant_ids()
+                query = Item.query.filter_by(visible_in_shop=True).filter(
+                    db.or_(
+                        Item.category_id.in_(descendant_ids),
+                        Item.subcategories.any(Category.id.in_(descendant_ids))
+                    )
+                )
         else:
             query = Item.query.filter_by(visible_in_shop=True)
         items = query.order_by(Item.name).all()
+
+        # Check if the category has items directly assigned (not only via children)
+        has_direct_items = False
+        if cat and cat.children:
+            has_direct_items = Item.query.filter_by(visible_in_shop=True).filter(
+                db.or_(
+                    Item.category_id == cat.id,
+                    Item.subcategories.any(Category.id == cat.id)
+                )
+            ).first() is not None
 
         return render_template('public/catalog.html',
                                items=items,
@@ -76,7 +98,9 @@ def catalog():
                                cart=cart,
                                cart_count=cart_count,
                                search_query='',
-                               show_items=True)
+                               show_items=True,
+                               misc=misc,
+                               has_direct_items=has_direct_items)
     else:
         # Main page: show top-level category cards
         return render_template('public/catalog.html',
@@ -89,7 +113,9 @@ def catalog():
                                cart=cart,
                                cart_count=cart_count,
                                search_query='',
-                               show_items=False)
+                               show_items=False,
+                               misc=False,
+                               has_direct_items=False)
 
 
 @public_bp.route('/item/<int:item_id>')

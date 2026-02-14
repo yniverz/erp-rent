@@ -135,6 +135,9 @@
                 {% for child in selected_cat.children | sort(attribute='display_order,name') %}
                 <a href="{{ url_for('public.catalog', category=child.id) }}" class="subcategory-chip">{{ child.name }}</a>
                 {% endfor %}
+                {% if has_direct_items %}
+                <a href="{{ url_for('public.catalog', category=selected_cat.id, misc=1) }}" class="subcategory-chip{% if misc %} active{% endif %}">Sonstiges</a>
+                {% endif %}
             </div>
             {% endif %}
         {% endif %}
