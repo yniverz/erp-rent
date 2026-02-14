@@ -31,7 +31,7 @@
         {% macro render_tree(cats, depth) %}
         <ul class="category-tree{% if depth == 0 %} category-tree-root{% endif %}">
             {% for cat in cats %}
-            {% set is_active = (selected_category == cat.id) %}
+            {% set is_active = (selected_category == cat.id and not misc) %}
             {% set is_ancestor = selected_cat and cat.id in (selected_cat.ancestors | map(attribute='id') | list) %}
             {% set has_children = cat.children | length > 0 %}
             <li class="{% if is_active %}active{% endif %}{% if is_ancestor %} ancestor{% endif %}">
@@ -94,13 +94,14 @@
         {% macro render_tree(cats, depth) %}
         <ul class="category-tree{% if depth == 0 %} category-tree-root{% endif %}">
             {% for cat in cats %}
-            {% set is_active = (selected_category == cat.id) %}
+            {% set is_active = (selected_category == cat.id and not misc) %}
             {% set is_ancestor = selected_cat and cat.id in (selected_cat.ancestors | map(attribute='id') | list) %}
+            {% set is_misc_parent = (selected_category == cat.id and misc) %}
             {% set has_children = cat.children | length > 0 %}
-            <li class="{% if is_active %}active{% endif %}{% if is_ancestor %} ancestor{% endif %}">
+            <li class="{% if is_active %}active{% endif %}{% if is_ancestor or is_misc_parent %} ancestor{% endif %}">
                 <div class="tree-item">
                     {% if has_children %}
-                    <button class="tree-toggle{% if is_active or is_ancestor %} open{% endif %}" onclick="this.classList.toggle('open');this.closest('li').querySelector(':scope > .category-tree').classList.toggle('collapsed')">
+                    <button class="tree-toggle{% if is_active or is_ancestor or is_misc_parent %} open{% endif %}" onclick="this.classList.toggle('open');this.closest('li').querySelector(':scope > .category-tree').classList.toggle('collapsed')">
                         <span class="toggle-icon">▸</span>
                     </button>
                     {% else %}

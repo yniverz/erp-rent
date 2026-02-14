@@ -22,6 +22,20 @@ def catalog():
     # Top-level categories (for main page cards)
     top_level_categories = [c for c in all_categories if c.parent_id is None]
 
+    # Determine which parent categories have direct visible items (for virtual "Sonstiges")
+    parent_cats = [c for c in all_categories if c.children]
+    if parent_cats:
+        parent_cat_ids = [c.id for c in parent_cats]
+        # Find which of these parent categories have at least one visible item directly assigned
+        from sqlalchemy import func
+        direct_item_cats = db.session.query(Item.category_id).filter(
+            Item.visible_in_shop == True,
+            Item.category_id.in_(parent_cat_ids)
+        ).distinct().all()
+        misc_category_ids = {row[0] for row in direct_item_cats}
+    else:
+        misc_category_ids = set()
+
     # Get cart from session
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
@@ -52,7 +66,8 @@ def catalog():
                                search_query=search_query,
                                show_items=True,
                                misc=False,
-                               has_direct_items=False)
+                               has_direct_items=False,
+                               misc_category_ids=misc_category_ids)
 
     if selected_category:
         # Find the selected category and all its descendants
@@ -100,7 +115,8 @@ def catalog():
                                search_query='',
                                show_items=True,
                                misc=misc,
-                               has_direct_items=has_direct_items)
+                               has_direct_items=has_direct_items,
+                               misc_category_ids=misc_category_ids)
     else:
         # Main page: show top-level category cards
         return render_template('public/catalog.html',
@@ -115,7 +131,8 @@ def catalog():
                                search_query='',
                                show_items=False,
                                misc=False,
-                               has_direct_items=False)
+                               has_direct_items=False,
+                               misc_category_ids=misc_category_ids)
 
 
 @public_bp.route('/item/<int:item_id>')
