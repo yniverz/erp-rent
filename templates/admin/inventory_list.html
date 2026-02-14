@@ -38,7 +38,7 @@
         <tr>
             <td style="width:50px;padding:4px">
                 {% if item.image_filename %}
-                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:block;background:#fff">
+                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;display:block;background:#fff">
                 {% endif %}
             </td>
             <td>
