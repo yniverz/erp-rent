@@ -24,7 +24,13 @@
     <div class="detail-info">
         <div class="detail-tags">
             {% if item.category %}
-                <span class="item-category-tag">{{ item.category.name }}</span>
+                <span class="item-category-tag category-breadcrumb">
+                    {% for ancestor in item.category.ancestors %}
+                        <a href="{{ url_for('public.catalog', category=ancestor.id) }}">{{ ancestor.name }}</a>
+                        <span class="breadcrumb-sep">&rsaquo;</span>
+                    {% endfor %}
+                    <a href="{{ url_for('public.catalog', category=item.category.id) }}">{{ item.category.name }}</a>
+                </span>
             {% endif %}
             {% if item.is_package %}
                 <span class="item-bundle-tag">Paket</span>

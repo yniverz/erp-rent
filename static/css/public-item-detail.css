@@ -45,6 +45,26 @@
     margin-bottom: 10px;
 }
 
+/* Category breadcrumb path */
+.category-breadcrumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.category-breadcrumb a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+.category-breadcrumb a:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+}
+.category-breadcrumb .breadcrumb-sep {
+    color: var(--color-gray-400);
+    font-size: 0.85em;
+}
+
 .detail-name {
     font-size: 1.8em;
     font-weight: 700;
