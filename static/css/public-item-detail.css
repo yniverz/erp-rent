@@ -1,0 +1,138 @@
+/* ===== Public – Item Detail Page ===== */
+
+.detail-back {
+    margin-bottom: 20px;
+}
+
+.detail-layout {
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+}
+
+.detail-image {
+    flex: 0 0 45%;
+    max-width: 45%;
+    background: #ffffff;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+}
+.detail-image img {
+    width: 100%;
+    height: auto;
+    max-height: 500px;
+    object-fit: contain;
+}
+.detail-image .placeholder {
+    color: var(--color-gray-400);
+    font-size: 5em;
+}
+
+.detail-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.detail-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.detail-name {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--color-gray-900);
+    margin-bottom: 16px;
+    line-height: 1.25;
+}
+
+.detail-description {
+    font-size: 1em;
+    color: var(--color-text-muted);
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+
+.detail-components {
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: var(--color-gray-50);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+.detail-components h3 {
+    font-size: 0.95em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+    margin-bottom: 10px;
+}
+.detail-components ul {
+    list-style: none;
+}
+.detail-components li {
+    padding: 6px 0;
+    font-size: 0.95em;
+    color: var(--color-gray-700);
+    border-bottom: 1px solid var(--color-gray-200);
+}
+.detail-components li:last-child {
+    border-bottom: none;
+}
+.detail-components li a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+.detail-components li a:hover {
+    text-decoration: underline;
+}
+
+.detail-price {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: var(--color-success);
+    margin-bottom: 20px;
+}
+.detail-price.on-request {
+    color: var(--color-on-request);
+    font-weight: 600;
+    font-size: 1.1em;
+}
+
+.detail-cart-form {
+    display: flex;
+    gap: 10px;
+    max-width: 350px;
+}
+.detail-cart-form input[type="number"] {
+    width: 80px;
+    text-align: center;
+    padding: 10px;
+}
+.detail-cart-form button {
+    flex: 1;
+}
+
+@media (max-width: 768px) {
+    .detail-layout {
+        flex-direction: column;
+    }
+    .detail-image {
+        flex: none;
+        max-width: 100%;
+        width: 100%;
+    }
+    .detail-name {
+        font-size: 1.4em;
+    }
+    .detail-cart-form {
+        max-width: 100%;
+    }
+}

@@ -33,24 +33,28 @@
         {% if items %}
             {% for item in items %}
             <div class="item-card">
-                <div class="item-image">
-                    {% if item.image_filename %}
-                        <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" loading="lazy">
-                    {% else %}
-                        <span class="placeholder">&#128247;</span>
-                    {% endif %}
-                </div>
-                <div class="item-info">
-                    {% if item.category %}
-                        <div class="item-category-tag">{{ item.category.name }}</div>
-                    {% endif %}
-                    {% if item.is_package %}
-                        <div class="item-bundle-tag">Paket</div>
-                    {% endif %}
-                    <div class="item-name">{{ item.name }}</div>
-                    {% if item.description %}
-                        <div class="item-description">{{ item.description[:120]|nl2br }}{% if item.description|length > 120 %}...{% endif %}</div>
-                    {% endif %}
+                <a href="{{ url_for('public.item_detail', item_id=item.id) }}" class="item-card-link">
+                    <div class="item-image">
+                        {% if item.image_filename %}
+                            <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" loading="lazy">
+                        {% else %}
+                            <span class="placeholder">&#128247;</span>
+                        {% endif %}
+                    </div>
+                    <div class="item-info">
+                        {% if item.category %}
+                            <div class="item-category-tag">{{ item.category.name }}</div>
+                        {% endif %}
+                        {% if item.is_package %}
+                            <div class="item-bundle-tag">Paket</div>
+                        {% endif %}
+                        <div class="item-name">{{ item.name }}</div>
+                        {% if item.description %}
+                            <div class="item-description">{{ item.description[:120]|nl2br }}{% if item.description|length > 120 %}...{% endif %}</div>
+                        {% endif %}
+                    </div>
+                </a>
+                <div class="item-card-footer">
                     {% if item.show_price_publicly %}
                         <div class="item-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</div>
                     {% else %}

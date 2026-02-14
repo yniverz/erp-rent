@@ -46,6 +46,22 @@ def catalog():
                            cart_count=cart_count)
 
 
+@public_bp.route('/item/<int:item_id>')
+def item_detail(item_id):
+    """Public item detail page"""
+    item = Item.query.get_or_404(item_id)
+    if not item.visible_in_shop:
+        return redirect(url_for('public.catalog'))
+
+    cart = session.get('cart', {})
+    cart_count = sum(cart.values())
+
+    return render_template('public/item_detail.html',
+                           item=item,
+                           cart=cart,
+                           cart_count=cart_count)
+
+
 @public_bp.route('/cart')
 def cart():
     """View shopping cart"""

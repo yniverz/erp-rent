@@ -1,0 +1,100 @@
+{% extends "public/base.html" %}
+
+{% block title %}{{ item.name }} – {{ site_settings.business_name or 'Verleih' }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-catalog.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-item-detail.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="detail-back">
+    <a href="javascript:void(0)" onclick="history.back()" class="btn btn-outline btn-sm">&larr; Zurück</a>
+</div>
+
+<div class="detail-layout">
+    <div class="detail-image">
+        {% if item.image_filename %}
+            <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}">
+        {% else %}
+            <span class="placeholder">&#128247;</span>
+        {% endif %}
+    </div>
+
+    <div class="detail-info">
+        <div class="detail-tags">
+            {% if item.category %}
+                <span class="item-category-tag">{{ item.category.name }}</span>
+            {% endif %}
+            {% if item.is_package %}
+                <span class="item-bundle-tag">Paket</span>
+            {% endif %}
+        </div>
+
+        <h1 class="detail-name">{{ item.name }}</h1>
+
+        {% if item.description %}
+            <div class="detail-description">{{ item.description|nl2br }}</div>
+        {% endif %}
+
+        {% if item.is_package and item.package_components %}
+            <div class="detail-components">
+                <h3>Paketinhalt</h3>
+                <ul>
+                    {% for pc in item.package_components %}
+                        <li>
+                            {{ pc.quantity }}&times;
+                            {% if pc.component_item.visible_in_shop %}
+                                <a href="{{ url_for('public.item_detail', item_id=pc.component_item.id) }}">{{ pc.component_item.name }}</a>
+                            {% else %}
+                                {{ pc.component_item.name }}
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        {% if item.show_price_publicly %}
+            <div class="detail-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</div>
+        {% else %}
+            <div class="detail-price on-request">Preis auf Anfrage</div>
+        {% endif %}
+
+        <form class="add-to-cart-form detail-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="number" name="quantity" value="1" min="1">
+            <button type="submit" class="btn btn-primary">In den Warenkorb</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('[data-ajax-cart]').forEach(form => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const btn = this.querySelector('button');
+        const origText = btn.textContent;
+        btn.textContent = 'Hinzugefügt!';
+        btn.style.background = '#059669';
+        setTimeout(() => { btn.textContent = origText; btn.style.background = ''; }, 1200);
+
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.cart_count !== undefined) {
+                document.getElementById('cart-badge').textContent = data.cart_count;
+            }
+        })
+        .catch(() => {});
+    });
+});
+</script>
+{% endblock %}
