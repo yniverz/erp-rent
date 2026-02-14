@@ -11,8 +11,8 @@
 .category-card               { background: var(--bg-card); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); transition: all 0.2s; text-decoration: none; color: inherit; display: flex; flex-direction: column; }
 .category-card:hover         { box-shadow: var(--shadow-md); transform: translateY(-2px); }
 
-.category-card-image         { width: 100%; height: 200px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.category-card-image img     { width: 100%; height: 100%; object-fit: cover; }
+.category-card-image         { width: 100%; height: 200px; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.category-card-image img     { width: 100%; height: 100%; object-fit: contain; }
 .category-card-image .placeholder { color: var(--color-gray-400); font-size: 3em; }
 
 .category-card-info          { padding: 18px; }
