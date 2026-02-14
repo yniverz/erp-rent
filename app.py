@@ -227,6 +227,40 @@ with app.app_context():
                     """, (item_id, owner_id, total_qty or 0, ext_price, p_cost))
                 print("Migrated existing items to ItemOwnership table")
 
+        # Drop legacy columns from item table that moved to item_ownership.
+        # SQLite doesn't support DROP COLUMN on older versions, so we recreate.
+        if column_exists('item', 'owner_id'):
+            # Read current column info to build the new schema dynamically
+            cursor.execute("PRAGMA table_info(item)")
+            columns_info = cursor.fetchall()
+            drop_cols = {'owner_id', 'total_quantity', 'is_external',
+                         'default_rental_cost_per_day', 'unit_purchase_cost'}
+            keep_cols = [c for c in columns_info if c[1] not in drop_cols]
+            col_names = [c[1] for c in keep_cols]
+
+            # Build column definitions for the new table
+            type_map = {c[1]: c for c in keep_cols}
+            col_defs = []
+            for c in keep_cols:
+                name, ctype, notnull, dflt, pk = c[1], c[2], c[3], c[4], c[5]
+                parts = [name, ctype or 'TEXT']
+                if pk:
+                    parts.append('PRIMARY KEY')
+                if notnull and not pk:
+                    parts.append('NOT NULL')
+                if dflt is not None:
+                    parts.append(f'DEFAULT {dflt}')
+                col_defs.append(' '.join(parts))
+
+            cols_joined = ', '.join(col_names)
+            defs_joined = ', '.join(col_defs)
+
+            cursor.execute(f"CREATE TABLE item_new ({defs_joined}, FOREIGN KEY (category_id) REFERENCES category(id))")
+            cursor.execute(f"INSERT INTO item_new ({cols_joined}) SELECT {cols_joined} FROM item")
+            cursor.execute("DROP TABLE item")
+            cursor.execute("ALTER TABLE item_new RENAME TO item")
+            print("Dropped legacy owner columns from item table")
+
         conn.commit()
         conn.close()
 
