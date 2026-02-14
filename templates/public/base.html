@@ -60,7 +60,7 @@
     <script>
     // Scroll position persistence per path
     (function() {
-        const key = 'scrollPos:' + window.location.pathname + window.location.search;
+        const key = 'scrollPos:' + window.location.pathname;
         // Restore scroll position if available
         const saved = localStorage.getItem(key);
         if (saved) {
