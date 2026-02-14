@@ -28,7 +28,7 @@
 <div class="catalog-layout">
     <div class="sidebar">
         <h3>Kategorien</h3>
-        {% macro render_tree(cats, depth) %}
+        {% macro render_tree(cats, depth, parent_id=None) %}
         <ul class="category-tree{% if depth == 0 %} category-tree-root{% endif %}">
             {% for cat in cats %}
             {% set is_active = (selected_category == cat.id and not misc) %}
@@ -46,10 +46,18 @@
                     <a href="{{ url_for('public.catalog', category=cat.id) }}" class="{% if is_active %}active{% endif %}">{{ cat.name }}</a>
                 </div>
                 {% if has_children %}
-                    {{ render_tree(cat.children | sort(attribute='display_order,name'), depth + 1) }}
+                    {{ render_tree(cat.children | sort(attribute='display_order,name'), depth + 1, parent_id=cat.id) }}
                 {% endif %}
             </li>
             {% endfor %}
+            {% if parent_id and parent_id in misc_category_ids %}
+            <li class="{% if selected_category == parent_id and misc %}active{% endif %}">
+                <div class="tree-item">
+                    <span class="tree-spacer"></span>
+                    <a href="{{ url_for('public.catalog', category=parent_id, misc=1) }}" class="{% if selected_category == parent_id and misc %}active{% endif %}">Sonstiges</a>
+                </div>
+            </li>
+            {% endif %}
         </ul>
         {% endmacro %}
 
@@ -91,7 +99,7 @@
 <div class="catalog-layout">
     <div class="sidebar">
         <h3>Kategorien</h3>
-        {% macro render_tree(cats, depth) %}
+        {% macro render_tree(cats, depth, parent_id=None) %}
         <ul class="category-tree{% if depth == 0 %} category-tree-root{% endif %}">
             {% for cat in cats %}
             {% set is_active = (selected_category == cat.id and not misc) %}
@@ -110,10 +118,18 @@
                     <a href="{{ url_for('public.catalog', category=cat.id) }}" class="{% if is_active %}active{% endif %}">{{ cat.name }}</a>
                 </div>
                 {% if has_children %}
-                    {{ render_tree(cat.children | sort(attribute='display_order,name'), depth + 1) }}
+                    {{ render_tree(cat.children | sort(attribute='display_order,name'), depth + 1, parent_id=cat.id) }}
                 {% endif %}
             </li>
             {% endfor %}
+            {% if parent_id and parent_id in misc_category_ids %}
+            <li class="{% if selected_category == parent_id and misc %}active{% endif %}">
+                <div class="tree-item">
+                    <span class="tree-spacer"></span>
+                    <a href="{{ url_for('public.catalog', category=parent_id, misc=1) }}" class="{% if selected_category == parent_id and misc %}active{% endif %}">Sonstiges</a>
+                </div>
+            </li>
+            {% endif %}
         </ul>
         {% endmacro %}
 
