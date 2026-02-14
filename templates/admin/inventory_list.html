@@ -11,6 +11,7 @@
 <table>
     <thead>
         <tr>
+            <th style="width:50px"></th>
             <th>Name</th>
             <th>Kategorie</th>
             <th>Eigentümer</th>
@@ -29,17 +30,19 @@
         {% if cat_id != current_category.id %}
             {% set current_category.id = cat_id %}
             <tr>
-                <td colspan="9" class="category-header-row">
+                <td colspan="10" class="category-header-row">
                     {{ item.category.name if item.category else 'Ohne Kategorie' }}
                 </td>
             </tr>
         {% endif %}
         <tr>
+            <td style="width:50px;padding:4px">
+                {% if item.image_filename %}
+                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:block">
+                {% endif %}
+            </td>
             <td>
                 <strong>{{ item.name }}</strong>
-                {% if item.image_filename %}
-                    <span class="text-success" title="Has image">&#128247;</span>
-                {% endif %}
                 {% if item.is_external %}
                     <span class="badge badge-external">Extern</span>
                 {% endif %}
@@ -96,7 +99,7 @@
         </tr>
         {% endfor %}
         {% if not items %}
-        <tr><td colspan="9" class="empty-state">Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.</td></tr>
+        <tr><td colspan="10" class="empty-state">Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.</td></tr>
         {% endif %}
     </tbody>
 </table>
