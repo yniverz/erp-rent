@@ -32,6 +32,15 @@
 
         <div class="form-group">
             <div class="checkbox-group">
+                <input type="checkbox" name="is_external_user" id="is_external_user" {{ 'checked' if user and user.is_external_user }} onchange="toggleExternalUser()">
+                <label for="is_external_user" class="m-0 font-normal">Externer Benutzer</label>
+            </div>
+            <small class="help-text">Externe Benutzer können sich nicht anmelden. Alle Artikelzuordnungen erfordern einen externen Preis.</small>
+        </div>
+
+        <div id="internal-user-options">
+        <div class="form-group">
+            <div class="checkbox-group">
                 <input type="checkbox" name="is_admin" id="is_admin" {{ 'checked' if user and user.is_admin }}>
                 <label for="is_admin" class="m-0 font-normal">Admin</label>
             </div>
@@ -44,6 +53,7 @@
                 <label for="can_edit_all" class="m-0 font-normal">Kann alle Artikel bearbeiten</label>
             </div>
             <small class="help-text">Erlaubt das Bearbeiten von Artikeln anderer Benutzer (ohne volle Admin-Rechte).</small>
+        </div>
         </div>
 
         {% if user %}
@@ -62,4 +72,16 @@
         </div>
     </form>
 </div>
+
+<script>
+function toggleExternalUser() {
+    var isExternal = document.getElementById('is_external_user').checked;
+    document.getElementById('internal-user-options').style.display = isExternal ? 'none' : '';
+    if (isExternal) {
+        document.getElementById('is_admin').checked = false;
+        document.getElementById('can_edit_all').checked = false;
+    }
+}
+toggleExternalUser();
+</script>
 {% endblock %}

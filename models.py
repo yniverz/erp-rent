@@ -15,6 +15,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(200), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     can_edit_all = db.Column(db.Boolean, default=False)
+    is_external_user = db.Column(db.Boolean, default=False)
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

@@ -222,6 +222,18 @@ def inventory_add():
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
 
+                    # External users must always have an external price
+                    owner_user = User.query.get(uid)
+                    if owner_user and owner_user.is_external_user and ext_price is None:
+                        flash(f'Externer Benutzer "{owner_user.display_name or owner_user.username}" erfordert einen externen Preis/Tag.', 'error')
+                        db.session.rollback()
+                        return render_template('admin/inventory_form.html',
+                                               item=None,
+                                               categories=categories,
+                                               category_tree=category_tree,
+                                               users=users,
+                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
+
                     ownership = ItemOwnership(
                         item_id=item.id,
                         user_id=uid,
@@ -303,6 +315,18 @@ def inventory_edit(item_id):
                     purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
+
+                    # External users must always have an external price
+                    owner_user = User.query.get(uid)
+                    if owner_user and owner_user.is_external_user and ext_price is None:
+                        flash(f'Externer Benutzer "{owner_user.display_name or owner_user.username}" erfordert einen externen Preis/Tag.', 'error')
+                        db.session.rollback()
+                        return render_template('admin/inventory_form.html',
+                                               item=item,
+                                               categories=categories,
+                                               category_tree=category_tree,
+                                               users=users,
+                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     ownership = ItemOwnership(
                         item_id=item.id,
@@ -972,6 +996,7 @@ def user_add():
             email = request.form.get('email', '').strip()
             is_admin = request.form.get('is_admin') == 'on'
             can_edit_all = request.form.get('can_edit_all') == 'on'
+            is_external_user = request.form.get('is_external_user') == 'on'
 
             if not username or not password:
                 flash('Benutzername und Passwort sind erforderlich.', 'error')
@@ -985,8 +1010,9 @@ def user_add():
                 username=username,
                 display_name=display_name or None,
                 email=email or None,
-                is_admin=is_admin,
-                can_edit_all=can_edit_all
+                is_admin=is_admin if not is_external_user else False,
+                can_edit_all=can_edit_all if not is_external_user else False,
+                is_external_user=is_external_user
             )
             user.set_password(password)
             db.session.add(user)
@@ -1012,8 +1038,9 @@ def user_edit(user_id):
         try:
             user.display_name = request.form.get('display_name', '').strip() or None
             user.email = request.form.get('email', '').strip() or None
-            user.is_admin = request.form.get('is_admin') == 'on'
-            user.can_edit_all = request.form.get('can_edit_all') == 'on'
+            user.is_external_user = request.form.get('is_external_user') == 'on'
+            user.is_admin = request.form.get('is_admin') == 'on' if not user.is_external_user else False
+            user.can_edit_all = request.form.get('can_edit_all') == 'on' if not user.is_external_user else False
             user.active = request.form.get('active') == 'on'
 
             new_password = request.form.get('password', '').strip()

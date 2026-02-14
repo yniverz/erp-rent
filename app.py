@@ -279,6 +279,10 @@ with app.app_context():
 
         if not column_exists2('site_settings', 'tax_number'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_number VARCHAR(100)")
+
+        # User table migration: add is_external_user column
+        if not column_exists2('user', 'is_external_user'):
+            cursor.execute("ALTER TABLE user ADD COLUMN is_external_user BOOLEAN DEFAULT 0")
         if not column_exists2('site_settings', 'tax_mode'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_mode VARCHAR(20) DEFAULT 'kleinunternehmer'")
         if not column_exists2('site_settings', 'payment_terms_days'):

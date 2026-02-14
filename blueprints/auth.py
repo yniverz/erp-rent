@@ -15,7 +15,7 @@ def login():
         password = request.form.get('password', '')
 
         user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password) and user.active:
+        if user and user.check_password(password) and user.active and not user.is_external_user:
             login_user(user)
             flash('Anmeldung erfolgreich!', 'success')
             next_page = request.args.get('next')

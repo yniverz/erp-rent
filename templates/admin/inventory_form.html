@@ -108,15 +108,15 @@
                         {% for o in item.ownerships %}
                         <tr>
                             <td>
-                                <select name="ownership_user_ids" class="w-full">
+                                <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
                                     <option value="">— Benutzer wählen —</option>
                                     {% for u in users %}
-                                        <option value="{{ u.id }}" {{ 'selected' if u.id == o.user_id }}>{{ u.display_name or u.username }}</option>
+                                        <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}" {{ 'selected' if u.id == o.user_id }}>{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
                                     {% endfor %}
                                 </select>
                             </td>
                             <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-80"></td>
-                            <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern"></td>
+                            <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
                             <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00"></td>
                             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>
@@ -182,10 +182,10 @@ function addOwnershipRow() {
     var row = document.createElement('tr');
     row.innerHTML = `
         <td>
-            <select name="ownership_user_ids" class="w-full">
+            <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
                 <option value="">— Benutzer wählen —</option>
                 {% for u in users %}
-                <option value="{{ u.id }}">{{ u.display_name or u.username }}</option>
+                <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}">{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
                 {% endfor %}
             </select>
         </td>
@@ -217,5 +217,27 @@ function addComponentRow() {
 
 // Run on page load
 togglePackageFields();
+
+// Handle external user selection in ownership rows
+function onOwnershipUserChange(selectEl) {
+    var row = selectEl.closest('tr');
+    var extPriceInput = row.querySelector('input[name="ownership_ext_prices"]');
+    var selectedOption = selectEl.options[selectEl.selectedIndex];
+    var isExternal = selectedOption && selectedOption.getAttribute('data-external') === '1';
+    if (isExternal) {
+        extPriceInput.required = true;
+        extPriceInput.placeholder = 'Pflichtfeld';
+        extPriceInput.style.borderColor = extPriceInput.value ? '' : 'var(--danger)';
+    } else {
+        extPriceInput.required = false;
+        extPriceInput.placeholder = 'leer = intern';
+        extPriceInput.style.borderColor = '';
+    }
+}
+
+// Initialize all existing ownership rows
+document.querySelectorAll('#ownership-tbody select[name="ownership_user_ids"]').forEach(function(sel) {
+    onOwnershipUserChange(sel);
+});
 </script>
 {% endblock %}

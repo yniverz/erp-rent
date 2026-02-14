@@ -28,7 +28,9 @@
             <td>{{ user.display_name or '—' }}</td>
             <td>{{ user.email or '—' }}</td>
             <td>
-                {% if user.is_admin %}
+                {% if user.is_external_user %}
+                    <span class="badge badge-new">Extern</span>
+                {% elif user.is_admin %}
                     <span class="badge badge-paid">Admin</span>
                 {% elif user.can_edit_all %}
                     <span class="badge badge-finalized">Bearbeiter</span>
