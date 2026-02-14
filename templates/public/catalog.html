@@ -10,7 +10,7 @@
 <div class="catalog-header">
     <h1>Geräte mieten</h1>
     {% if site_settings and site_settings.shop_description %}
-        <p>{{ site_settings.shop_description }}</p>
+        <p>{{ site_settings.shop_description|nl2br }}</p>
     {% else %}
         <p>Stöbern Sie in unserer Auswahl an professioneller Veranstaltungstechnik zum Mieten.</p>
     {% endif %}
@@ -49,7 +49,7 @@
                     {% endif %}
                     <div class="item-name">{{ item.name }}</div>
                     {% if item.description %}
-                        <div class="item-description">{{ item.description[:120] }}{% if item.description|length > 120 %}...{% endif %}</div>
+                        <div class="item-description">{{ item.description[:120]|nl2br }}{% if item.description|length > 120 %}...{% endif %}</div>
                     {% endif %}
                     {% if item.show_price_publicly %}
                         <div class="item-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }} / Tag</div>

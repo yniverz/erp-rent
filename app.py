@@ -2,6 +2,7 @@ from flask import Flask, send_file
 from flask_login import LoginManager
 from models import db, User, SiteSettings, PackageComponent, ItemOwnership
 from dotenv import load_dotenv
+from markupsafe import Markup, escape
 import os
 import io
 import requests as http_requests
@@ -9,6 +10,12 @@ import requests as http_requests
 load_dotenv()
 
 app = Flask(__name__)
+
+@app.template_filter('nl2br')
+def nl2br_filter(value):
+    if not value:
+        return value
+    return Markup(escape(value).replace('\n', Markup('<br>')))
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///erp_rent.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
