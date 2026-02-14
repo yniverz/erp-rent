@@ -5,10 +5,11 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Inventar</h1>
+    <input type="text" id="inventory-search" placeholder="Suche nach Name, Kategorie, Eigentümer…" style="max-width:350px;margin:0">
     <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">+ Artikel hinzufügen</a>
 </div>
 
-<table>
+<table id="inventory-table">
     <thead>
         <tr>
             <th style="width:50px"></th>
@@ -113,4 +114,53 @@
         {% endif %}
     </tbody>
 </table>
+
+<script>
+(function() {
+    const input = document.getElementById('inventory-search');
+    const table = document.getElementById('inventory-table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // classify rows
+    rows.forEach(row => {
+        if (row.querySelector('.category-header-row')) {
+            row.dataset.rowType = 'category';
+        } else if (row.querySelector('.empty-state')) {
+            row.dataset.rowType = 'empty';
+        } else {
+            row.dataset.rowType = 'item';
+        }
+    });
+
+    input.addEventListener('input', function() {
+        const terms = this.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+
+        if (terms.length === 0) {
+            rows.forEach(r => r.style.display = '');
+            return;
+        }
+
+        // first pass: determine which item rows match
+        rows.forEach(row => {
+            if (row.dataset.rowType !== 'item') return;
+            const text = row.textContent.toLowerCase();
+            const match = terms.every(t => text.includes(t));
+            row.style.display = match ? '' : 'none';
+        });
+
+        // second pass: show category headers only if at least one following item is visible
+        let hasVisibleItem = false;
+        for (let i = rows.length - 1; i >= 0; i--) {
+            const row = rows[i];
+            if (row.dataset.rowType === 'item') {
+                hasVisibleItem = row.style.display !== 'none' || hasVisibleItem;
+            } else if (row.dataset.rowType === 'category') {
+                row.style.display = hasVisibleItem ? '' : 'none';
+                hasVisibleItem = false;
+            }
+        }
+    });
+})();
+</script>
 {% endblock %}
