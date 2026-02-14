@@ -98,6 +98,8 @@ document.querySelectorAll('[data-ajax-cart]').forEach(form => {
         .then(data => {
             if (data.cart_count !== undefined) {
                 document.getElementById('cart-badge').textContent = data.cart_count;
+                const cartLink = document.getElementById('cart-link');
+                if (cartLink) cartLink.style.display = data.cart_count > 0 ? '' : 'none';
             }
         })
         .catch(() => {});
