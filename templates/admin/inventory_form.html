@@ -52,7 +52,7 @@
 
         <div class="form-group" id="bundle-discount-option" style="display:none;">
             <div class="checkbox-group">
-                <input type="checkbox" name="show_bundle_discount" id="show_bundle_discount" {{ 'checked' if item and item.show_bundle_discount }}>
+                <input type="checkbox" name="show_bundle_discount" id="show_bundle_discount" {{ 'checked' if not item or item.show_bundle_discount }}>
                 <label for="show_bundle_discount" class="m-0 font-normal">Paketrabatt im Shop anzeigen</label>
             </div>
             <small class="help-text">Zeigt den Paketpreis als Rabatt an, wenn er günstiger ist als die Summe der Einzelpreise</small>
