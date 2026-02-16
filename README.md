@@ -1,3 +1,5 @@
+[![License: NCPUL](https://img.shields.io/badge/license-NCPUL-blue.svg)](./LICENSE.md)
+
 # ERP-Rent
 
 An equipment rental management system with a public-facing shop and an admin back-office. Manage your rental inventory, handle customer inquiries, create quotes, generate invoices, and track finances — all in one place.
