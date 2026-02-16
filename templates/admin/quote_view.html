@@ -28,7 +28,20 @@
             <p><strong>Referenz:</strong> {{ quote.reference_number }}</p>
             <p><strong>Erstellt:</strong> {{ quote.created_at.strftime('%d.%m.%Y %H:%M') }} von {{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</p>
             {% if quote.finalized_at %}<p><strong>Finalisiert:</strong> {{ quote.finalized_at.strftime('%d.%m.%Y %H:%M') }}</p>{% endif %}
-            {% if quote.paid_at %}<p><strong>Bezahlt:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}</p>{% endif %}
+            {% if quote.paid_at %}
+            <p><strong>Bezahlt:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}
+                {% if quote.status == 'paid' %}
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-paid-date').style.display='inline-flex'" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
+                <span id="edit-paid-date" style="display:none;align-items:center;gap:6px;margin-left:6px;">
+                    <form method="POST" action="{{ url_for('admin.quote_update_paid_date', quote_id=quote.id) }}" style="display:inline-flex;align-items:center;gap:6px;">
+                        <input type="date" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
+                        <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
+                        <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-paid-date').style.display='none'">Abbrechen</button>
+                    </form>
+                </span>
+                {% endif %}
+            </p>
+            {% endif %}
         </div>
     </div>
 
@@ -167,9 +180,28 @@
     <h2>Aktionen</h2>
     <div class="d-flex gap-10 flex-wrap">
         {% if quote.status == 'finalized' %}
+            {% if quote.finalized_at %}
+            <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
+            <!-- Pay dialog with date choice -->
+            <div id="pay-dialog" style="display:none;" class="card" style="margin-top:12px;">
+                <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}" id="pay-form">
+                    <p style="margin-bottom:10px;"><strong>Bezahldatum wählen:</strong></p>
+                    <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Das Finalisierungsdatum ist der {{ quote.finalized_at.strftime('%d.%m.%Y') }}. Welches Datum soll als Bezahldatum verwendet werden?</p>
+                    <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
+                        <button type="submit" name="paid_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-outline">Finalisierungsdatum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
+                        <button type="submit" class="btn btn-success">Heutiges Datum</button>
+                        <span style="color:var(--color-text-muted);font-size:0.9em;">oder:</span>
+                        <input type="date" id="custom-pay-date" style="padding:6px 10px;font-size:0.9em;">
+                        <button type="button" class="btn btn-outline" onclick="submitCustomPayDate()">Eigenes Datum</button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('pay-dialog').style.display='none'">Abbrechen</button>
+                    </div>
+                </form>
+            </div>
+            {% else %}
             <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
                 <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?');">Als bezahlt markieren</button>
             </form>
+            {% endif %}
             <form method="POST" action="{{ url_for('admin.quote_unfinalize', quote_id=quote.id) }}">
                 <button type="submit" class="btn btn-warning">Finalisierung aufheben</button>
             </form>
@@ -236,5 +268,24 @@ function generateLieferscheinWithKaution() {
 document.getElementById('kaution-dialog').addEventListener('click', function(e) {
     if (e.target === this) closeKautionDialog();
 });
+
+function showPayDialog() {
+    document.getElementById('pay-dialog').style.display = '';
+}
+
+function submitCustomPayDate() {
+    var dateVal = document.getElementById('custom-pay-date').value;
+    if (!dateVal) {
+        alert('Bitte ein Datum auswählen.');
+        return;
+    }
+    var form = document.getElementById('pay-form');
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'paid_at';
+    input.value = dateVal;
+    form.appendChild(input);
+    form.submit();
+}
 </script>
 {% endblock %}

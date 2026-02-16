@@ -798,8 +798,14 @@ def quote_mark_paid(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status != 'paid':
+            # Check if a custom paid_at date was provided
+            paid_date_str = request.form.get('paid_at', '').strip()
+            if paid_date_str:
+                quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
+            else:
+                quote.paid_at = datetime.utcnow()
+
             quote.status = 'paid'
-            quote.paid_at = datetime.utcnow()
 
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
@@ -816,6 +822,28 @@ def quote_mark_paid(quote_id):
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
         else:
             flash('Angebot ist bereits als bezahlt markiert.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/update_paid_date', methods=['POST'])
+@login_required
+def quote_update_paid_date(quote_id):
+    """Update the paid_at date of a paid quote"""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        if quote.status == 'paid':
+            paid_date_str = request.form.get('paid_at', '').strip()
+            if paid_date_str:
+                quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
+                db.session.commit()
+                flash('Bezahldatum aktualisiert!', 'success')
+            else:
+                flash('Kein Datum angegeben.', 'error')
+        else:
+            flash('Angebot ist nicht als bezahlt markiert.', 'info')
     except Exception as e:
         db.session.rollback()
         flash(f'Fehler: {str(e)}', 'error')
@@ -1192,6 +1220,7 @@ def serve_logo():
 
 def _get_filtered_quotes(date_from, date_to, user_ids):
     """Get quotes filtered by date range and owner user IDs.
+    Only includes finalized or paid quotes (no drafts).
     Returns quotes where at least one quote item belongs to an item
     owned by one of the selected users.
     If user_ids is empty/None, return all quotes.
@@ -1199,6 +1228,8 @@ def _get_filtered_quotes(date_from, date_to, user_ids):
     from sqlalchemy import or_, and_
 
     query = Quote.query.filter(
+        # Only finalized or paid
+        Quote.status.in_(['finalized', 'paid']),
         or_(
             # Paid within date range
             and_(Quote.paid_at.isnot(None),
@@ -1209,6 +1240,10 @@ def _get_filtered_quotes(date_from, date_to, user_ids):
                  Quote.end_date.isnot(None),
                  Quote.start_date <= date_to,
                  Quote.end_date >= date_from),
+            # OR finalized within date range
+            and_(Quote.finalized_at.isnot(None),
+                 Quote.finalized_at >= date_from,
+                 Quote.finalized_at <= date_to),
             # OR created within date range (catch-all)
             and_(Quote.created_at >= date_from,
                  Quote.created_at <= date_to),
