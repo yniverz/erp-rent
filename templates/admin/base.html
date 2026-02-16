@@ -31,6 +31,7 @@
                 </a>
                 <a href="{{ url_for('admin.schedule') }}" class="{{ 'active' if request.endpoint == 'admin.schedule' }}">Zeitplan</a>
                 <a href="{{ url_for('admin.report_payoff') }}" class="{{ 'active' if request.endpoint == 'admin.report_payoff' }}">Abrechnung</a>
+                <a href="{{ url_for('admin.finance_export') }}" class="{{ 'active' if 'finance' in request.endpoint }}">Finanz-Export</a>
                 {% if current_user.is_admin %}
                 <a href="{{ url_for('admin.user_list') }}" class="{{ 'active' if 'user' in request.endpoint }}">Benutzer</a>
                 <a href="{{ url_for('admin.settings') }}" class="{{ 'active' if request.endpoint == 'admin.settings' }}">Einstellungen</a>

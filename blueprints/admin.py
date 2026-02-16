@@ -1158,6 +1158,412 @@ def serve_logo():
     return send_file(logo_path)
 
 
+# ============= FINANCE EXPORT =============
+
+def _get_filtered_quotes(date_from, date_to, user_ids):
+    """Get quotes filtered by date range and owner user IDs.
+    Returns quotes where at least one quote item belongs to an item
+    owned by one of the selected users.
+    If user_ids is empty/None, return all quotes.
+    """
+    from sqlalchemy import or_, and_
+
+    query = Quote.query.filter(
+        or_(
+            # Paid within date range
+            and_(Quote.paid_at.isnot(None),
+                 Quote.paid_at >= date_from,
+                 Quote.paid_at <= date_to),
+            # OR rental period overlaps with date range
+            and_(Quote.start_date.isnot(None),
+                 Quote.end_date.isnot(None),
+                 Quote.start_date <= date_to,
+                 Quote.end_date >= date_from),
+            # OR created within date range (catch-all)
+            and_(Quote.created_at >= date_from,
+                 Quote.created_at <= date_to),
+        )
+    )
+
+    if user_ids:
+        # Filter: quote must contain at least one item owned by selected users
+        owned_item_ids = db.session.query(ItemOwnership.item_id).filter(
+            ItemOwnership.user_id.in_(user_ids)
+        ).subquery()
+        quote_ids_with_items = db.session.query(QuoteItem.quote_id).filter(
+            QuoteItem.item_id.in_(db.session.query(owned_item_ids.c.item_id))
+        ).distinct().subquery()
+        query = query.filter(Quote.id.in_(db.session.query(quote_ids_with_items.c.quote_id)))
+
+    return query.order_by(Quote.created_at).all()
+
+
+def _compute_owner_summaries(user_ids, quotes):
+    """Compute per-owner financial summaries."""
+    if not user_ids:
+        user_ids = [u.id for u in User.query.filter_by(active=True).all()]
+
+    summaries = []
+    for uid in user_ids:
+        user = User.query.get(uid)
+        if not user:
+            continue
+        ownerships = ItemOwnership.query.filter_by(user_id=uid).all()
+        investment = sum(o.total_purchase_cost for o in ownerships if not o.is_external)
+        ext_cost = 0
+        revenue_share = 0
+
+        owned_item_ids = {o.item_id for o in ownerships}
+        for q in quotes:
+            for qi in q.quote_items:
+                if qi.item_id and qi.item_id in owned_item_ids:
+                    revenue_share += qi.total_price
+                    if qi.rental_cost_per_day:
+                        ext_cost += qi.total_external_cost
+
+        summaries.append({
+            'name': user.display_name or user.username,
+            'item_count': len(ownerships),
+            'investment': round(investment, 2),
+            'revenue_share': round(revenue_share, 2),
+            'ext_cost': round(ext_cost, 2),
+        })
+    return summaries
+
+
+def _compute_totals(quotes):
+    """Compute aggregate totals from a list of quotes."""
+    total_revenue = sum(q.total for q in quotes)
+    external_cost = sum(qi.total_external_cost for q in quotes for qi in q.quote_items)
+    # Get purchase costs of all items involved
+    item_ids = set()
+    for q in quotes:
+        for qi in q.quote_items:
+            if qi.item_id:
+                item_ids.add(qi.item_id)
+    items = Item.query.filter(Item.id.in_(item_ids)).all() if item_ids else []
+    total_cost = sum(i.total_purchase_cost for i in items)
+
+    return {
+        'quote_count': len(quotes),
+        'total_revenue': round(total_revenue, 2),
+        'total_cost': round(total_cost, 2),
+        'external_cost': round(external_cost, 2),
+        'profit': round(total_revenue - total_cost - external_cost, 2),
+    }
+
+
+@admin_bp.route('/finance-export')
+@login_required
+def finance_export():
+    """Finance export page with preview"""
+    from datetime import date as date_cls
+
+    users = User.query.filter_by(active=True).order_by(User.username).all()
+
+    # Ownership counts per user
+    ownerships_by_user = {}
+    for u in users:
+        ownerships_by_user[u.id] = ItemOwnership.query.filter_by(user_id=u.id).all()
+
+    # Default date range: current year
+    date_from = request.args.get('date_from', date_cls(date_cls.today().year, 1, 1).isoformat())
+    date_to = request.args.get('date_to', date_cls.today().isoformat())
+    selected_users = request.args.getlist('user_ids')
+    action = request.args.get('action', '')
+
+    preview = None
+    if action == 'preview' or selected_users:
+        try:
+            df = datetime.strptime(date_from, '%Y-%m-%d')
+            dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        except ValueError:
+            df = datetime(date_cls.today().year, 1, 1)
+            dt = datetime.now()
+
+        user_ids = [int(uid) for uid in selected_users] if selected_users else None
+        quotes = _get_filtered_quotes(df, dt, user_ids)
+        totals = _compute_totals(quotes)
+
+        preview = {
+            'quotes': quotes,
+            'quote_count': totals['quote_count'],
+            'total_revenue': totals['total_revenue'],
+            'total_cost': totals['total_cost'],
+            'external_cost': totals['external_cost'],
+            'profit': totals['profit'],
+        }
+
+    return render_template('admin/finance_export.html',
+                           users=users,
+                           ownerships_by_user=ownerships_by_user,
+                           date_from=date_from,
+                           date_to=date_to,
+                           selected_users=selected_users,
+                           preview=preview)
+
+
+@admin_bp.route('/finance-export/csv')
+@login_required
+def finance_export_csv():
+    """Export finances as CSV (ZIP with multiple files)"""
+    import csv
+    import zipfile
+    from datetime import date as date_cls
+
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    selected_users = request.args.getlist('user_ids')
+
+    try:
+        df = datetime.strptime(date_from, '%Y-%m-%d')
+        dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+    except ValueError:
+        flash('Ungültiger Zeitraum.', 'error')
+        return redirect(url_for('admin.finance_export'))
+
+    user_ids = [int(uid) for uid in selected_users] if selected_users else None
+    quotes = _get_filtered_quotes(df, dt, user_ids)
+    totals = _compute_totals(quotes)
+    owner_summaries = _compute_owner_summaries(
+        user_ids or [u.id for u in User.query.filter_by(active=True).all()],
+        quotes
+    )
+
+    zip_buf = BytesIO()
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 1. Rechnungsliste
+        csv_buf = BytesIO()
+        import io
+        text_buf = io.StringIO()
+        writer = csv.writer(text_buf, delimiter=';', quoting=csv.QUOTE_ALL)
+        writer.writerow([
+            'Ref-Nr.', 'Kunde', 'Leistungsbeginn', 'Leistungsende',
+            'Miettage', 'Erstellt am', 'Finalisiert am', 'Bezahlt am',
+            'Status', 'Zwischensumme (€)', 'Rabatt (€)', 'Rabatt (%)',
+            'Gesamtbetrag (€)', 'Ext. Kosten (€)', 'Bemerkungen'
+        ])
+        for q in quotes:
+            ext_cost = sum(qi.total_external_cost for qi in q.quote_items)
+            writer.writerow([
+                q.reference_number or f'RE{q.id:04d}',
+                q.customer_name,
+                q.start_date.strftime('%d.%m.%Y') if q.start_date else '',
+                q.end_date.strftime('%d.%m.%Y') if q.end_date else '',
+                q.calculate_rental_days(),
+                q.created_at.strftime('%d.%m.%Y') if q.created_at else '',
+                q.finalized_at.strftime('%d.%m.%Y') if q.finalized_at else '',
+                q.paid_at.strftime('%d.%m.%Y') if q.paid_at else '',
+                q.status,
+                f'{q.subtotal:.2f}'.replace('.', ','),
+                f'{q.discount_amount:.2f}'.replace('.', ','),
+                f'{q.discount_percent:.2f}'.replace('.', ','),
+                f'{q.total:.2f}'.replace('.', ','),
+                f'{ext_cost:.2f}'.replace('.', ','),
+                (q.notes or '').replace('\n', ' '),
+            ])
+        zf.writestr('rechnungsliste.csv', text_buf.getvalue().encode('utf-8-sig'))
+
+        # 2. Positionen-Detail
+        text_buf2 = io.StringIO()
+        writer2 = csv.writer(text_buf2, delimiter=';', quoting=csv.QUOTE_ALL)
+        writer2.writerow([
+            'Rechnung Ref-Nr.', 'Kunde', 'Position', 'Artikelname',
+            'Menge', 'Preis/Tag (€)', 'Miettage', 'Gesamtpreis (€)',
+            'Ext. Kosten/Tag (€)', 'Ext. Kosten Gesamt (€)',
+            'Paket', 'Rabattbefreit'
+        ])
+        for q in quotes:
+            for pos_nr, qi in enumerate(q.quote_items, 1):
+                writer2.writerow([
+                    q.reference_number or f'RE{q.id:04d}',
+                    q.customer_name,
+                    pos_nr,
+                    qi.display_name,
+                    qi.quantity,
+                    f'{qi.rental_price_per_day:.2f}'.replace('.', ','),
+                    q.calculate_rental_days(),
+                    f'{qi.total_price:.2f}'.replace('.', ','),
+                    f'{(qi.rental_cost_per_day or 0):.2f}'.replace('.', ','),
+                    f'{qi.total_external_cost:.2f}'.replace('.', ','),
+                    qi.package.name if qi.package else '',
+                    'Ja' if qi.discount_exempt else 'Nein',
+                ])
+        zf.writestr('positionen_detail.csv', text_buf2.getvalue().encode('utf-8-sig'))
+
+        # 3. Zusammenfassung
+        text_buf3 = io.StringIO()
+        writer3 = csv.writer(text_buf3, delimiter=';', quoting=csv.QUOTE_ALL)
+        writer3.writerow(['Kategorie', 'Wert (€)'])
+        writer3.writerow(['Zeitraum', f'{date_from} bis {date_to}'])
+        writer3.writerow(['Anzahl Rechnungen', str(totals['quote_count'])])
+        writer3.writerow(['Gesamtumsatz', f'{totals["total_revenue"]:.2f}'.replace('.', ',')])
+        writer3.writerow(['Anschaffungskosten', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
+        writer3.writerow(['Ext. Mietkosten', f'{totals["external_cost"]:.2f}'.replace('.', ',')])
+        writer3.writerow(['Gewinn/Verlust', f'{totals["profit"]:.2f}'.replace('.', ',')])
+        writer3.writerow([])
+        writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
+        for os_item in owner_summaries:
+            writer3.writerow([
+                os_item['name'],
+                str(os_item['item_count']),
+                f'{os_item["investment"]:.2f}'.replace('.', ','),
+                f'{os_item["revenue_share"]:.2f}'.replace('.', ','),
+                f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
+            ])
+        zf.writestr('zusammenfassung.csv', text_buf3.getvalue().encode('utf-8-sig'))
+
+    zip_buf.seek(0)
+    filename = f"finanz_export_{date_from}_bis_{date_to}.zip"
+    return send_file(
+        zip_buf,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+@admin_bp.route('/finance-export/pdf')
+@login_required
+def finance_export_pdf():
+    """Export finance summary as PDF report"""
+    from generators.finanzbericht import build_finance_report_pdf
+    from datetime import date as date_cls
+
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    selected_users = request.args.getlist('user_ids')
+
+    try:
+        df = datetime.strptime(date_from, '%Y-%m-%d')
+        dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+    except ValueError:
+        flash('Ungültiger Zeitraum.', 'error')
+        return redirect(url_for('admin.finance_export'))
+
+    user_ids = [int(uid) for uid in selected_users] if selected_users else None
+    quotes = _get_filtered_quotes(df, dt, user_ids)
+    totals = _compute_totals(quotes)
+    owner_summaries = _compute_owner_summaries(
+        user_ids or [u.id for u in User.query.filter_by(active=True).all()],
+        quotes
+    )
+
+    site_settings = SiteSettings.query.first()
+    issuer_name = site_settings.business_name if site_settings and site_settings.business_name else "Ihr Unternehmen"
+    tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
+
+    quote_dicts = []
+    for q in quotes:
+        ext_cost = sum(qi.total_external_cost for qi in q.quote_items)
+        quote_dicts.append({
+            'ref': q.reference_number or f'RE{q.id:04d}',
+            'customer': q.customer_name,
+            'start': q.start_date.strftime('%d.%m.%Y') if q.start_date else None,
+            'end': q.end_date.strftime('%d.%m.%Y') if q.end_date else None,
+            'created': q.created_at.strftime('%d.%m.%Y') if q.created_at else '–',
+            'finalized': q.finalized_at.strftime('%d.%m.%Y') if q.finalized_at else '–',
+            'paid': q.paid_at.strftime('%d.%m.%Y') if q.paid_at else '–',
+            'status': q.status.capitalize(),
+            'subtotal': q.subtotal,
+            'discount': q.discount_amount,
+            'total': q.total,
+            'ext_cost': ext_cost,
+        })
+
+    date_from_str = df.strftime('%d.%m.%Y')
+    date_to_str = dt.strftime('%d.%m.%Y')
+
+    pdf_bytes = build_finance_report_pdf(
+        issuer_name=issuer_name,
+        date_from=date_from_str,
+        date_to=date_to_str,
+        quotes=quote_dicts,
+        owner_summaries=owner_summaries,
+        totals=totals,
+        tax_mode=tax_mode,
+    )
+
+    filename = f"finanzbericht_{date_from}_bis_{date_to}.pdf"
+    return _send_pdf_response(pdf_bytes, filename)
+
+
+@admin_bp.route('/finance-export/invoices-pdf')
+@login_required
+def finance_export_invoices_pdf():
+    """Export all invoices in date range as a bundled PDF"""
+    from generators.rechnung import build_rechnung_pdf
+    from PyPDF2 import PdfMerger
+
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    selected_users = request.args.getlist('user_ids')
+
+    try:
+        df = datetime.strptime(date_from, '%Y-%m-%d')
+        dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+    except ValueError:
+        flash('Ungültiger Zeitraum.', 'error')
+        return redirect(url_for('admin.finance_export'))
+
+    user_ids = [int(uid) for uid in selected_users] if selected_users else None
+    quotes = _get_filtered_quotes(df, dt, user_ids)
+
+    if not quotes:
+        flash('Keine Rechnungen im gewählten Zeitraum gefunden.', 'warning')
+        return redirect(url_for('admin.finance_export', date_from=date_from, date_to=date_to))
+
+    site_settings = SiteSettings.query.first()
+    merger = PdfMerger()
+
+    for quote in quotes:
+        data = _extract_common_pdf_data(quote, site_settings)
+        positions = _extract_positions(quote)
+        rechnungs_datum = quote.finalized_at.strftime("%d.%m.%Y") if quote.finalized_at else (
+            quote.created_at.strftime("%d.%m.%Y") if quote.created_at else datetime.now().strftime("%d.%m.%Y")
+        )
+
+        pdf_bytes = build_rechnung_pdf(
+            issuer_name=data['issuer_name'],
+            issuer_address=data['issuer_address'],
+            contact_lines=data['contact_lines'],
+            bank_lines=data['bank_lines'],
+            tax_number=data['tax_number'],
+            tax_mode=data['tax_mode'],
+            logo_path=data['logo_path'],
+            recipient_lines=data['recipient_lines'],
+            reference_number=quote.reference_number or f"RE-{quote.id:04d}",
+            rechnungs_datum=rechnungs_datum,
+            start_date_str=data['start_date_str'],
+            end_date_str=data['end_date_str'],
+            rental_days=data['rental_days'],
+            positions=positions,
+            discount_percent=quote.discount_percent or 0,
+            discount_label=quote.discount_label,
+            discount_amount=quote.discount_amount,
+            subtotal=quote.subtotal,
+            total=quote.total,
+            payment_terms_days=data['payment_terms_days'],
+            notes=quote.notes,
+        )
+        merger.append(BytesIO(pdf_bytes))
+
+    output = BytesIO()
+    merger.write(output)
+    merger.close()
+    output.seek(0)
+
+    filename = f"rechnungen_{date_from}_bis_{date_to}.pdf"
+    response = send_file(
+        output,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+    )
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
+
+
 # ============= REPORTS =============
 
 @admin_bp.route('/reports/payoff')

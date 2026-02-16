@@ -1,0 +1,341 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Finanz-Export - Verwaltung{% endblock %}
+
+{% block extra_head %}
+<style>
+.export-form {
+    display: grid;
+    gap: 24px;
+}
+.export-section {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+}
+.export-section h2 {
+    margin-bottom: 16px;
+    font-size: 1.2em;
+}
+.date-range-row {
+    display: flex;
+    gap: 16px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+.date-range-row .form-group {
+    flex: 1;
+    min-width: 180px;
+}
+.owner-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+.owner-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--bg-muted);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 2px solid transparent;
+}
+.owner-checkbox:hover {
+    background: var(--color-gray-100);
+}
+.owner-checkbox.checked {
+    border-color: var(--color-accent);
+    background: var(--color-accent-light, rgba(59, 130, 246, 0.08));
+}
+.owner-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+.owner-checkbox label {
+    cursor: pointer;
+    font-size: 0.95em;
+    flex: 1;
+}
+.owner-checkbox .owner-detail {
+    font-size: 0.8em;
+    color: var(--color-text-muted);
+}
+.select-all-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.export-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.export-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    font-size: 1em;
+}
+.export-actions .btn svg {
+    width: 18px;
+    height: 18px;
+}
+.preview-section {
+    margin-top: 24px;
+}
+.preview-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+.preview-stat {
+    padding: 16px;
+    background: var(--bg-muted);
+    border-radius: var(--radius-md);
+    text-align: center;
+}
+.preview-stat .value {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: var(--color-gray-900);
+}
+.preview-stat .label {
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    margin-top: 4px;
+}
+.preview-stat.success .value { color: var(--color-success); }
+.preview-stat.warning .value { color: var(--color-warning); }
+.preview-stat.external .value { color: var(--color-external, #8b5cf6); }
+.quick-range-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.quick-range-bar .btn {
+    padding: 6px 14px;
+    font-size: 0.85em;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Finanz-Export</h1>
+
+<form id="exportForm" method="GET" action="{{ url_for('admin.finance_export') }}">
+<div class="export-form">
+
+    <!-- Date Range -->
+    <div class="export-section">
+        <h2>📅 Zeitraum</h2>
+        <div class="date-range-row">
+            <div class="form-group">
+                <label for="date_from">Von</label>
+                <input type="date" id="date_from" name="date_from" value="{{ date_from }}" required>
+            </div>
+            <div class="form-group">
+                <label for="date_to">Bis</label>
+                <input type="date" id="date_to" name="date_to" value="{{ date_to }}" required>
+            </div>
+        </div>
+        <div class="quick-range-bar">
+            <button type="button" class="btn btn-outline btn-sm" onclick="setQuickRange('thisMonth')">Aktueller Monat</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setQuickRange('lastMonth')">Letzter Monat</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setQuickRange('thisQuarter')">Aktuelles Quartal</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setQuickRange('lastQuarter')">Letztes Quartal</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setQuickRange('thisYear')">Aktuelles Jahr</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setQuickRange('lastYear')">Letztes Jahr</button>
+        </div>
+    </div>
+
+    <!-- Owner Selection -->
+    <div class="export-section">
+        <h2>👤 Eigentümer auswählen</h2>
+        <div class="select-all-bar">
+            <button type="button" class="btn btn-sm btn-primary" onclick="selectAllOwners(true)">Alle auswählen</button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="selectAllOwners(false)">Keine auswählen</button>
+        </div>
+        <div class="owner-grid">
+            {% for user in users %}
+            <div class="owner-checkbox {{ 'checked' if user.id|string in selected_users or not selected_users }}" onclick="toggleOwner(this)">
+                <input type="checkbox" name="user_ids" value="{{ user.id }}"
+                    {{ 'checked' if user.id|string in selected_users or not selected_users }}>
+                <div>
+                    <label>{{ user.display_name or user.username }}</label>
+                    {% set user_items = ownerships_by_user.get(user.id, []) %}
+                    <div class="owner-detail">{{ user_items|length }} Artikel</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Preview -->
+    <div class="export-section">
+        <h2>📊 Vorschau</h2>
+        <button type="submit" name="action" value="preview" class="btn btn-outline">Vorschau aktualisieren</button>
+
+        {% if preview %}
+        <div class="preview-stats">
+            <div class="preview-stat">
+                <div class="value">{{ preview.quote_count }}</div>
+                <div class="label">Rechnungen</div>
+            </div>
+            <div class="preview-stat success">
+                <div class="value">&euro;{{ "%.2f"|format(preview.total_revenue) }}</div>
+                <div class="label">Gesamtumsatz</div>
+            </div>
+            <div class="preview-stat warning">
+                <div class="value">&euro;{{ "%.2f"|format(preview.total_cost) }}</div>
+                <div class="label">Kosten (Anschaffung)</div>
+            </div>
+            <div class="preview-stat external">
+                <div class="value">&euro;{{ "%.2f"|format(preview.external_cost) }}</div>
+                <div class="label">Ext. Mietkosten</div>
+            </div>
+            <div class="preview-stat {{ 'success' if preview.profit >= 0 else 'warning' }}">
+                <div class="value">&euro;{{ "%.2f"|format(preview.profit) }}</div>
+                <div class="label">Gewinn/Verlust</div>
+            </div>
+        </div>
+
+        {% if preview.quotes %}
+        <div style="margin-top: 20px; overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ref-Nr.</th>
+                        <th>Kunde</th>
+                        <th>Zeitraum</th>
+                        <th>Bezahlt am</th>
+                        <th>Status</th>
+                        <th>Betrag</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in preview.quotes %}
+                    <tr>
+                        <td><a href="{{ url_for('admin.quote_view', quote_id=q.id) }}">{{ q.reference_number or ('RE%04d'|format(q.id)) }}</a></td>
+                        <td>{{ q.customer_name }}</td>
+                        <td>
+                            {% if q.start_date %}{{ q.start_date.strftime('%d.%m.%Y') }}{% endif %}
+                            {% if q.end_date %} – {{ q.end_date.strftime('%d.%m.%Y') }}{% endif %}
+                        </td>
+                        <td>{{ q.paid_at.strftime('%d.%m.%Y') if q.paid_at else '–' }}</td>
+                        <td><span class="badge badge-{{ q.status }}">{{ q.status|capitalize }}</span></td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(q.total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+
+    <!-- Export Buttons -->
+    <div class="export-section">
+        <h2>📥 Export</h2>
+        <div class="export-actions">
+            <button type="submit" name="action" value="csv" class="btn btn-primary" formaction="{{ url_for('admin.finance_export_csv') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                CSV-Export (ZIP)
+            </button>
+            <button type="submit" name="action" value="pdf_summary" class="btn btn-success" formaction="{{ url_for('admin.finance_export_pdf') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                PDF-Bericht
+            </button>
+            <button type="submit" name="action" value="pdf_invoices" class="btn btn-outline" formaction="{{ url_for('admin.finance_export_invoices_pdf') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="12" width="8" height="6"/></svg>
+                Alle Rechnungen (PDF)
+            </button>
+        </div>
+    </div>
+
+</div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function setQuickRange(range) {
+    const now = new Date();
+    let from, to;
+
+    switch (range) {
+        case 'thisMonth':
+            from = new Date(now.getFullYear(), now.getMonth(), 1);
+            to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+        case 'lastMonth':
+            from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            to = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+        case 'thisQuarter': {
+            const q = Math.floor(now.getMonth() / 3);
+            from = new Date(now.getFullYear(), q * 3, 1);
+            to = new Date(now.getFullYear(), q * 3 + 3, 0);
+            break;
+        }
+        case 'lastQuarter': {
+            const q = Math.floor(now.getMonth() / 3) - 1;
+            const y = q < 0 ? now.getFullYear() - 1 : now.getFullYear();
+            const qn = q < 0 ? 3 : q;
+            from = new Date(y, qn * 3, 1);
+            to = new Date(y, qn * 3 + 3, 0);
+            break;
+        }
+        case 'thisYear':
+            from = new Date(now.getFullYear(), 0, 1);
+            to = new Date(now.getFullYear(), 11, 31);
+            break;
+        case 'lastYear':
+            from = new Date(now.getFullYear() - 1, 0, 1);
+            to = new Date(now.getFullYear() - 1, 11, 31);
+            break;
+    }
+
+    document.getElementById('date_from').value = formatDate(from);
+    document.getElementById('date_to').value = formatDate(to);
+}
+
+function formatDate(d) {
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
+function toggleOwner(el) {
+    const cb = el.querySelector('input[type="checkbox"]');
+    cb.checked = !cb.checked;
+    el.classList.toggle('checked', cb.checked);
+}
+
+function selectAllOwners(selectAll) {
+    document.querySelectorAll('.owner-checkbox').forEach(el => {
+        const cb = el.querySelector('input[type="checkbox"]');
+        cb.checked = selectAll;
+        el.classList.toggle('checked', selectAll);
+    });
+}
+
+// Prevent checkbox double-toggle when clicking directly on checkbox
+document.querySelectorAll('.owner-checkbox input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation());
+    cb.addEventListener('change', function() {
+        this.closest('.owner-checkbox').classList.toggle('checked', this.checked);
+    });
+});
+</script>
+{% endblock %}
