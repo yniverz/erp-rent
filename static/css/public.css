@@ -80,6 +80,7 @@ footer a       { color: rgba(255,255,255,0.85); text-decoration: none; margin: 0
 footer a:hover { color: white; text-decoration: underline; }
 .footer-inner  { max-width: var(--container-max-public); margin: 0 auto; }
 .footer-links  { margin-bottom: 10px; }
+.footer-tax-note { margin-bottom: 12px; font-size: 0.85em; color: rgba(255,255,255,0.55); }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
