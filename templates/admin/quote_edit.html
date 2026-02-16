@@ -393,18 +393,6 @@
         {% if quote.finalized_at %}
         <!-- Previous finalization date exists - show warning dialog -->
         <button type="button" class="btn btn-success" onclick="showFinalizeDialog()">Angebot finalisieren</button>
-        <div id="finalize-dialog" style="display:none;" class="card">
-            <form method="POST" id="finalize-form">
-                <input type="hidden" name="action" value="finalize">
-                <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
-                <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Dieses Angebot war zuvor finalisiert ({{ quote.finalized_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
-                <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
-                    <button type="submit" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-outline">Bisheriges Datum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
-                    <button type="submit" class="btn btn-success">Heutiges Datum</button>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('finalize-dialog').style.display='none'">Abbrechen</button>
-                </div>
-            </form>
-        </div>
         {% else %}
         <form method="POST" class="d-inline">
             <input type="hidden" name="action" value="finalize">
@@ -416,6 +404,21 @@
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
         </form>
     </div>
+
+    {% if quote.finalized_at %}
+    <div id="finalize-dialog" style="display:none;margin-top:12px;">
+        <form method="POST" id="finalize-form">
+            <input type="hidden" name="action" value="finalize">
+            <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
+            <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Dieses Angebot war zuvor finalisiert ({{ quote.finalized_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
+            <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
+                <button type="submit" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-success">Bisheriges Datum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
+                <button type="submit" class="btn btn-outline">Heutiges Datum</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('finalize-dialog').style.display='none'">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
 </div>
 
 <script>
