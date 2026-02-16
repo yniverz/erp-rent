@@ -27,8 +27,23 @@
             </p>
             <p><strong>Referenz:</strong> {{ quote.reference_number }}</p>
             <p><strong>Erstellt:</strong> {{ quote.created_at.strftime('%d.%m.%Y %H:%M') }} von {{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</p>
-            {% if quote.finalized_at %}<p><strong>Finalisiert:</strong> {{ quote.finalized_at.strftime('%d.%m.%Y %H:%M') }}</p>{% endif %}
-            {% if quote.paid_at %}
+            {% if quote.status in ['finalized', 'paid'] and quote.finalized_at %}
+            <p><strong>Finalisiert:</strong> {{ quote.finalized_at.strftime('%d.%m.%Y %H:%M') }}
+                {% if quote.status in ['finalized', 'paid'] %}
+                <button type="button" class="btn btn-sm btn-outline" id="edit-finalized-date-btn" onclick="document.getElementById('edit-finalized-date').style.display='flex';this.style.display='none';" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
+                {% endif %}
+            </p>
+            {% if quote.status in ['finalized', 'paid'] %}
+            <div id="edit-finalized-date" style="display:none;align-items:center;gap:6px;margin-top:6px;">
+                <form method="POST" action="{{ url_for('admin.quote_update_finalized_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;">
+                    <input type="date" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
+                    <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
+                    <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-finalized-date').style.display='none';document.getElementById('edit-finalized-date-btn').style.display='';">Abbrechen</button>
+                </form>
+            </div>
+            {% endif %}
+            {% endif %}
+            {% if quote.status == 'paid' and quote.paid_at %}
             <p><strong>Bezahlt:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}
                 {% if quote.status == 'paid' %}
                 <button type="button" class="btn btn-sm btn-outline" id="edit-paid-date-btn" onclick="document.getElementById('edit-paid-date').style.display='flex';this.style.display='none';" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
@@ -182,15 +197,15 @@
     <h2>Aktionen</h2>
     <div class="d-flex gap-10 flex-wrap">
         {% if quote.status == 'finalized' %}
-            {% if quote.finalized_at %}
+            {% if quote.paid_at %}
+            <!-- Previous paid date exists from undone payment - show warning dialog -->
             <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
-            <!-- Pay dialog with date choice -->
             <div id="pay-dialog" style="display:none;" class="card" style="margin-top:12px;">
                 <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}" id="pay-form">
-                    <p style="margin-bottom:10px;"><strong>Bezahldatum wählen:</strong></p>
-                    <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Das Finalisierungsdatum ist der {{ quote.finalized_at.strftime('%d.%m.%Y') }}. Welches Datum soll als Bezahldatum verwendet werden?</p>
+                    <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Bezahldatum vorhanden</strong></p>
+                    <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Dieses Angebot war zuvor als bezahlt markiert ({{ quote.paid_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Bezahldatum verwenden oder das heutige Datum?</p>
                     <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
-                        <button type="submit" name="paid_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-outline">Finalisierungsdatum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
+                        <button type="submit" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" class="btn btn-outline">Bisheriges Datum ({{ quote.paid_at.strftime('%d.%m.%Y') }})</button>
                         <button type="submit" class="btn btn-success">Heutiges Datum</button>
                         <span style="color:var(--color-text-muted);font-size:0.9em;">oder:</span>
                         <input type="date" id="custom-pay-date" style="padding:6px 10px;font-size:0.9em;">
@@ -200,6 +215,7 @@
                 </form>
             </div>
             {% else %}
+            <!-- No previous paid date - simple confirmation -->
             <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
                 <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?');">Als bezahlt markieren</button>
             </form>

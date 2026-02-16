@@ -739,7 +739,12 @@ def quote_edit(quote_id):
                     flash('⚠ Bestandswarnung: ' + '; '.join(validation_warnings), 'warning')
 
                 quote.status = 'finalized'
-                quote.finalized_at = datetime.utcnow()
+                # Use provided date (from re-finalize dialog) or current time
+                finalized_date_str = request.form.get('finalized_at', '').strip()
+                if finalized_date_str:
+                    quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
+                else:
+                    quote.finalized_at = datetime.utcnow()
                 db.session.commit()
                 flash('Angebot finalisiert!', 'success')
                 return redirect(url_for('admin.quote_view', quote_id=quote.id))
@@ -780,7 +785,7 @@ def quote_unfinalize(quote_id):
     try:
         if quote.status == 'finalized':
             quote.status = 'draft'
-            quote.finalized_at = None
+            # Keep finalized_at so we can offer it when re-finalizing
             db.session.commit()
             flash('Angebot zurück in den Entwurf versetzt!', 'success')
         else:
@@ -850,6 +855,28 @@ def quote_update_paid_date(quote_id):
     return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
 
+@admin_bp.route('/quotes/<int:quote_id>/update_finalized_date', methods=['POST'])
+@login_required
+def quote_update_finalized_date(quote_id):
+    """Update the finalized_at date of a finalized/paid quote"""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        if quote.status in ('finalized', 'paid'):
+            finalized_date_str = request.form.get('finalized_at', '').strip()
+            if finalized_date_str:
+                quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
+                db.session.commit()
+                flash('Finalisierungsdatum aktualisiert!', 'success')
+            else:
+                flash('Kein Datum angegeben.', 'error')
+        else:
+            flash('Angebot ist nicht finalisiert.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
 @admin_bp.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
 @login_required
 def quote_unpay(quote_id):
@@ -869,7 +896,7 @@ def quote_unpay(quote_id):
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
             quote.status = 'finalized'
-            quote.paid_at = None
+            # Keep paid_at so we can offer it when re-marking as paid
             db.session.commit()
             flash('Zahlung aufgehoben und Umsatz zurückerstattet!', 'success')
         else:

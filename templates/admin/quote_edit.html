@@ -390,10 +390,27 @@
     </div>
 
     <div class="d-flex gap-10 flex-wrap mt-20">
+        {% if quote.finalized_at %}
+        <!-- Previous finalization date exists - show warning dialog -->
+        <button type="button" class="btn btn-success" onclick="showFinalizeDialog()">Angebot finalisieren</button>
+        <div id="finalize-dialog" style="display:none;" class="card">
+            <form method="POST" id="finalize-form">
+                <input type="hidden" name="action" value="finalize">
+                <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
+                <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Dieses Angebot war zuvor finalisiert ({{ quote.finalized_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
+                <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
+                    <button type="submit" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-outline">Bisheriges Datum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
+                    <button type="submit" class="btn btn-success">Heutiges Datum</button>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('finalize-dialog').style.display='none'">Abbrechen</button>
+                </div>
+            </form>
+        </div>
+        {% else %}
         <form method="POST" class="d-inline">
             <input type="hidden" name="action" value="finalize">
             <button type="submit" class="btn btn-success" onclick="return confirm('Angebot finalisieren?');">Angebot finalisieren</button>
         </form>
+        {% endif %}
         <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
         <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
@@ -547,6 +564,10 @@ function removePackage(packageId) {
     f.innerHTML = '<input name="action" value="remove_package"><input name="package_id" value="' + packageId + '">';
     document.body.appendChild(f);
     f.submit();
+}
+
+function showFinalizeDialog() {
+    document.getElementById('finalize-dialog').style.display = '';
 }
 </script>
 {% endblock %}
