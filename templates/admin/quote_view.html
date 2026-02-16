@@ -31,16 +31,18 @@
             {% if quote.paid_at %}
             <p><strong>Bezahlt:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}
                 {% if quote.status == 'paid' %}
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-paid-date').style.display='inline-flex'" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
-                <span id="edit-paid-date" style="display:none;align-items:center;gap:6px;margin-left:6px;">
-                    <form method="POST" action="{{ url_for('admin.quote_update_paid_date', quote_id=quote.id) }}" style="display:inline-flex;align-items:center;gap:6px;">
-                        <input type="date" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
-                        <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
-                        <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-paid-date').style.display='none'">Abbrechen</button>
-                    </form>
-                </span>
+                <button type="button" class="btn btn-sm btn-outline" id="edit-paid-date-btn" onclick="document.getElementById('edit-paid-date').style.display='flex';this.style.display='none';" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
                 {% endif %}
             </p>
+            {% if quote.status == 'paid' %}
+            <div id="edit-paid-date" style="display:none;align-items:center;gap:6px;margin-top:6px;">
+                <form method="POST" action="{{ url_for('admin.quote_update_paid_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;">
+                    <input type="date" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
+                    <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
+                    <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-paid-date').style.display='none';document.getElementById('edit-paid-date-btn').style.display='';">Abbrechen</button>
+                </form>
+            </div>
+            {% endif %}
             {% endif %}
         </div>
     </div>
