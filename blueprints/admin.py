@@ -328,6 +328,8 @@ def inventory_edit(item_id):
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
 
+                # Collect existing ownership IDs BEFORE processing so new inserts don't interfere
+                existing_ownership_ids = {o.id for o in ItemOwnership.query.filter_by(item_id=item.id).all()}
                 submitted_ids = set()
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
@@ -393,8 +395,9 @@ def inventory_edit(item_id):
                         db.session.add(ownership)
 
                 # Delete removed ownership rows (and their document files)
-                for old_o in ItemOwnership.query.filter_by(item_id=item.id).all():
-                    if old_o.id not in submitted_ids:
+                for removed_id in existing_ownership_ids - submitted_ids:
+                    old_o = ItemOwnership.query.get(removed_id)
+                    if old_o:
                         for doc in old_o.documents:
                             doc_path = os.path.join(get_upload_path(), doc.filename)
                             if os.path.exists(doc_path):
