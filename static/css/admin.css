@@ -86,7 +86,8 @@ nav {
 }
 
 .nav-right          { display: flex; align-items: center; gap: 14px; }
-.nav-user           { color: rgba(255,255,255,0.7); font-size: 0.85em; }
+.nav-user           { color: rgba(255,255,255,0.7); font-size: 0.85em; text-decoration: none; transition: color 0.2s; }
+.nav-user:hover     { color: white; }
 .nav-logout         { color: white; background: var(--color-danger); text-decoration: none; padding: 7px 16px; border-radius: var(--radius-sm); font-size: 0.85em; transition: background 0.2s; }
 .nav-logout:hover   { background: var(--color-danger-hover); }
 

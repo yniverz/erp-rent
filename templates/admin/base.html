@@ -65,7 +65,7 @@
                 {% endif %}
             </div>
             <div class="nav-right">
-                <span class="nav-user">{{ current_user.display_name or current_user.username }}</span>
+                <a href="{{ url_for('auth.profile') }}" class="nav-user" title="Mein Profil">{{ current_user.display_name or current_user.username }}</a>
                 <a href="{{ url_for('public.catalog') }}" class="btn btn-sm btn-outline nav-shop-link">Shop</a>
                 <a href="{{ url_for('auth.logout') }}" class="nav-logout">Abmelden</a>
             </div>

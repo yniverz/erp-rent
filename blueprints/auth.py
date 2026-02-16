@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
-from models import User
+from models import db, User
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -33,3 +33,40 @@ def logout():
     logout_user()
     flash('Sie wurden abgemeldet.', 'success')
     return redirect(url_for('public.catalog'))
+
+
+@auth_bp.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    """User profile – change display name, email, or password"""
+    user = current_user
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'update_profile':
+            display_name = request.form.get('display_name', '').strip()
+            email = request.form.get('email', '').strip()
+            user.display_name = display_name or None
+            user.email = email or None
+            db.session.commit()
+            flash('Profil aktualisiert.', 'success')
+
+        elif action == 'change_password':
+            current_pw = request.form.get('current_password', '')
+            new_pw = request.form.get('new_password', '')
+            confirm_pw = request.form.get('confirm_password', '')
+
+            if not user.check_password(current_pw):
+                flash('Aktuelles Passwort ist falsch.', 'error')
+            elif len(new_pw) < 4:
+                flash('Neues Passwort muss mindestens 4 Zeichen lang sein.', 'error')
+            elif new_pw != confirm_pw:
+                flash('Passwörter stimmen nicht überein.', 'error')
+            else:
+                user.set_password(new_pw)
+                db.session.commit()
+                flash('Passwort erfolgreich geändert.', 'success')
+
+        return redirect(url_for('auth.profile'))
+
+    return render_template('auth/profile.html', user=user)
