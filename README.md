@@ -187,17 +187,3 @@ ERP-Rent uses **SQLite** as its database — no external database server needed.
 ## Customer Database
 
 The system maintains a customer database for quick lookup. When creating a quote, you can search for existing customers to auto-fill their name and address. Customer records are saved and updated automatically.
-
-## Future Enhancements (Optional)
-
-- User authentication
-- PDF generation for receipts
-- Email notifications
-- Advanced reporting (revenue by period, etc.)
-- Item availability checking
-- Multi-currency support
-- Barcode/QR code generation
-
-## Support
-
-For issues or questions, check the code comments or modify as needed. The system is designed to be straightforward and easy to customize.
