@@ -101,6 +101,7 @@
                         <th>Ext. Preis/Tag/Stk (&euro;)</th>
                         <th>Ansch.kosten ges. (&euro;)</th>
                         <th>Kaufdatum</th>
+                        {% if item %}<th>Dokumente</th>{% endif %}
                         <th></th>
                     </tr>
                 </thead>
@@ -109,6 +110,7 @@
                         {% for o in item.ownerships %}
                         <tr>
                             <td>
+                                <input type="hidden" name="ownership_ids" value="{{ o.id }}">
                                 <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
                                     <option value="">— Benutzer wählen —</option>
                                     {% for u in users %}
@@ -120,6 +122,20 @@
                             <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
                             <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
                             <td><input type="date" name="ownership_purchase_dates" value="{{ o.purchase_date.strftime('%Y-%m-%d') if o.purchase_date else '' }}" class="w-130" {{ 'required' if o.purchase_cost and o.purchase_cost > 0 }}></td>
+                            <td class="ownership-docs-cell" data-ownership-id="{{ o.id }}">
+                                <div class="ownership-docs-list">
+                                    {% for doc in o.documents %}
+                                    <div class="ownership-doc-item" data-doc-id="{{ doc.id }}">
+                                        <a href="{{ url_for('admin.ownership_download_document', doc_id=doc.id) }}" class="ownership-doc-link" title="{{ doc.original_name }}">📄 {{ doc.original_name|truncate(20) }}</a>
+                                        <button type="button" class="btn-doc-delete" onclick="deleteOwnershipDoc({{ doc.id }}, this)" title="Löschen">✕</button>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <label class="btn btn-xs btn-outline ownership-doc-upload-btn">
+                                    + Datei
+                                    <input type="file" class="d-none" onchange="uploadOwnershipDoc({{ o.id }}, this)" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv">
+                                </label>
+                            </td>
                             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>
                         {% endfor %}
@@ -181,9 +197,15 @@ function togglePackageFields() {
 
 function addOwnershipRow() {
     var tbody = document.getElementById('ownership-tbody');
+    var isEdit = {{ 'true' if item else 'false' }};
     var row = document.createElement('tr');
+    var docsCol = '';
+    if (isEdit) {
+        docsCol = '<td class="ownership-docs-cell"><small class="text-muted">Erst nach Speichern verfügbar</small></td>';
+    }
     row.innerHTML = `
         <td>
+            <input type="hidden" name="ownership_ids" value="">
             <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
                 <option value="">— Benutzer wählen —</option>
                 {% for u in users %}
@@ -195,6 +217,7 @@ function addOwnershipRow() {
         <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-100" placeholder="leer = intern"></td>
         <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
         <td><input type="date" name="ownership_purchase_dates" value="" class="w-130"></td>
+        ${docsCol}
         <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
     `;
     tbody.appendChild(row);
@@ -269,5 +292,61 @@ document.querySelectorAll('#ownership-tbody select[name="ownership_user_ids"]').
 document.querySelectorAll('#ownership-tbody input[name="ownership_purchase_costs"]').forEach(function(input) {
     onPurchaseCostChange(input);
 });
+
+// ── Ownership Document Upload/Delete (AJAX) ──
+{% if item %}
+var _uploadUrlBase = '{{ url_for("admin.ownership_upload_document", ownership_id=0) }}';
+var _deleteUrlBase = '{{ url_for("admin.ownership_delete_document", doc_id=0) }}';
+{% endif %}
+
+function uploadOwnershipDoc(ownershipId, input) {
+    if (!input.files.length) return;
+    var file = input.files[0];
+    var formData = new FormData();
+    formData.append('document', file);
+
+    fetch(_uploadUrlBase.replace('/0/', '/' + ownershipId + '/'), {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        var cell = input.closest('.ownership-docs-cell');
+        var list = cell.querySelector('.ownership-docs-list');
+        var div = document.createElement('div');
+        div.className = 'ownership-doc-item';
+        div.setAttribute('data-doc-id', data.id);
+        div.innerHTML = '<a href="' + data.download_url + '" class="ownership-doc-link" title="' + data.original_name + '">📄 ' + (data.original_name.length > 20 ? data.original_name.substring(0, 20) + '…' : data.original_name) + '</a>' +
+            '<button type="button" class="btn-doc-delete" onclick="deleteOwnershipDoc(' + data.id + ', this)" title="Löschen">✕</button>';
+        list.appendChild(div);
+        input.value = '';
+    })
+    .catch(function(err) {
+        alert('Fehler beim Hochladen: ' + err);
+    });
+}
+
+function deleteOwnershipDoc(docId, btn) {
+    if (!confirm('Dokument wirklich löschen?')) return;
+    fetch(_deleteUrlBase.replace('/0/', '/' + docId + '/'), {
+        method: 'POST'
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        var item = btn.closest('.ownership-doc-item');
+        item.remove();
+    })
+    .catch(function(err) {
+        alert('Fehler beim Löschen: ' + err);
+    });
+}
 </script>
 {% endblock %}

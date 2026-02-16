@@ -157,3 +157,9 @@ def allowed_image_file(filename):
     """Check if a filename has an allowed image extension"""
     allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
+
+
+def allowed_document_file(filename):
+    """Check if a filename has an allowed document/image extension"""
+    allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed

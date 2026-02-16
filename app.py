@@ -1,6 +1,6 @@
 from flask import Flask, send_file
 from flask_login import LoginManager
-from models import db, User, SiteSettings, PackageComponent, ItemOwnership
+from models import db, User, SiteSettings, PackageComponent, ItemOwnership, OwnershipDocument
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import os
@@ -269,6 +269,20 @@ with app.app_context():
             cursor.execute("DROP TABLE item_ownership")
             cursor.execute("ALTER TABLE item_ownership_new RENAME TO item_ownership")
             print("Dropped UNIQUE(item_id, user_id) constraint from item_ownership table")
+
+        # OwnershipDocument table
+        if not table_exists('ownership_document'):
+            cursor.execute("""
+                CREATE TABLE ownership_document (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ownership_id INTEGER NOT NULL,
+                    filename VARCHAR(300) NOT NULL,
+                    original_name VARCHAR(300) NOT NULL,
+                    uploaded_at DATETIME,
+                    FOREIGN KEY (ownership_id) REFERENCES item_ownership(id)
+                )
+            """)
+            print("Created ownership_document table")
 
         # Drop legacy columns from item table that moved to item_ownership.
         # SQLite doesn't support DROP COLUMN on older versions, so we recreate.

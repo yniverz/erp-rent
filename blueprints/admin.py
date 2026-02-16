@@ -1,8 +1,8 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership
-from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument
+from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
 from datetime import datetime
 from functools import wraps
 from werkzeug.utils import secure_filename
@@ -299,8 +299,13 @@ def inventory_edit(item_id):
             item.show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
 
             if item.is_package:
-                # Clear ownerships for packages
-                ItemOwnership.query.filter_by(item_id=item.id).delete()
+                # Clear ownerships for packages (and their document files)
+                for old_o in ItemOwnership.query.filter_by(item_id=item.id).all():
+                    for doc in old_o.documents:
+                        doc_path = os.path.join(get_upload_path(), doc.filename)
+                        if os.path.exists(doc_path):
+                            os.remove(doc_path)
+                    db.session.delete(old_o)
 
                 # Update package components
                 PackageComponent.query.filter_by(package_id=item.id).delete()
@@ -315,14 +320,15 @@ def inventory_edit(item_id):
                         )
                         db.session.add(pc)
             else:
-                # Update ownership entries
-                ItemOwnership.query.filter_by(item_id=item.id).delete()
+                # Update ownership entries — preserve existing rows (and their documents)
+                ownership_ids = request.form.getlist('ownership_ids')
                 ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
                 ownership_ext_prices = request.form.getlist('ownership_ext_prices')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
 
+                submitted_ids = set()
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
                         continue
@@ -357,15 +363,43 @@ def inventory_edit(item_id):
                                                users=users,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
-                    ownership = ItemOwnership(
-                        item_id=item.id,
-                        user_id=uid,
-                        quantity=qty,
-                        external_price_per_day=ext_price,
-                        purchase_cost=purchase_cost,
-                        purchase_date=purchase_date
-                    )
-                    db.session.add(ownership)
+                    oid_str = ownership_ids[i] if i < len(ownership_ids) else ''
+                    oid = int(oid_str) if oid_str.strip() else None
+
+                    if oid:
+                        # Update existing ownership row
+                        ownership = ItemOwnership.query.get(oid)
+                        if ownership and ownership.item_id == item.id:
+                            ownership.user_id = uid
+                            ownership.quantity = qty
+                            ownership.external_price_per_day = ext_price
+                            ownership.purchase_cost = purchase_cost
+                            ownership.purchase_date = purchase_date
+                            submitted_ids.add(oid)
+                        else:
+                            # ID invalid, create new
+                            ownership = ItemOwnership(
+                                item_id=item.id, user_id=uid, quantity=qty,
+                                external_price_per_day=ext_price,
+                                purchase_cost=purchase_cost, purchase_date=purchase_date
+                            )
+                            db.session.add(ownership)
+                    else:
+                        ownership = ItemOwnership(
+                            item_id=item.id, user_id=uid, quantity=qty,
+                            external_price_per_day=ext_price,
+                            purchase_cost=purchase_cost, purchase_date=purchase_date
+                        )
+                        db.session.add(ownership)
+
+                # Delete removed ownership rows (and their document files)
+                for old_o in ItemOwnership.query.filter_by(item_id=item.id).all():
+                    if old_o.id not in submitted_ids:
+                        for doc in old_o.documents:
+                            doc_path = os.path.join(get_upload_path(), doc.filename)
+                            if os.path.exists(doc_path):
+                                os.remove(doc_path)
+                        db.session.delete(old_o)
 
             # Handle image upload
             if 'image' in request.files:
@@ -423,6 +457,12 @@ def inventory_delete(item_id):
             old_path = os.path.join(get_upload_path(), item.image_filename)
             if os.path.exists(old_path):
                 os.remove(old_path)
+        # Delete ownership document files
+        for ownership in item.ownerships:
+            for doc in ownership.documents:
+                doc_path = os.path.join(get_upload_path(), doc.filename)
+                if os.path.exists(doc_path):
+                    os.remove(doc_path)
         # Remove this item from any packages it's a component of
         PackageComponent.query.filter_by(component_item_id=item.id).delete()
         name = item.name
@@ -434,6 +474,79 @@ def inventory_delete(item_id):
         flash(f'Fehler beim Löschen des Artikels: {str(e)}', 'error')
 
     return redirect(url_for('admin.inventory_list'))
+
+
+# ============= OWNERSHIP DOCUMENTS =============
+
+@admin_bp.route('/ownership/<int:ownership_id>/upload-document', methods=['POST'])
+@login_required
+def ownership_upload_document(ownership_id):
+    """Upload a document to an ownership entry (AJAX)"""
+    ownership = ItemOwnership.query.get_or_404(ownership_id)
+    item = Item.query.get_or_404(ownership.item_id)
+
+    if not current_user.can_edit_item(item):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+
+    if 'document' not in request.files:
+        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+
+    file = request.files['document']
+    if not file or not file.filename:
+        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+
+    if not allowed_document_file(file.filename):
+        return jsonify({'error': 'Dateityp nicht erlaubt. Erlaubt: PDF, Bilder, Office-Dokumente, TXT, CSV'}), 400
+
+    original_name = secure_filename(file.filename)
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    stored_name = f"{uuid.uuid4().hex}.{ext}"
+    file.save(os.path.join(get_upload_path(), stored_name))
+
+    doc = OwnershipDocument(
+        ownership_id=ownership.id,
+        filename=stored_name,
+        original_name=original_name
+    )
+    db.session.add(doc)
+    db.session.commit()
+
+    return jsonify({
+        'id': doc.id,
+        'original_name': doc.original_name,
+        'download_url': url_for('admin.ownership_download_document', doc_id=doc.id),
+        'delete_url': url_for('admin.ownership_delete_document', doc_id=doc.id)
+    })
+
+
+@admin_bp.route('/ownership/document/<int:doc_id>/download')
+@login_required
+def ownership_download_document(doc_id):
+    """Download an ownership document"""
+    doc = OwnershipDocument.query.get_or_404(doc_id)
+    from flask import send_from_directory
+    return send_from_directory(get_upload_path(), doc.filename,
+                               download_name=doc.original_name, as_attachment=True)
+
+
+@admin_bp.route('/ownership/document/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def ownership_delete_document(doc_id):
+    """Delete an ownership document (AJAX)"""
+    doc = OwnershipDocument.query.get_or_404(doc_id)
+    ownership = ItemOwnership.query.get_or_404(doc.ownership_id)
+    item = Item.query.get_or_404(ownership.item_id)
+
+    if not current_user.can_edit_item(item):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+
+    file_path = os.path.join(get_upload_path(), doc.filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({'success': True})
 
 
 # ============= QUOTES =============

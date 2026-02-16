@@ -131,6 +131,8 @@ class ItemOwnership(db.Model):
 
     item = db.relationship('Item', back_populates='ownerships')
     user = db.relationship('User')
+    documents = db.relationship('OwnershipDocument', back_populates='ownership',
+                                cascade='all, delete-orphan', lazy='selectin')
 
     @property
     def is_external(self):
@@ -141,6 +143,17 @@ class ItemOwnership(db.Model):
         if self.is_external:
             return 0
         return round(self.purchase_cost or 0, 2)
+
+
+class OwnershipDocument(db.Model):
+    """Document (PDF, image, etc.) attached to an ownership entry."""
+    id = db.Column(db.Integer, primary_key=True)
+    ownership_id = db.Column(db.Integer, db.ForeignKey('item_ownership.id'), nullable=False)
+    filename = db.Column(db.String(300), nullable=False)  # stored filename (UUID-based)
+    original_name = db.Column(db.String(300), nullable=False)  # original upload name
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    ownership = db.relationship('ItemOwnership', back_populates='documents')
 
 
 class Item(db.Model):

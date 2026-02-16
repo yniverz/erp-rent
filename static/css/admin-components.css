@@ -93,3 +93,45 @@
 
 #calendar-view, #table-view { display: none; }
 #calendar-view.show, #table-view.show { display: block; }
+
+/* ── Ownership Documents ── */
+.ownership-docs-cell { min-width: 160px; }
+.ownership-docs-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.ownership-doc-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-gray-100);
+    border-radius: var(--radius-sm, 4px);
+    padding: 2px 6px;
+    font-size: 0.85em;
+}
+.ownership-doc-link {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+    color: var(--color-accent);
+    text-decoration: none;
+}
+.ownership-doc-link:hover { text-decoration: underline; }
+.btn-doc-delete {
+    background: none;
+    border: none;
+    color: var(--color-danger, #ef4444);
+    cursor: pointer;
+    font-size: 0.85em;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.btn-doc-delete:hover { opacity: 0.7; }
+.ownership-doc-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 0.82em;
+    padding: 2px 8px;
+}
+.btn-xs { font-size: 0.78em; padding: 2px 8px; }
