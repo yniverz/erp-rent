@@ -129,8 +129,6 @@ class ItemOwnership(db.Model):
     purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost (sum) for this owner's stock
     purchase_date = db.Column(db.DateTime, nullable=True)  # Date of purchase (required if purchase_cost > 0)
 
-    __table_args__ = (db.UniqueConstraint('item_id', 'user_id', name='uq_item_user'),)
-
     item = db.relationship('Item', back_populates='ownerships')
     user = db.relationship('User')
 

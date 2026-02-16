@@ -207,7 +207,6 @@ with app.app_context():
                     quantity INTEGER NOT NULL DEFAULT 0,
                     external_price_per_day FLOAT,
                     purchase_cost FLOAT DEFAULT 0,
-                    UNIQUE(item_id, user_id),
                     FOREIGN KEY (item_id) REFERENCES item(id),
                     FOREIGN KEY (user_id) REFERENCES user(id)
                 )
@@ -240,6 +239,36 @@ with app.app_context():
                 WHERE purchase_cost > 0 AND purchase_date IS NULL
             """)
             print("Added purchase_date column to item_ownership table")
+
+        # Drop UNIQUE(item_id, user_id) constraint to allow multiple ownership rows per user/item.
+        # SQLite doesn't support DROP CONSTRAINT, so we recreate the table.
+        # Detect by checking if the unique index still exists.
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='item_ownership'")
+        create_sql = cursor.fetchone()
+        if create_sql and 'UNIQUE' in (create_sql[0] or ''):
+            cursor.execute("PRAGMA table_info(item_ownership)")
+            cols_info = cursor.fetchall()
+            col_names = [c[1] for c in cols_info]
+            col_defs = []
+            for c in cols_info:
+                name, ctype, notnull, dflt, pk = c[1], c[2], c[3], c[4], c[5]
+                parts = [name, ctype or 'TEXT']
+                if pk:
+                    parts.append('PRIMARY KEY')
+                    if name == 'id':
+                        parts.append('AUTOINCREMENT')
+                if notnull and not pk:
+                    parts.append('NOT NULL')
+                if dflt is not None:
+                    parts.append(f'DEFAULT {dflt}')
+                col_defs.append(' '.join(parts))
+            defs_joined = ', '.join(col_defs)
+            cols_joined = ', '.join(col_names)
+            cursor.execute(f"CREATE TABLE item_ownership_new ({defs_joined}, FOREIGN KEY (item_id) REFERENCES item(id), FOREIGN KEY (user_id) REFERENCES user(id))")
+            cursor.execute(f"INSERT INTO item_ownership_new ({cols_joined}) SELECT {cols_joined} FROM item_ownership")
+            cursor.execute("DROP TABLE item_ownership")
+            cursor.execute("ALTER TABLE item_ownership_new RENAME TO item_ownership")
+            print("Dropped UNIQUE(item_id, user_id) constraint from item_ownership table")
 
         # Drop legacy columns from item table that moved to item_ownership.
         # SQLite doesn't support DROP COLUMN on older versions, so we recreate.
