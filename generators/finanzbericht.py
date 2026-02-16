@@ -175,6 +175,42 @@ def build_finance_report_pdf(
         story.append(owner_table)
         story.append(Spacer(1, 10))
 
+        # ── Purchase Details per Owner ──
+        has_any_purchases = any(os_item.get('purchases') for os_item in owner_summaries)
+        if has_any_purchases:
+            story.append(Paragraph("Anschaffungen nach Eigentümer", styles["h2"]))
+            
+            purch_header = [
+                Paragraph("Eigentümer", styles["table_header"]),
+                Paragraph("Artikel", styles["table_header"]),
+                Paragraph("Ansch.kosten", styles["table_header"]),
+                Paragraph("Kaufdatum", styles["table_header"]),
+            ]
+            purch_data = [purch_header]
+            for os_item in owner_summaries:
+                for p in os_item.get('purchases', []):
+                    purch_data.append([
+                        Paragraph(os_item['name'], styles["table_cell"]),
+                        Paragraph(p['item_name'], styles["table_cell"]),
+                        Paragraph(fmt_eur(p['cost']), styles["table_cell_right"]),
+                        Paragraph(p['date'], styles["table_cell"]),
+                    ])
+            
+            if len(purch_data) > 1:
+                pw = L_CONTENT_W / 4
+                purch_table = Table(purch_data, colWidths=[pw * 1.2, pw * 1.2, pw * 0.8, pw * 0.8], hAlign="LEFT")
+                purch_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.8, CLR_BLACK),
+                    ("LINEBELOW", (0, 1), (-1, -1), 0.3, colors.HexColor("#cccccc")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]))
+                story.append(purch_table)
+        story.append(Spacer(1, 10))
+
     # ── Invoice List ──
     if quotes:
         story.append(Paragraph("Rechnungsübersicht", styles["h2"]))

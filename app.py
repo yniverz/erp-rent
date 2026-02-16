@@ -231,6 +231,16 @@ with app.app_context():
                     """, (item_id, owner_id, total_qty or 0, ext_price, p_cost))
                 print("Migrated existing items to ItemOwnership table")
 
+        # ItemOwnership: add purchase_date column
+        if table_exists('item_ownership') and not column_exists('item_ownership', 'purchase_date'):
+            cursor.execute("ALTER TABLE item_ownership ADD COLUMN purchase_date DATETIME")
+            # Set current date for existing rows with purchase_cost > 0
+            cursor.execute("""
+                UPDATE item_ownership SET purchase_date = datetime('now')
+                WHERE purchase_cost > 0 AND purchase_date IS NULL
+            """)
+            print("Added purchase_date column to item_ownership table")
+
         # Drop legacy columns from item table that moved to item_ownership.
         # SQLite doesn't support DROP COLUMN on older versions, so we recreate.
         if column_exists('item', 'owner_id'):

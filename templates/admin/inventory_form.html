@@ -100,6 +100,7 @@
                         <th>Menge (-1 = ∞)</th>
                         <th>Ext. Preis/Tag/Stk (&euro;)</th>
                         <th>Ansch.kosten ges. (&euro;)</th>
+                        <th>Kaufdatum</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -117,7 +118,8 @@
                             </td>
                             <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-80"></td>
                             <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
-                            <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00"></td>
+                            <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
+                            <td><input type="date" name="ownership_purchase_dates" value="{{ o.purchase_date.strftime('%Y-%m-%d') if o.purchase_date else '' }}" class="w-130" {{ 'required' if o.purchase_cost and o.purchase_cost > 0 }}></td>
                             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>
                         {% endfor %}
@@ -191,7 +193,8 @@ function addOwnershipRow() {
         </td>
         <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-80"></td>
         <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-100" placeholder="leer = intern"></td>
-        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00"></td>
+        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
+        <td><input type="date" name="ownership_purchase_dates" value="" class="w-130"></td>
         <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
     `;
     tbody.appendChild(row);
@@ -235,9 +238,36 @@ function onOwnershipUserChange(selectEl) {
     }
 }
 
+// Handle purchase cost changes – require purchase_date when cost > 0
+function onPurchaseCostChange(input) {
+    var row = input.closest('tr');
+    var dateInput = row.querySelector('input[name="ownership_purchase_dates"]');
+    var cost = parseFloat(input.value) || 0;
+    if (cost > 0) {
+        dateInput.required = true;
+        if (!dateInput.value) {
+            dateInput.style.borderColor = 'var(--color-danger, #ef4444)';
+        }
+    } else {
+        dateInput.required = false;
+        dateInput.style.borderColor = '';
+    }
+}
+
+// Clear border on date input change
+document.addEventListener('change', function(e) {
+    if (e.target.name === 'ownership_purchase_dates') {
+        e.target.style.borderColor = '';
+    }
+});
+
 // Initialize all existing ownership rows
 document.querySelectorAll('#ownership-tbody select[name="ownership_user_ids"]').forEach(function(sel) {
     onOwnershipUserChange(sel);
+});
+// Initialize purchase cost validation
+document.querySelectorAll('#ownership-tbody input[name="ownership_purchase_costs"]').forEach(function(input) {
+    onPurchaseCostChange(input);
 });
 </script>
 {% endblock %}

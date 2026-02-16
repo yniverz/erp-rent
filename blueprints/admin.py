@@ -212,6 +212,7 @@ def inventory_add():
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
                 ownership_ext_prices = request.form.getlist('ownership_ext_prices')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
+                ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
 
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
@@ -219,8 +220,21 @@ def inventory_add():
                     qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
                     ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
                     purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
+                    purchase_date_str = ownership_purchase_dates[i] if i < len(ownership_purchase_dates) else ''
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
+                    purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
+
+                    # Purchase date is required when purchase cost > 0
+                    if purchase_cost > 0 and not purchase_date:
+                        flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
+                        db.session.rollback()
+                        return render_template('admin/inventory_form.html',
+                                               item=None,
+                                               categories=categories,
+                                               category_tree=category_tree,
+                                               users=users,
+                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
                     owner_user = User.query.get(uid)
@@ -239,7 +253,8 @@ def inventory_add():
                         user_id=uid,
                         quantity=qty,
                         external_price_per_day=ext_price,
-                        purchase_cost=purchase_cost
+                        purchase_cost=purchase_cost,
+                        purchase_date=purchase_date
                     )
                     db.session.add(ownership)
 
@@ -306,6 +321,7 @@ def inventory_edit(item_id):
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
                 ownership_ext_prices = request.form.getlist('ownership_ext_prices')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
+                ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
 
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
@@ -313,8 +329,21 @@ def inventory_edit(item_id):
                     qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
                     ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
                     purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
+                    purchase_date_str = ownership_purchase_dates[i] if i < len(ownership_purchase_dates) else ''
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
+                    purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
+
+                    # Purchase date is required when purchase cost > 0
+                    if purchase_cost > 0 and not purchase_date:
+                        flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
+                        db.session.rollback()
+                        return render_template('admin/inventory_form.html',
+                                               item=item,
+                                               categories=categories,
+                                               category_tree=category_tree,
+                                               users=users,
+                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
                     owner_user = User.query.get(uid)
@@ -333,7 +362,8 @@ def inventory_edit(item_id):
                         user_id=uid,
                         quantity=qty,
                         external_price_per_day=ext_price,
-                        purchase_cost=purchase_cost
+                        purchase_cost=purchase_cost,
+                        purchase_date=purchase_date
                     )
                     db.session.add(ownership)
 
@@ -1221,12 +1251,24 @@ def _compute_owner_summaries(user_ids, quotes):
                     if qi.rental_cost_per_day:
                         ext_cost += qi.total_external_cost
 
+        # Collect purchase details
+        purchases = []
+        for o in ownerships:
+            if o.purchase_cost and o.purchase_cost > 0:
+                item_obj = Item.query.get(o.item_id)
+                purchases.append({
+                    'item_name': item_obj.name if item_obj else f'Item #{o.item_id}',
+                    'cost': round(o.purchase_cost, 2),
+                    'date': o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '–',
+                })
+
         summaries.append({
             'name': user.display_name or user.username,
             'item_count': len(ownerships),
             'investment': round(investment, 2),
             'revenue_share': round(revenue_share, 2),
             'ext_cost': round(ext_cost, 2),
+            'purchases': purchases,
         })
     return summaries
 
@@ -1412,6 +1454,31 @@ def finance_export_csv():
                 f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
             ])
         zf.writestr('zusammenfassung.csv', text_buf3.getvalue().encode('utf-8-sig'))
+
+        # 4. Anschaffungen (purchases with dates)
+        text_buf4 = io.StringIO()
+        writer4 = csv.writer(text_buf4, delimiter=';', quoting=csv.QUOTE_ALL)
+        writer4.writerow([
+            'Artikel', 'Eigentümer', 'Menge', 'Anschaffungskosten (€)',
+            'Kaufdatum', 'Ext. Preis/Tag (€)', 'Typ'
+        ])
+        # Gather all ownerships for relevant items or selected users
+        ownership_query = ItemOwnership.query
+        if user_ids:
+            ownership_query = ownership_query.filter(ItemOwnership.user_id.in_(user_ids))
+        for o in ownership_query.order_by(ItemOwnership.item_id).all():
+            item_obj = Item.query.get(o.item_id)
+            owner_obj = User.query.get(o.user_id)
+            writer4.writerow([
+                item_obj.name if item_obj else f'Item #{o.item_id}',
+                (owner_obj.display_name or owner_obj.username) if owner_obj else f'User #{o.user_id}',
+                o.quantity,
+                f'{(o.purchase_cost or 0):.2f}'.replace('.', ','),
+                o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '',
+                f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
+                'Extern' if o.is_external else 'Intern',
+            ])
+        zf.writestr('anschaffungen.csv', text_buf4.getvalue().encode('utf-8-sig'))
 
     zip_buf.seek(0)
     filename = f"finanz_export_{date_from}_bis_{date_to}.zip"

@@ -127,6 +127,7 @@ class ItemOwnership(db.Model):
     quantity = db.Column(db.Integer, nullable=False, default=0)  # -1 for unlimited
     external_price_per_day = db.Column(db.Float, nullable=True)  # If set, this user is external provider
     purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost (sum) for this owner's stock
+    purchase_date = db.Column(db.DateTime, nullable=True)  # Date of purchase (required if purchase_cost > 0)
 
     __table_args__ = (db.UniqueConstraint('item_id', 'user_id', name='uq_item_user'),)
 
