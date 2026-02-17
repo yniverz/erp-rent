@@ -169,23 +169,23 @@ def get_customer(customer_name):
 def _get_customer_address(customer_id):
     """Fetch the primary address for a customer from ERPNext."""
     try:
-        # Get linked addresses via Dynamic Link
-        links = _api_get('/api/resource/Dynamic Link', params={
+        # Method 1: Use frappe.client.get_list on Address with link filters
+        # ERPNext stores address links in a child table, so we use the
+        # Address doctype's built-in link filter syntax
+        data = _api_get('/api/resource/Address', params={
             'filters': json.dumps([
-                ['link_doctype', '=', 'Customer'],
-                ['link_name', '=', customer_id],
-                ['parenttype', '=', 'Address'],
+                ['Dynamic Link', 'link_doctype', '=', 'Customer'],
+                ['Dynamic Link', 'link_name', '=', customer_id],
             ]),
-            'fields': '["parent"]',
-            'limit_page_length': 5,
+            'fields': '["name","address_line1","address_line2","pincode","city","country"]',
+            'limit_page_length': 1,
+            'order_by': 'is_primary_address desc',
         })
-        address_names = [l['parent'] for l in links.get('data', [])]
-        if not address_names:
+        addresses = data.get('data', [])
+        if not addresses:
             return ''
 
-        # Get the first address details
-        addr_data = _api_get(f'/api/resource/Address/{address_names[0]}')
-        addr = addr_data.get('data', {})
+        addr = addresses[0]
         parts = []
         if addr.get('address_line1'):
             parts.append(addr['address_line1'])
@@ -201,7 +201,9 @@ def _get_customer_address(customer_id):
         if addr.get('country'):
             parts.append(addr['country'])
         return '\n'.join(parts)
-    except Exception:
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return ''
 
 
