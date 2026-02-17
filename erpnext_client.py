@@ -3,6 +3,7 @@ ERPNext API client for Journal Entry creation and Customer lookup.
 Activated via ENV variables: ERPNEXT_ENABLED, ERPNEXT_URL, ERPNEXT_USER, ERPNEXT_PASSWORD
 """
 
+import json
 import os
 import requests
 
@@ -89,7 +90,7 @@ def get_accounts(company, account_type=None, root_type=None):
         filters.append(['root_type', '=', root_type])
 
     data = _api_get('/api/resource/Account', params={
-        'filters': str(filters),
+        'filters': json.dumps(filters),
         'fields': '["name","account_name","account_number","account_type","root_type"]',
         'limit_page_length': 0,
         'order_by': 'name asc',
@@ -123,7 +124,7 @@ def search_customers(query, limit=10):
     """Search customers in ERPNext by name."""
     filters = [['customer_name', 'like', f'%{query}%']]
     data = _api_get('/api/resource/Customer', params={
-        'filters': str(filters),
+        'filters': json.dumps(filters),
         'fields': '["name","customer_name"]',
         'limit_page_length': limit,
         'order_by': 'customer_name asc',
@@ -144,7 +145,7 @@ def get_customer(customer_name):
     """Get a single customer by name from ERPNext."""
     filters = [['customer_name', '=', customer_name]]
     data = _api_get('/api/resource/Customer', params={
-        'filters': str(filters),
+        'filters': json.dumps(filters),
         'fields': '["name","customer_name"]',
         'limit_page_length': 1,
     })
@@ -165,7 +166,7 @@ def _get_customer_address(customer_id):
     try:
         # Get linked addresses via Dynamic Link
         links = _api_get('/api/resource/Dynamic Link', params={
-            'filters': str([
+            'filters': json.dumps([
                 ['link_doctype', '=', 'Customer'],
                 ['link_name', '=', customer_id],
                 ['parenttype', '=', 'Address'],
