@@ -322,6 +322,7 @@ class Quote(db.Model):
     finalized_at = db.Column(db.DateTime, nullable=True)
     performed_at = db.Column(db.DateTime, nullable=True)  # When service was performed / Durchgeführt
     paid_at = db.Column(db.DateTime, nullable=True)
+    payment_method = db.Column(db.String(20), nullable=True)  # 'cash' or 'bank'
     notes = db.Column(db.Text, nullable=True)
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)
     # ERPNext Journal Entry references (stored for cancellation)
@@ -472,4 +473,5 @@ class SiteSettings(db.Model):
     erpnext_account_revenue = db.Column(db.String(200), nullable=True)     # e.g. 4400 Erlöse
     erpnext_account_vat = db.Column(db.String(200), nullable=True)         # e.g. 1776 Umsatzsteuer
     erpnext_account_bank = db.Column(db.String(200), nullable=True)        # e.g. 1200 Bank
+    erpnext_account_cash = db.Column(db.String(200), nullable=True)        # e.g. 1000 Kasse
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

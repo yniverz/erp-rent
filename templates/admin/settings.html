@@ -177,11 +177,19 @@
         </div>
 
         <div class="form-group">
-            <label>Bankkonto</label>
+            <label>Bankkonto (Überweisung)</label>
             <select name="erpnext_account_bank" id="erpnext_account_bank">
                 <option value="">— Zuerst Firma auswählen —</option>
             </select>
-            <small class="help-text">z.B. 1200 – Bank</small>
+            <small class="help-text">z.B. 1200 – Bank. Wird bei Zahlung per Überweisung verwendet.</small>
+        </div>
+
+        <div class="form-group">
+            <label>Kassenkonto (Bar)</label>
+            <select name="erpnext_account_cash" id="erpnext_account_cash">
+                <option value="">— Zuerst Firma auswählen —</option>
+            </select>
+            <small class="help-text">z.B. 1000 – Kasse. Wird bei Barzahlung verwendet.</small>
         </div>
 
         <button type="submit" class="btn btn-primary mt-10">ERPNext-Einstellungen speichern</button>
@@ -195,6 +203,7 @@
     const savedRevenue = {{ (settings.erpnext_account_revenue or '')|tojson }};
     const savedVat = {{ (settings.erpnext_account_vat or '')|tojson }};
     const savedBank = {{ (settings.erpnext_account_bank or '')|tojson }};
+    const savedCash = {{ (settings.erpnext_account_cash or '')|tojson }};
 
     // Load companies on page load
     loadCompanies();
@@ -227,6 +236,7 @@
             { id: 'erpnext_account_revenue',    kind: 'revenue',    saved: savedRevenue },
             { id: 'erpnext_account_vat',        kind: 'tax',        saved: savedVat },
             { id: 'erpnext_account_bank',       kind: 'bank',       saved: savedBank },
+            { id: 'erpnext_account_cash',       kind: 'cash',       saved: savedCash },
         ];
 
         configs.forEach(cfg => {

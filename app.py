@@ -364,6 +364,8 @@ with app.app_context():
             cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_vat VARCHAR(200)")
         if not column_exists2('site_settings', 'erpnext_account_bank'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_bank VARCHAR(200)")
+        if not column_exists2('site_settings', 'erpnext_account_cash'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_cash VARCHAR(200)")
 
         # Quote: add performed_at and ERPNext JE reference columns
         if not column_exists2('quote', 'performed_at'):
@@ -372,6 +374,8 @@ with app.app_context():
             cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_receivable VARCHAR(100)")
         if not column_exists2('quote', 'erpnext_je_payment'):
             cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_payment VARCHAR(100)")
+        if not column_exists2('quote', 'payment_method'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN payment_method VARCHAR(20)")
 
         conn.commit()
         conn.close()

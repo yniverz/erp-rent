@@ -985,6 +985,12 @@ def quote_mark_paid(quote_id):
             else:
                 quote.paid_at = datetime.utcnow()
 
+            # Payment method: cash or bank
+            payment_method = request.form.get('payment_method', 'bank').strip()
+            if payment_method not in ('cash', 'bank'):
+                payment_method = 'bank'
+            quote.payment_method = payment_method
+
             # If status was 'finalized' (skipping 'performed'), create receivable booking first
             if quote.status == 'finalized' and erpnext_client.is_erpnext_enabled():
                 if not quote.performed_at:
@@ -1011,7 +1017,7 @@ def quote_mark_paid(quote_id):
             # Create payment Journal Entry in ERPNext if enabled
             if erpnext_client.is_erpnext_enabled():
                 settings = SiteSettings.query.first()
-                je_name = erpnext_client.book_payment(quote, settings)
+                je_name = erpnext_client.book_payment(quote, settings, payment_method=payment_method)
                 if je_name:
                     quote.erpnext_je_payment = je_name
 
@@ -1441,6 +1447,7 @@ def settings():
                 settings_record.erpnext_account_revenue = request.form.get('erpnext_account_revenue', '').strip() or None
                 settings_record.erpnext_account_vat = request.form.get('erpnext_account_vat', '').strip() or None
                 settings_record.erpnext_account_bank = request.form.get('erpnext_account_bank', '').strip() or None
+                settings_record.erpnext_account_cash = request.form.get('erpnext_account_cash', '').strip() or None
 
             # Handle logo upload
             if request.form.get('remove_logo'):
@@ -2434,6 +2441,8 @@ def erpnext_accounts():
             accounts = erpnext_client.get_tax_accounts(company)
         elif account_kind == 'bank':
             accounts = erpnext_client.get_bank_accounts(company)
+        elif account_kind == 'cash':
+            accounts = erpnext_client.get_cash_accounts(company)
         else:
             accounts = erpnext_client.get_accounts(company)
         return jsonify(accounts)

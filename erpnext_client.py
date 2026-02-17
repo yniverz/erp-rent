@@ -114,8 +114,13 @@ def get_tax_accounts(company):
 
 
 def get_bank_accounts(company):
-    """Get bank & cash accounts."""
-    return get_accounts(company, account_type='Bank') + get_accounts(company, account_type='Cash')
+    """Get bank accounts (Bankkonto)."""
+    return get_accounts(company, account_type='Bank')
+
+
+def get_cash_accounts(company):
+    """Get cash accounts (Kasse/Bar)."""
+    return get_accounts(company, account_type='Cash')
 
 
 # ============= CUSTOMERS =============
@@ -343,11 +348,14 @@ def book_receivable(quote, settings):
     )
 
 
-def book_payment(quote, settings):
-    """Create Journal Entry for 'Bezahlt': Bank an Forderungen.
+def book_payment(quote, settings, payment_method='bank'):
+    """Create Journal Entry for 'Bezahlt': Bank/Kasse an Forderungen.
 
-    Debit: Bankkonto (Brutto)
+    Debit: Bank- oder Kassenkonto (Brutto)
     Credit: Forderungskonto (Brutto)
+
+    Args:
+        payment_method: 'bank' or 'cash' – determines debit account
 
     Returns the Journal Entry name.
     """
@@ -358,6 +366,16 @@ def book_payment(quote, settings):
     brutto = quote.total
     if brutto <= 0:
         return None
+
+    # Choose the correct debit account based on payment method
+    if payment_method == 'cash':
+        debit_account = settings.erpnext_account_cash
+        if not debit_account:
+            raise RuntimeError('Kassenkonto (Bar) ist nicht in den ERPNext-Einstellungen konfiguriert.')
+    else:
+        debit_account = settings.erpnext_account_bank
+        if not debit_account:
+            raise RuntimeError('Bankkonto ist nicht in den ERPNext-Einstellungen konfiguriert.')
 
     posting_date = (quote.paid_at or quote.performed_at or quote.created_at).strftime('%Y-%m-%d')
 
@@ -373,9 +391,9 @@ def book_payment(quote, settings):
         credit_entry['party'] = customer_party
 
     accounts = [
-        # Debit: Bank
+        # Debit: Bank or Cash
         {
-            'account': settings.erpnext_account_bank,
+            'account': debit_account,
             'debit_in_account_currency': brutto,
             'credit_in_account_currency': 0,
         },
@@ -419,8 +437,8 @@ def _validate_settings(settings):
         missing.append('Forderungskonto')
     if not settings.erpnext_account_revenue:
         missing.append('Erlöskonto')
-    if not settings.erpnext_account_bank:
-        missing.append('Bankkonto')
+    if not settings.erpnext_account_bank and not settings.erpnext_account_cash:
+        missing.append('Bank- oder Kassenkonto')
     if settings.tax_mode == 'regular' and not settings.erpnext_account_vat:
         missing.append('Umsatzsteuerkonto')
     if missing:
