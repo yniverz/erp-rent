@@ -1034,15 +1034,31 @@ def quote_mark_paid(quote_id):
 @admin_bp.route('/quotes/<int:quote_id>/update_paid_date', methods=['POST'])
 @login_required
 def quote_update_paid_date(quote_id):
-    """Update the paid_at date of a paid quote"""
+    """Update the paid_at date of a paid quote and re-book payment JE if needed."""
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'paid':
             paid_date_str = request.form.get('paid_at', '').strip()
             if paid_date_str:
                 quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
+
+                # Re-book payment JE with new date if one exists
+                if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_payment:
+                    try:
+                        erpnext_client.cancel_payment(quote)
+                        quote.erpnext_je_payment = None
+                        settings = SiteSettings.query.first()
+                        payment_method = quote.payment_method or 'bank'
+                        je_name = erpnext_client.book_payment(quote, settings, payment_method=payment_method)
+                        if je_name:
+                            quote.erpnext_je_payment = je_name
+                        flash('Bezahldatum aktualisiert und ERPNext-Buchung angepasst!', 'success')
+                    except Exception as erp_err:
+                        flash(f'Datum aktualisiert, aber ERPNext-Buchung konnte nicht angepasst werden: {erp_err}', 'warning')
+                else:
+                    flash('Bezahldatum aktualisiert!', 'success')
+
                 db.session.commit()
-                flash('Bezahldatum aktualisiert!', 'success')
             else:
                 flash('Kein Datum angegeben.', 'error')
         else:
@@ -1078,15 +1094,30 @@ def quote_update_finalized_date(quote_id):
 @admin_bp.route('/quotes/<int:quote_id>/update_performed_date', methods=['POST'])
 @login_required
 def quote_update_performed_date(quote_id):
-    """Update the performed_at date"""
+    """Update the performed_at date and re-book receivable JE if needed."""
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status in ('performed', 'paid'):
             performed_date_str = request.form.get('performed_at', '').strip()
             if performed_date_str:
                 quote.performed_at = datetime.strptime(performed_date_str, '%Y-%m-%d')
+
+                # Re-book receivable JE with new date if one exists
+                if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_receivable:
+                    try:
+                        erpnext_client.cancel_receivable(quote)
+                        quote.erpnext_je_receivable = None
+                        settings = SiteSettings.query.first()
+                        je_name = erpnext_client.book_receivable(quote, settings)
+                        if je_name:
+                            quote.erpnext_je_receivable = je_name
+                        flash('Durchführungsdatum aktualisiert und ERPNext-Buchung angepasst!', 'success')
+                    except Exception as erp_err:
+                        flash(f'Datum aktualisiert, aber ERPNext-Buchung konnte nicht angepasst werden: {erp_err}', 'warning')
+                else:
+                    flash('Durchführungsdatum aktualisiert!', 'success')
+
                 db.session.commit()
-                flash('Durchführungsdatum aktualisiert!', 'success')
             else:
                 flash('Kein Datum angegeben.', 'error')
         else:
