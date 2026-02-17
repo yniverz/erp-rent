@@ -299,11 +299,11 @@
     <div id="pay-dialog" style="display:none;margin-top:12px;">
         <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}" id="pay-form">
             <p style="margin-bottom:10px;"><strong>Zahlungsart wählen</strong></p>
-            <div class="d-flex gap-10 flex-wrap" style="align-items:center;margin-bottom:12px;">
-                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
                     <input type="radio" name="payment_method" value="bank" checked> Überweisung
                 </label>
-                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
                     <input type="radio" name="payment_method" value="cash"> Bar
                 </label>
             </div>

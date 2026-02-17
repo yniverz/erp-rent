@@ -205,7 +205,7 @@ def build_angebot_pdf(
 
     summary_data = []
     summary_data.append([
-        Paragraph("Zwischensumme (netto)", styles["right"]),
+        Paragraph("Zwischensumme", styles["right"]),
         Paragraph(fmt_eur(subtotal), styles["right_bold"]),
     ])
 
@@ -218,42 +218,38 @@ def build_angebot_pdf(
             Paragraph(dl, styles["right"]),
             Paragraph(f"– {fmt_eur(discount_amount)}", styles["right"]),
         ])
-        netto = subtotal - discount_amount
-        summary_data.append([
-            Paragraph("Nettobetrag", styles["right"]),
-            Paragraph(fmt_eur(netto), styles["right_bold"]),
-        ])
+        brutto = subtotal - discount_amount
     else:
-        netto = subtotal
+        brutto = subtotal
 
     if tax_mode == "regular":
-        mwst = round(netto * 0.19, 2)
-        brutto = round(netto + mwst, 2)
+        netto = round(brutto / 1.19, 2)
+        mwst = round(brutto - netto, 2)
         summary_data.append([
-            Paragraph("zzgl. 19 % MwSt.", styles["right"]),
-            Paragraph(fmt_eur(mwst), styles["right"]),
+            Paragraph("<b>Gesamtbetrag</b>", styles["right"]),
+            Paragraph(f"<b>{fmt_eur(brutto)}</b>", styles["right"]),
         ])
         summary_data.append([
-            Paragraph("<b>Gesamtbetrag (brutto)</b>", styles["right"]),
-            Paragraph(f"<b>{fmt_eur(brutto)}</b>", styles["right"]),
+            Paragraph("darin enthaltene 19 % MwSt.", styles["right"]),
+            Paragraph(fmt_eur(mwst), styles["right"]),
         ])
     else:
         summary_data.append([
             Paragraph("<b>Gesamtbetrag</b>", styles["right"]),
-            Paragraph(f"<b>{fmt_eur(total)}</b>", styles["right"]),
+            Paragraph(f"<b>{fmt_eur(brutto)}</b>", styles["right"]),
         ])
 
+    total_row_idx = -2 if tax_mode == 'regular' else -1
     summary_table = Table(summary_data, colWidths=summary_col_w, hAlign="RIGHT")
     summary_table.setStyle(TableStyle([
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.8, CLR_BLACK),
+        ("LINEABOVE", (0, total_row_idx), (-1, total_row_idx), 0.8, CLR_BLACK),
     ]))
     story.append(summary_table)
 
-    # Kleinunternehmer notice
     if tax_mode == "kleinunternehmer":
         story.append(Spacer(1, 6))
         story.append(Paragraph(
