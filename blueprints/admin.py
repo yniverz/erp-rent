@@ -837,6 +837,17 @@ def quote_edit(quote_id):
                     item_availability = {item.id: item.total_quantity for item in items}
                     return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
 
+                # Check customer exists in ERPNext if enabled
+                if erpnext_client.is_erpnext_enabled():
+                    try:
+                        erp_customer = erpnext_client.get_customer(quote.customer_name)
+                        if not erp_customer:
+                            flash(f'Kann nicht finalisiert werden: Kunde „{quote.customer_name}" existiert nicht in ERPNext. Bitte erst dort anlegen oder den Kundennamen anpassen.', 'error')
+                            item_availability = {item.id: item.total_quantity for item in items}
+                            return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
+                    except Exception as erp_err:
+                        flash(f'ERPNext-Kundenprüfung fehlgeschlagen: {erp_err}. Finalisierung wird trotzdem fortgesetzt.', 'warning')
+
                 validation_warnings = []
                 for quote_item in quote.quote_items:
                     if not quote_item.is_custom and quote_item.item:
