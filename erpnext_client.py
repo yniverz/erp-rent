@@ -198,7 +198,7 @@ def _get_customer_address(customer_id):
             city_line += addr['city']
         if city_line:
             parts.append(city_line.strip())
-        if addr.get('country') and addr['country'] != 'Germany':
+        if addr.get('country'):
             parts.append(addr['country'])
         return '\n'.join(parts)
     except Exception:
