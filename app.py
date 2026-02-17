@@ -1,4 +1,4 @@
-from flask import Flask, send_file
+from flask import Flask, send_file, request
 from flask_login import LoginManager
 from models import db, User, SiteSettings, PackageComponent, ItemOwnership, OwnershipDocument
 from dotenv import load_dotenv
@@ -86,12 +86,22 @@ def load_user(user_id):
 def inject_site_settings():
     from erpnext_client import is_erpnext_enabled
     settings = SiteSettings.query.first()
+    show_netto = request.cookies.get('price_mode') == 'netto'
     return dict(
         site_settings=settings,
         has_favicon=_favicon_data is not None,
         favicon_mimetype=_favicon_mimetype,
         erpnext_enabled=is_erpnext_enabled(),
+        show_netto=show_netto,
     )
+
+
+@app.template_filter('netto')
+def netto_filter(value):
+    """Convert brutto price to netto (÷1.19) if price_mode cookie is set to netto."""
+    if request.cookies.get('price_mode') == 'netto':
+        return round(value / 1.19, 2)
+    return value
 
 
 @app.route('/favicon.ico')

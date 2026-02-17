@@ -45,7 +45,7 @@
                         </td>
                         <td>
                             {% if ci.item.show_price_publicly %}
-                                &euro;{{ "%.2f"|format(ci.item.default_rental_price_per_day) }}
+                                &euro;{{ "%.2f"|format(ci.item.default_rental_price_per_day|netto) }}
                             {% else %}
                                 <span class="on-request-text">On request</span>
                             {% endif %}
@@ -55,7 +55,7 @@
                         </td>
                         <td>
                             {% if ci.line_total is not none %}
-                                &euro;{{ "%.2f"|format(ci.line_total) }}
+                                &euro;{{ "%.2f"|format(ci.line_total|netto) }}
                             {% else %}
                                 <span class="on-request-text">Auf Anfrage</span>
                             {% endif %}
@@ -77,7 +77,7 @@
         <div class="cart-summary">
             <div class="summary-row total">
                 <span>Zwischensumme pro Tag</span>
-                <span>&euro;{{ "%.2f"|format(subtotal) }}</span>
+                <span>&euro;{{ "%.2f"|format(subtotal|netto) }}</span>
             </div>
             {% if has_on_request %}
                 <div class="summary-note">&#9888; Einige Artikel sind mit "Preis auf Anfrage" gekennzeichnet. Der endgültige Preis wird nach Ihrer Anfrage mitgeteilt.</div>

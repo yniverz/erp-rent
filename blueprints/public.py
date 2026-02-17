@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, make_response
 from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings, item_subcategories
 from helpers import send_inquiry_notification, get_upload_path
 from datetime import datetime, date
@@ -6,6 +6,17 @@ import os
 import re
 
 public_bp = Blueprint('public', __name__)
+
+
+@public_bp.route('/toggle-price-mode', methods=['POST'])
+def toggle_price_mode():
+    """Toggle between brutto and netto price display via cookie."""
+    current = request.cookies.get('price_mode', 'brutto')
+    new_mode = 'brutto' if current == 'netto' else 'netto'
+    referrer = request.referrer or url_for('public.catalog')
+    resp = make_response(redirect(referrer))
+    resp.set_cookie('price_mode', new_mode, max_age=60*60*24*365, samesite='Lax')
+    return resp
 
 
 @public_bp.route('/')

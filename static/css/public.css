@@ -80,7 +80,9 @@ footer a       { color: rgba(255,255,255,0.85); text-decoration: none; margin: 0
 footer a:hover { color: white; text-decoration: underline; }
 .footer-inner  { max-width: var(--container-max-public); margin: 0 auto; }
 .footer-links  { margin-bottom: 10px; }
-.footer-tax-note { margin-bottom: 12px; font-size: 0.85em; color: rgba(255,255,255,0.55); }
+.footer-tax-note { margin-bottom: 12px; font-size: 0.85em; color: rgba(255,255,255,0.55); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.btn-price-toggle { background: transparent; border: 1px solid rgba(255,255,255,0.35); color: rgba(255,255,255,0.7); padding: 2px 10px; border-radius: var(--radius); font-size: 0.9em; cursor: pointer; transition: var(--transition); }
+.btn-price-toggle:hover { background: rgba(255,255,255,0.1); color: white; border-color: rgba(255,255,255,0.6); }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {

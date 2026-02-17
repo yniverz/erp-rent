@@ -45,7 +45,12 @@
     <footer>
         <div class="footer-inner">
             {% if site_settings and site_settings.tax_mode == 'regular' %}
-                <div class="footer-tax-note">Alle Preise verstehen sich zzgl. 19% MwSt.</div>
+                <div class="footer-tax-note">
+                    <span>Alle Preise verstehen sich {{ 'zzgl.' if show_netto else 'inkl.' }} 19% MwSt.</span>
+                    <form method="POST" action="{{ url_for('public.toggle_price_mode') }}" style="display:inline;margin-left:8px;">
+                        <button type="submit" class="btn-price-toggle">{{ 'Brutto anzeigen' if show_netto else 'Netto anzeigen' }}</button>
+                    </form>
+                </div>
             {% endif %}
             <div class="footer-links">
                 {% if site_settings and site_settings.imprint_url %}

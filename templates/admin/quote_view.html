@@ -189,6 +189,13 @@
             <span>Gesamt</span>
             <span>&euro;{{ "%.2f"|format(quote.total) }}</span>
         </div>
+        {% if site_settings and site_settings.tax_mode == 'regular' %}
+        {% set mwst_amount = (quote.total - (quote.total / 1.19))|round(2) %}
+        <div class="price-row" style="font-size:0.9em;color:var(--color-text-muted);">
+            <span>darin enthaltene 19% MwSt.</span>
+            <span>&euro;{{ "%.2f"|format(mwst_amount) }}</span>
+        </div>
+        {% endif %}
     </div>
 </div>
 
