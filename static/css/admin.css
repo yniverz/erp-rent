@@ -157,6 +157,7 @@ table tr:hover         { background: var(--color-gray-50); }
 }
 .badge-draft      { background: var(--badge-draft-bg);      color: var(--badge-draft-text); }
 .badge-finalized  { background: var(--badge-finalized-bg);  color: var(--badge-finalized-text); }
+.badge-performed  { background: var(--badge-performed-bg);  color: var(--badge-performed-text); }
 .badge-paid       { background: var(--badge-paid-bg);       color: var(--badge-paid-text); }
 .badge-new        { background: var(--badge-new-bg);        color: var(--badge-new-text); }
 .badge-contacted  { background: var(--badge-contacted-bg);  color: var(--badge-contacted-text); }

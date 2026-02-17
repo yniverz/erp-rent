@@ -3,6 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
+import erpnext_client
 from datetime import datetime
 from functools import wraps
 from werkzeug.utils import secure_filename
@@ -42,7 +43,7 @@ def dashboard():
     total_items = Item.query.count()
     total_quotes = Quote.query.count()
     new_inquiries = Inquiry.query.filter_by(status='new').count()
-    active_quotes = Quote.query.filter(Quote.status.in_(['draft', 'finalized'])).count()
+    active_quotes = Quote.query.filter(Quote.status.in_(['draft', 'finalized', 'performed'])).count()
     return render_template('admin/dashboard.html',
                            total_items=total_items,
                            total_quotes=total_quotes,
@@ -904,12 +905,70 @@ def quote_unfinalize(quote_id):
             # Keep finalized_at so we can offer it when re-finalizing
             db.session.commit()
             flash('Angebot zurück in den Entwurf versetzt!', 'success')
+        elif quote.status == 'performed':
+            flash('Bitte zuerst die Durchführung aufheben.', 'info')
         else:
             flash('Angebot ist nicht finalisiert.', 'info')
     except Exception as e:
         db.session.rollback()
         flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.quote_edit', quote_id=quote_id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/mark_performed', methods=['POST'])
+@login_required
+def quote_mark_performed(quote_id):
+    """Mark quote as performed (Durchgeführt) and create receivable Journal Entry in ERPNext."""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        if quote.status == 'finalized':
+            performed_date_str = request.form.get('performed_at', '').strip()
+            if performed_date_str:
+                quote.performed_at = datetime.strptime(performed_date_str, '%Y-%m-%d')
+            else:
+                quote.performed_at = datetime.utcnow()
+
+            quote.status = 'performed'
+
+            # Create receivable Journal Entry in ERPNext if enabled
+            if erpnext_client.is_erpnext_enabled():
+                settings = SiteSettings.query.first()
+                je_name = erpnext_client.book_receivable(quote, settings)
+                if je_name:
+                    quote.erpnext_je_receivable = je_name
+
+            db.session.commit()
+            flash('Angebot als durchgeführt markiert!', 'success')
+        else:
+            flash('Angebot muss finalisiert sein.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/unperform', methods=['POST'])
+@login_required
+def quote_unperform(quote_id):
+    """Revert performed status back to finalized. Cancels receivable Journal Entry."""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        if quote.status == 'performed':
+            # Cancel receivable Journal Entry in ERPNext
+            if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_receivable:
+                erpnext_client.cancel_receivable(quote)
+                quote.erpnext_je_receivable = None
+
+            quote.status = 'finalized'
+            # Keep performed_at for re-performing
+            db.session.commit()
+            flash('Durchführung aufgehoben!', 'success')
+        else:
+            flash('Angebot ist nicht als durchgeführt markiert.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
 
 @admin_bp.route('/quotes/<int:quote_id>/mark_paid', methods=['POST'])
@@ -926,6 +985,16 @@ def quote_mark_paid(quote_id):
             else:
                 quote.paid_at = datetime.utcnow()
 
+            # If status was 'finalized' (skipping 'performed'), create receivable booking first
+            if quote.status == 'finalized' and erpnext_client.is_erpnext_enabled():
+                if not quote.performed_at:
+                    quote.performed_at = quote.paid_at
+                settings = SiteSettings.query.first()
+                if not quote.erpnext_je_receivable:
+                    je_name = erpnext_client.book_receivable(quote, settings)
+                    if je_name:
+                        quote.erpnext_je_receivable = je_name
+
             quote.status = 'paid'
 
             discount_multiplier = (100 - quote.discount_percent) / 100
@@ -938,6 +1007,13 @@ def quote_mark_paid(quote_id):
                     if quote_item.rental_cost_per_day:
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost + item_cost, 2)
+
+            # Create payment Journal Entry in ERPNext if enabled
+            if erpnext_client.is_erpnext_enabled():
+                settings = SiteSettings.query.first()
+                je_name = erpnext_client.book_payment(quote, settings)
+                if je_name:
+                    quote.erpnext_je_payment = je_name
 
             db.session.commit()
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
@@ -977,7 +1053,7 @@ def quote_update_finalized_date(quote_id):
     """Update the finalized_at date of a finalized/paid quote"""
     quote = Quote.query.get_or_404(quote_id)
     try:
-        if quote.status in ('finalized', 'paid'):
+        if quote.status in ('finalized', 'performed', 'paid'):
             finalized_date_str = request.form.get('finalized_at', '').strip()
             if finalized_date_str:
                 quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
@@ -993,6 +1069,28 @@ def quote_update_finalized_date(quote_id):
     return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
 
+@admin_bp.route('/quotes/<int:quote_id>/update_performed_date', methods=['POST'])
+@login_required
+def quote_update_performed_date(quote_id):
+    """Update the performed_at date"""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        if quote.status in ('performed', 'paid'):
+            performed_date_str = request.form.get('performed_at', '').strip()
+            if performed_date_str:
+                quote.performed_at = datetime.strptime(performed_date_str, '%Y-%m-%d')
+                db.session.commit()
+                flash('Durchführungsdatum aktualisiert!', 'success')
+            else:
+                flash('Kein Datum angegeben.', 'error')
+        else:
+            flash('Angebot ist nicht als durchgeführt markiert.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
 @admin_bp.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
 @login_required
 def quote_unpay(quote_id):
@@ -1000,6 +1098,11 @@ def quote_unpay(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'paid':
+            # Cancel payment Journal Entry in ERPNext
+            if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_payment:
+                erpnext_client.cancel_payment(quote)
+                quote.erpnext_je_payment = None
+
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
@@ -1011,7 +1114,11 @@ def quote_unpay(quote_id):
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
-            quote.status = 'finalized'
+            # Revert to performed if it was performed, otherwise to finalized
+            if quote.performed_at:
+                quote.status = 'performed'
+            else:
+                quote.status = 'finalized'
             # Keep paid_at so we can offer it when re-marking as paid
             db.session.commit()
             flash('Zahlung aufgehoben und Umsatz zurückerstattet!', 'success')
@@ -1029,6 +1136,19 @@ def quote_delete(quote_id):
     """Delete quote and revert revenue if paid"""
     quote = Quote.query.get_or_404(quote_id)
     try:
+        # Cancel ERPNext Journal Entries if they exist
+        if erpnext_client.is_erpnext_enabled():
+            if quote.erpnext_je_payment:
+                try:
+                    erpnext_client.cancel_payment(quote)
+                except Exception as e:
+                    flash(f'⚠ ERPNext Zahlungsbuchung konnte nicht storniert werden: {e}', 'warning')
+            if quote.erpnext_je_receivable:
+                try:
+                    erpnext_client.cancel_receivable(quote)
+                except Exception as e:
+                    flash(f'⚠ ERPNext Forderungsbuchung konnte nicht storniert werden: {e}', 'warning')
+
         if quote.status == 'paid':
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
@@ -1314,6 +1434,14 @@ def settings():
             settings_record.notification_email = request.form.get('notification_email', '').strip()
             settings_record.updated_at = datetime.utcnow()
 
+            # ERPNext settings
+            if erpnext_client.is_erpnext_enabled():
+                settings_record.erpnext_company = request.form.get('erpnext_company', '').strip() or None
+                settings_record.erpnext_account_receivable = request.form.get('erpnext_account_receivable', '').strip() or None
+                settings_record.erpnext_account_revenue = request.form.get('erpnext_account_revenue', '').strip() or None
+                settings_record.erpnext_account_vat = request.form.get('erpnext_account_vat', '').strip() or None
+                settings_record.erpnext_account_bank = request.form.get('erpnext_account_bank', '').strip() or None
+
             # Handle logo upload
             if request.form.get('remove_logo'):
                 if settings_record.logo_filename:
@@ -1363,7 +1491,7 @@ def serve_logo():
 
 def _get_filtered_quotes(date_from, date_to, user_ids):
     """Get quotes filtered by date range and owner user IDs.
-    Only includes finalized or paid quotes (no drafts).
+    Only includes finalized, performed, or paid quotes (no drafts).
     Returns quotes where at least one quote item belongs to an item
     owned by one of the selected users.
     If user_ids is empty/None, return all quotes.
@@ -1371,8 +1499,8 @@ def _get_filtered_quotes(date_from, date_to, user_ids):
     from sqlalchemy import or_, and_
 
     query = Quote.query.filter(
-        # Only finalized or paid
-        Quote.status.in_(['finalized', 'paid']),
+        # Only finalized, performed, or paid
+        Quote.status.in_(['finalized', 'performed', 'paid']),
         or_(
             # Paid within date range
             and_(Quote.paid_at.isnot(None),
@@ -2194,18 +2322,33 @@ def lieferschein_pdf(quote_id):
 @admin_bp.route('/api/customers/search')
 @login_required
 def customer_search():
-    """Search saved customers by name (for autocomplete)"""
+    """Search saved customers by name (for autocomplete).
+    If ERPNext is enabled, searches ERPNext instead of local DB.
+    """
     q = request.args.get('q', '').strip()
     if len(q) < 1:
         return jsonify([])
-    customers = Customer.query.filter(Customer.name.ilike(f'%{q}%')).order_by(Customer.name).limit(10).all()
-    return jsonify([{'name': c.name, 'recipient_lines': c.recipient_lines or ''} for c in customers])
+
+    if erpnext_client.is_erpnext_enabled():
+        try:
+            results = erpnext_client.search_customers(q)
+            return jsonify([{'name': c['name'], 'recipient_lines': c.get('recipient_lines', '')} for c in results])
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    else:
+        customers = Customer.query.filter(Customer.name.ilike(f'%{q}%')).order_by(Customer.name).limit(10).all()
+        return jsonify([{'name': c.name, 'recipient_lines': c.recipient_lines or ''} for c in customers])
 
 
 @admin_bp.route('/api/customers/save', methods=['POST'])
 @login_required
 def customer_save():
-    """Save or update a customer entry (identified by name)"""
+    """Save or update a customer entry (identified by name).
+    Disabled when ERPNext is enabled (customers are managed in ERPNext).
+    """
+    if erpnext_client.is_erpnext_enabled():
+        return jsonify({'error': 'Kunden werden in ERPNext verwaltet.'}), 400
+
     data = request.get_json()
     name = (data.get('name') or '').strip()
     recipient_lines = (data.get('recipient_lines') or '').strip()
@@ -2230,7 +2373,12 @@ def customer_save():
 @admin_bp.route('/api/customers/delete', methods=['POST'])
 @login_required
 def customer_delete():
-    """Delete a saved customer by name"""
+    """Delete a saved customer by name.
+    Disabled when ERPNext is enabled.
+    """
+    if erpnext_client.is_erpnext_enabled():
+        return jsonify({'error': 'Kunden werden in ERPNext verwaltet.'}), 400
+
     data = request.get_json()
     name = (data.get('name') or '').strip()
     if not name:
@@ -2241,3 +2389,53 @@ def customer_delete():
     db.session.delete(customer)
     db.session.commit()
     return jsonify({'status': 'ok', 'name': name})
+
+
+# ============= ERPNEXT API ENDPOINTS =============
+
+@admin_bp.route('/api/erpnext/test')
+@admin_required
+def erpnext_test_connection():
+    """Test ERPNext connection."""
+    success, message = erpnext_client.test_connection()
+    return jsonify({'success': success, 'message': message})
+
+
+@admin_bp.route('/api/erpnext/companies')
+@admin_required
+def erpnext_companies():
+    """Get list of companies from ERPNext."""
+    if not erpnext_client.is_erpnext_enabled():
+        return jsonify([])
+    try:
+        companies = erpnext_client.get_companies()
+        return jsonify(companies)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/erpnext/accounts')
+@admin_required
+def erpnext_accounts():
+    """Get accounts from ERPNext for a given company and type."""
+    if not erpnext_client.is_erpnext_enabled():
+        return jsonify([])
+    company = request.args.get('company', '').strip()
+    account_kind = request.args.get('kind', '').strip()
+    if not company:
+        return jsonify([])
+
+    try:
+        if account_kind == 'receivable':
+            accounts = erpnext_client.get_receivable_accounts(company)
+        elif account_kind == 'revenue':
+            accounts = erpnext_client.get_revenue_accounts(company)
+        elif account_kind == 'tax':
+            accounts = erpnext_client.get_tax_accounts(company)
+        elif account_kind == 'bank':
+            accounts = erpnext_client.get_bank_accounts(company)
+        else:
+            accounts = erpnext_client.get_accounts(company)
+        return jsonify(accounts)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

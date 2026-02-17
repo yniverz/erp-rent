@@ -5,7 +5,7 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Angebot bearbeiten: {{ quote.reference_number or 'Entwurf' }}</h1>
-    <span class="badge badge-{{ quote.status }} badge-lg">{{ quote.status|capitalize }}</span>
+    <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
 </div>
 
 {% if quote.inquiry %}
@@ -45,9 +45,13 @@
             <textarea name="recipient_lines" id="recipient_lines" rows="3">{{ quote.recipient_lines or '' }}</textarea>
         </div>
         <div class="mb-16">
+            {% if not erpnext_enabled %}
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
             <button type="button" class="btn btn-danger btn-sm d-none" id="delete-customer-btn">Kunde löschen</button>
             <span class="customer-save-feedback" id="save-feedback"></span>
+            {% else %}
+            <small class="text-muted">Kunden werden in ERPNext verwaltet.</small>
+            {% endif %}
         </div>
         <div class="form-group">
             <label>Notizen</label>
@@ -488,61 +492,68 @@
 
     function hideSuggestions() { sugBox.style.display = 'none'; activeIdx = -1; }
 
-    saveBtn.addEventListener('click', function() {
-        const name = nameInput.value.trim();
-        if (!name) { feedback.textContent = 'Bitte Kundenname eingeben.'; feedback.style.color = '#dc2626'; return; }
-        fetch('{{ url_for("admin.customer_save") }}', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name: name, recipient_lines: addrInput.value})
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
-            else {
-                feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
-                feedback.style.color = '#3ecf8e';
-                deleteBtn.classList.remove('d-none');
-                setTimeout(() => feedback.textContent = '', 3000);
-                // Also save the quote details
-                const quoteForm = saveBtn.closest('form');
-                if (quoteForm) quoteForm.submit();
-            }
-        })
-        .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
-    });
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+            const name = nameInput.value.trim();
+            if (!name) { feedback.textContent = 'Bitte Kundenname eingeben.'; feedback.style.color = '#dc2626'; return; }
+            fetch('{{ url_for("admin.customer_save") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, recipient_lines: addrInput.value})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+                else {
+                    feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
+                    feedback.style.color = '#3ecf8e';
+                    deleteBtn.classList.remove('d-none');
+                    setTimeout(() => feedback.textContent = '', 3000);
+                    // Also save the quote details
+                    const quoteForm = saveBtn.closest('form');
+                    if (quoteForm) quoteForm.submit();
+                }
+            })
+            .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
+        });
+    }
 
-    deleteBtn.addEventListener('click', function() {
-        const name = nameInput.value.trim();
-        if (!name) return;
-        if (!confirm('Gespeicherten Kunden "' + name + '" wirklich löschen?')) return;
-        fetch('{{ url_for("admin.customer_delete") }}', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name: name})
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
-            else {
-                feedback.textContent = 'Kunde gelöscht.';
-                feedback.style.color = '#3ecf8e';
-                deleteBtn.classList.add('d-none');
-                setTimeout(() => feedback.textContent = '', 3000);
-            }
-        })
-        .catch(() => { feedback.textContent = 'Fehler beim Löschen.'; feedback.style.color = '#dc2626'; });
-    });
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function() {
+            const name = nameInput.value.trim();
+            if (!name) return;
+            if (!confirm('Gespeicherten Kunden "' + name + '" wirklich löschen?')) return;
+            fetch('{{ url_for("admin.customer_delete") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+                else {
+                    feedback.textContent = 'Kunde gelöscht.';
+                    feedback.style.color = '#3ecf8e';
+                    deleteBtn.classList.add('d-none');
+                    setTimeout(() => feedback.textContent = '', 3000);
+                }
+            })
+            .catch(() => { feedback.textContent = 'Fehler beim Löschen.'; feedback.style.color = '#dc2626'; });
+        });
+    }
 
     // Check if current customer exists on page load
     function checkCustomerExists() {
+        if (!deleteBtn) return;
         const name = nameInput.value.trim();
         if (name.length < 1) { deleteBtn.classList.add('d-none'); return; }
         fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(name))
             .then(r => r.json())
             .then(data => {
-                const match = data.find(c => c.name.toLowerCase() === name.toLowerCase());
-                deleteBtn.classList.toggle('d-none', !match);
+                if (Array.isArray(data)) {
+                    const match = data.find(c => c.name.toLowerCase() === name.toLowerCase());
+                    deleteBtn.classList.toggle('d-none', !match);
+                }
             })
             .catch(() => {});
     }

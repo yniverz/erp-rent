@@ -44,6 +44,8 @@ body {
 .btn-danger:hover   { background: var(--color-danger-hover); }
 .btn-warning       { background: var(--color-warning); }
 .btn-warning:hover  { background: var(--color-warning-hover); }
+.btn-info          { background: #7c3aed; }
+.btn-info:hover     { background: #6d28d9; }
 .btn-sm            { padding: 6px 14px; font-size: 0.85em; }
 .btn-outline       { background: transparent; border: 2px solid var(--color-accent); color: var(--color-accent); }
 .btn-outline:hover { background: var(--color-accent); color: white; }

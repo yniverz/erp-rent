@@ -36,7 +36,7 @@
             </td>
             <td>{{ quote.quote_items|length }}</td>
             <td>&euro;{{ "%.2f"|format(quote.total) }}</td>
-            <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
+            <td><span class="badge badge-{{ quote.status }}">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span></td>
             <td>{{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</td>
             <td>
                 {% if quote.status == 'draft' %}

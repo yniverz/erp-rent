@@ -27,6 +27,7 @@
 
     <div class="cal-legend">
         <div class="cal-legend-item"><span class="cal-legend-dot paid"></span> Bezahlt</div>
+        <div class="cal-legend-item"><span class="cal-legend-dot performed"></span> Durchgeführt</div>
         <div class="cal-legend-item"><span class="cal-legend-dot finalized"></span> Finalisiert</div>
         <div class="cal-legend-item"><span class="cal-legend-dot draft"></span> Entwurf</div>
         <div class="cal-legend-item"><span class="cal-legend-dot inquiry"></span> Anfrage</div>
@@ -51,7 +52,7 @@
                     {% if ev.type == 'quote' %}
                     <a class="cal-event status-{{ ev.status }}"
                        href="{{ url_for('admin.quote_view', quote_id=ev.id) if ev.status != 'draft' else url_for('admin.quote_edit', quote_id=ev.id) }}"
-                       title="{{ ev.customer }}{% if ev.notes %} – {{ ev.notes }}{% endif %} ({{ ev.status|capitalize }})">
+                       title="{{ ev.customer }}{% if ev.notes %} – {{ ev.notes }}{% endif %} ({{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(ev.status, ev.status|capitalize) }})">
                         {{ ev.label }}{% if ev.notes %} – {{ ev.notes }}{% endif %}
                     </a>
                     {% else %}
@@ -97,7 +98,7 @@
                 <td>{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '—' }}</td>
                 <td>{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '—' }}</td>
                 <td>{{ quote.calculate_rental_days() }}</td>
-                <td><span class="badge badge-{{ quote.status }}">{{ quote.status|capitalize }}</span></td>
+                <td><span class="badge badge-{{ quote.status }}">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span></td>
                 <td>
                     {% for qi in quote.quote_items[:3] %}
                         {{ qi.display_name }}{% if not loop.last %}, {% endif %}

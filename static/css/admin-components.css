@@ -78,6 +78,7 @@
 
 .cal-event.status-paid      { background: var(--color-success-light); color: var(--color-success-dark); border-left: 3px solid #10b981; }
 .cal-event.status-finalized { background: var(--badge-finalized-bg); color: var(--badge-finalized-text); border-left: 3px solid #3b82f6; }
+.cal-event.status-performed { background: var(--badge-performed-bg); color: var(--badge-performed-text); border-left: 3px solid #7c3aed; }
 .cal-event.status-draft     { background: var(--color-warning-light); color: var(--color-warning-dark); border-left: 3px solid #f59e0b; }
 .cal-event.status-inquiry   { background: var(--color-gray-100); color: var(--color-gray-500); border-left: 3px solid var(--border-color); }
 
@@ -87,6 +88,7 @@
 .cal-legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.84em; color: var(--color-gray-700); }
 .cal-legend-dot { width: 12px; height: 12px; border-radius: 3px; }
 .cal-legend-dot.paid      { background: #10b981; }
+.cal-legend-dot.performed { background: #7c3aed; }
 .cal-legend-dot.finalized { background: #3b82f6; }
 .cal-legend-dot.draft     { background: #f59e0b; }
 .cal-legend-dot.inquiry   { background: var(--border-color); }

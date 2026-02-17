@@ -5,7 +5,7 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Angebot: {{ quote.reference_number }}</h1>
-    <span class="badge badge-{{ quote.status }} badge-lg">{{ quote.status|capitalize }}</span>
+    <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
 </div>
 
 <div class="card">
@@ -27,18 +27,34 @@
             </p>
             <p><strong>Referenz:</strong> {{ quote.reference_number }}</p>
             <p><strong>Erstellt:</strong> {{ quote.created_at.strftime('%d.%m.%Y %H:%M') }} von {{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</p>
-            {% if quote.status in ['finalized', 'paid'] and quote.finalized_at %}
+            {% if quote.status in ['finalized', 'performed', 'paid'] and quote.finalized_at %}
             <p><strong>Finalisiert:</strong> {{ quote.finalized_at.strftime('%d.%m.%Y %H:%M') }}
-                {% if quote.status in ['finalized', 'paid'] %}
+                {% if quote.status in ['finalized', 'performed', 'paid'] %}
                 <button type="button" class="btn btn-sm btn-outline" id="edit-finalized-date-btn" onclick="document.getElementById('edit-finalized-date').style.display='flex';this.style.display='none';" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
                 {% endif %}
             </p>
-            {% if quote.status in ['finalized', 'paid'] %}
+            {% if quote.status in ['finalized', 'performed', 'paid'] %}
             <div id="edit-finalized-date" style="display:none;align-items:center;gap:6px;margin-top:6px;">
                 <form method="POST" action="{{ url_for('admin.quote_update_finalized_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;">
                     <input type="date" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
                     <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
                     <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-finalized-date').style.display='none';document.getElementById('edit-finalized-date-btn').style.display='';">Abbrechen</button>
+                </form>
+            </div>
+            {% endif %}
+            {% endif %}
+            {% if quote.status in ['performed', 'paid'] and quote.performed_at %}
+            <p><strong>Durchgeführt:</strong> {{ quote.performed_at.strftime('%d.%m.%Y %H:%M') }}
+                {% if quote.status in ['performed', 'paid'] %}
+                <button type="button" class="btn btn-sm btn-outline" id="edit-performed-date-btn" onclick="document.getElementById('edit-performed-date').style.display='flex';this.style.display='none';" style="margin-left:6px;padding:3px 8px;font-size:0.8em;">✏️ Datum ändern</button>
+                {% endif %}
+            </p>
+            {% if quote.status in ['performed', 'paid'] %}
+            <div id="edit-performed-date" style="display:none;align-items:center;gap:6px;margin-top:6px;">
+                <form method="POST" action="{{ url_for('admin.quote_update_performed_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;">
+                    <input type="date" name="performed_at" value="{{ quote.performed_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
+                    <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
+                    <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-performed-date').style.display='none';document.getElementById('edit-performed-date-btn').style.display='';">Abbrechen</button>
                 </form>
             </div>
             {% endif %}
@@ -192,30 +208,67 @@
 </div>
 {% endif %}
 
+<!-- ERPNext Journal Entries -->
+{% if erpnext_enabled and (quote.erpnext_je_receivable or quote.erpnext_je_payment) %}
+<div class="card">
+    <h2>ERPNext Buchungen</h2>
+    {% if quote.erpnext_je_receivable %}
+    <p><strong>Forderungsbuchung:</strong> {{ quote.erpnext_je_receivable }}</p>
+    {% endif %}
+    {% if quote.erpnext_je_payment %}
+    <p><strong>Zahlungsbuchung:</strong> {{ quote.erpnext_je_payment }}</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- Actions -->
 <div class="card no-print">
     <h2>Aktionen</h2>
     <div class="d-flex gap-10 flex-wrap">
         {% if quote.status == 'finalized' %}
-            {% if quote.paid_at %}
-            <!-- Previous paid date exists from undone payment - show warning dialog -->
-            <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
+            <!-- Durchführen Button -->
+            {% if quote.performed_at %}
+            <button type="button" class="btn btn-info" onclick="showPerformDialog()">Als durchgeführt markieren</button>
             {% else %}
-            <!-- No previous paid date - simple confirmation -->
-            <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?');">Als bezahlt markieren</button>
+            <form method="POST" action="{{ url_for('admin.quote_mark_performed', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-info" onclick="return confirm('Als durchgeführt markieren?{% if erpnext_enabled %} Forderungsbuchung wird in ERPNext erstellt.{% endif %}');">Als durchgeführt markieren</button>
             </form>
             {% endif %}
+
+            <!-- Bezahlt direkt markieren (überspringt performed) -->
+            {% if quote.paid_at %}
+            <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
+            {% else %}
+            <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?{% if erpnext_enabled %} Forderungs- und Zahlungsbuchung werden in ERPNext erstellt.{% endif %}');">Als bezahlt markieren</button>
+            </form>
+            {% endif %}
+
             <form method="POST" action="{{ url_for('admin.quote_unfinalize', quote_id=quote.id) }}">
                 <button type="submit" class="btn btn-warning">Finalisierung aufheben</button>
             </form>
+
+        {% elif quote.status == 'performed' %}
+            <!-- Bezahlt markieren -->
+            {% if quote.paid_at %}
+            <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
+            {% else %}
+            <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?{% if erpnext_enabled %} Zahlungsbuchung wird in ERPNext erstellt.{% endif %}');">Als bezahlt markieren</button>
+            </form>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('admin.quote_unperform', quote_id=quote.id) }}">
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Durchführung aufheben?{% if erpnext_enabled %} Forderungsbuchung wird in ERPNext storniert.{% endif %}');">Durchführung aufheben</button>
+            </form>
+
         {% elif quote.status == 'paid' %}
             <form method="POST" action="{{ url_for('admin.quote_unpay', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-warning" onclick="return confirm('Zahlung zurücknehmen?');">Zahlung aufheben</button>
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Zahlung zurücknehmen?{% if erpnext_enabled %} Zahlungsbuchung wird in ERPNext storniert.{% endif %}');">Zahlung aufheben</button>
             </form>
         {% endif %}
 
-        {% if quote.status in ['finalized', 'paid'] %}
+        {% if quote.status in ['finalized', 'performed', 'paid'] %}
             <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF</a>
             <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
@@ -231,12 +284,29 @@
             <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Bearbeiten</a>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?');">
+        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?{% if erpnext_enabled and (quote.erpnext_je_receivable or quote.erpnext_je_payment) %} Alle ERPNext-Buchungen werden storniert.{% endif %}');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
         </form>
     </div>
 
-    {% if quote.status == 'finalized' and quote.paid_at %}
+    {% if quote.status == 'finalized' and quote.performed_at %}
+    <div id="perform-dialog" style="display:none;margin-top:12px;">
+        <form method="POST" action="{{ url_for('admin.quote_mark_performed', quote_id=quote.id) }}" id="perform-form">
+            <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Durchführungsdatum vorhanden</strong></p>
+            <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Dieses Angebot war zuvor als durchgeführt markiert ({{ quote.performed_at.strftime('%d.%m.%Y') }}).</p>
+            <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
+                <button type="submit" name="performed_at" value="{{ quote.performed_at.strftime('%Y-%m-%d') }}" class="btn btn-info">Bisheriges Datum ({{ quote.performed_at.strftime('%d.%m.%Y') }})</button>
+                <button type="submit" class="btn btn-outline">Heutiges Datum</button>
+                <span style="color:var(--color-text-muted);font-size:0.9em;">oder:</span>
+                <input type="date" id="custom-perform-date" style="padding:6px 10px;font-size:0.9em;">
+                <button type="button" class="btn btn-outline" onclick="submitCustomPerformDate()">Eigenes Datum</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('perform-dialog').style.display='none'">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if quote.status in ['finalized', 'performed'] and quote.paid_at %}
     <div id="pay-dialog" style="display:none;margin-top:12px;">
         <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}" id="pay-form">
             <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Bezahldatum vorhanden</strong></p>
@@ -294,6 +364,10 @@ function showPayDialog() {
     document.getElementById('pay-dialog').style.display = '';
 }
 
+function showPerformDialog() {
+    document.getElementById('perform-dialog').style.display = '';
+}
+
 function submitCustomPayDate() {
     var dateVal = document.getElementById('custom-pay-date').value;
     if (!dateVal) {
@@ -304,6 +378,21 @@ function submitCustomPayDate() {
     var input = document.createElement('input');
     input.type = 'hidden';
     input.name = 'paid_at';
+    input.value = dateVal;
+    form.appendChild(input);
+    form.submit();
+}
+
+function submitCustomPerformDate() {
+    var dateVal = document.getElementById('custom-perform-date').value;
+    if (!dateVal) {
+        alert('Bitte ein Datum auswählen.');
+        return;
+    }
+    var form = document.getElementById('perform-form');
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'performed_at';
     input.value = dateVal;
     form.appendChild(input);
     form.submit();

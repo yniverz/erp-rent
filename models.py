@@ -317,12 +317,16 @@ class Quote(db.Model):
     rental_days_override = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.DateTime, nullable=True)
     end_date = db.Column(db.DateTime, nullable=True)
-    status = db.Column(db.String(50), default='draft')  # draft, finalized, paid
+    status = db.Column(db.String(50), default='draft')  # draft, finalized, performed, paid
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     finalized_at = db.Column(db.DateTime, nullable=True)
+    performed_at = db.Column(db.DateTime, nullable=True)  # When service was performed / Durchgeführt
     paid_at = db.Column(db.DateTime, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)
+    # ERPNext Journal Entry references (stored for cancellation)
+    erpnext_je_receivable = db.Column(db.String(100), nullable=True)  # JE name for Forderung booking
+    erpnext_je_payment = db.Column(db.String(100), nullable=True)     # JE name for payment booking
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')
@@ -462,4 +466,10 @@ class SiteSettings(db.Model):
     terms_and_conditions_text = db.Column(db.Text, nullable=True)
     # Notification
     notification_email = db.Column(db.String(200), nullable=True)
+    # ERPNext integration settings (account names selected via UI)
+    erpnext_company = db.Column(db.String(200), nullable=True)
+    erpnext_account_receivable = db.Column(db.String(200), nullable=True)  # e.g. 1400 Forderungen
+    erpnext_account_revenue = db.Column(db.String(200), nullable=True)     # e.g. 4400 Erlöse
+    erpnext_account_vat = db.Column(db.String(200), nullable=True)         # e.g. 1776 Umsatzsteuer
+    erpnext_account_bank = db.Column(db.String(200), nullable=True)        # e.g. 1200 Bank
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

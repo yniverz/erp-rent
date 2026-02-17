@@ -84,8 +84,14 @@ def load_user(user_id):
 # Context processor to inject settings into all templates
 @app.context_processor
 def inject_site_settings():
+    from erpnext_client import is_erpnext_enabled
     settings = SiteSettings.query.first()
-    return dict(site_settings=settings, has_favicon=_favicon_data is not None, favicon_mimetype=_favicon_mimetype)
+    return dict(
+        site_settings=settings,
+        has_favicon=_favicon_data is not None,
+        favicon_mimetype=_favicon_mimetype,
+        erpnext_enabled=is_erpnext_enabled(),
+    )
 
 
 @app.route('/favicon.ico')
@@ -346,6 +352,26 @@ with app.app_context():
             cursor.execute("ALTER TABLE site_settings ADD COLUMN logo_filename VARCHAR(300)")
         if not column_exists2('site_settings', 'terms_and_conditions_text'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN terms_and_conditions_text TEXT")
+
+        # ERPNext integration columns on SiteSettings
+        if not column_exists2('site_settings', 'erpnext_company'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_company VARCHAR(200)")
+        if not column_exists2('site_settings', 'erpnext_account_receivable'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_receivable VARCHAR(200)")
+        if not column_exists2('site_settings', 'erpnext_account_revenue'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_revenue VARCHAR(200)")
+        if not column_exists2('site_settings', 'erpnext_account_vat'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_vat VARCHAR(200)")
+        if not column_exists2('site_settings', 'erpnext_account_bank'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_bank VARCHAR(200)")
+
+        # Quote: add performed_at and ERPNext JE reference columns
+        if not column_exists2('quote', 'performed_at'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN performed_at DATETIME")
+        if not column_exists2('quote', 'erpnext_je_receivable'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_receivable VARCHAR(100)")
+        if not column_exists2('quote', 'erpnext_je_payment'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_payment VARCHAR(100)")
 
         conn.commit()
         conn.close()

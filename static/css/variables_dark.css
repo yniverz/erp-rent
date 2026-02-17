@@ -78,6 +78,8 @@
     --badge-draft-text:       var(--color-warning-dark);
     --badge-finalized-bg:     #162231;
     --badge-finalized-text:   #7dd3fc;
+    --badge-performed-bg:     #2d1854;
+    --badge-performed-text:   #c4b5fd;
     --badge-paid-bg:          var(--color-success-light);
     --badge-paid-text:        var(--color-success-dark);
     --badge-new-bg:           var(--color-warning-light);

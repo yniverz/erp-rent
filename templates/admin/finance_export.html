@@ -232,7 +232,7 @@
                             {% if q.end_date %} – {{ q.end_date.strftime('%d.%m.%Y') }}{% endif %}
                         </td>
                         <td>{{ q.paid_at.strftime('%d.%m.%Y') if q.paid_at else '–' }}</td>
-                        <td><span class="badge badge-{{ q.status }}">{{ q.status|capitalize }}</span></td>
+                        <td><span class="badge badge-{{ q.status }}">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(q.status, q.status|capitalize) }}</span></td>
                         <td style="text-align:right">&euro;{{ "%.2f"|format(q.total) }}</td>
                     </tr>
                     {% endfor %}

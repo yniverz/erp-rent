@@ -28,7 +28,7 @@ def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None)
         return -1
 
     overlapping_quotes = Quote.query.filter(
-        Quote.status.in_(['draft', 'finalized', 'paid']),
+        Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
         Quote.start_date.isnot(None),
         Quote.end_date.isnot(None),
         or_(
