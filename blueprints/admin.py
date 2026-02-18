@@ -1611,18 +1611,47 @@ def _get_filtered_quotes(date_from, date_to, user_ids):
     return query.order_by(Quote.created_at).all()
 
 
-def _compute_owner_summaries(user_ids, quotes):
-    """Compute per-owner financial summaries."""
+def _parse_owner_config(user_ids):
+    """Parse per-owner config from request args.
+    
+    Returns dict: {uid: {'include_purchases': bool, 'revenue_pct': float}}
+    """
+    config = {}
+    for uid in user_ids:
+        include_purchases = request.args.get(f'include_purchases_{uid}') == '1'
+        try:
+            revenue_pct = float(request.args.get(f'revenue_pct_{uid}', '100'))
+        except (ValueError, TypeError):
+            revenue_pct = 100.0
+        revenue_pct = max(0.0, min(100.0, revenue_pct))
+        config[uid] = {
+            'include_purchases': include_purchases,
+            'revenue_pct': revenue_pct,
+        }
+    return config
+
+
+def _compute_owner_summaries(user_ids, quotes, owner_config=None):
+    """Compute per-owner financial summaries.
+    
+    owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
+    """
     if not user_ids:
         user_ids = [u.id for u in User.query.filter_by(active=True).all()]
+    if owner_config is None:
+        owner_config = {}
 
     summaries = []
     for uid in user_ids:
         user = User.query.get(uid)
         if not user:
             continue
+        cfg = owner_config.get(uid, {'include_purchases': True, 'revenue_pct': 100.0})
+        include_purchases = cfg.get('include_purchases', True)
+        revenue_pct = cfg.get('revenue_pct', 100.0) / 100.0
+
         ownerships = ItemOwnership.query.filter_by(user_id=uid).all()
-        investment = sum(o.total_purchase_cost for o in ownerships if not o.is_external)
+        investment = sum(o.total_purchase_cost for o in ownerships if not o.is_external) if include_purchases else 0
         ext_cost = 0
         revenue_share = 0
 
@@ -1634,16 +1663,19 @@ def _compute_owner_summaries(user_ids, quotes):
                     if qi.rental_cost_per_day:
                         ext_cost += qi.total_external_cost
 
+        revenue_share = revenue_share * revenue_pct
+
         # Collect purchase details
         purchases = []
-        for o in ownerships:
-            if o.purchase_cost and o.purchase_cost > 0:
-                item_obj = Item.query.get(o.item_id)
-                purchases.append({
-                    'item_name': item_obj.name if item_obj else f'Item #{o.item_id}',
-                    'cost': round(o.purchase_cost, 2),
-                    'date': o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '–',
-                })
+        if include_purchases:
+            for o in ownerships:
+                if o.purchase_cost and o.purchase_cost > 0:
+                    item_obj = Item.query.get(o.item_id)
+                    purchases.append({
+                        'item_name': item_obj.name if item_obj else f'Item #{o.item_id}',
+                        'cost': round(o.purchase_cost, 2),
+                        'date': o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '–',
+                    })
 
         summaries.append({
             'name': user.display_name or user.username,
@@ -1652,31 +1684,63 @@ def _compute_owner_summaries(user_ids, quotes):
             'revenue_share': round(revenue_share, 2),
             'ext_cost': round(ext_cost, 2),
             'purchases': purchases,
+            'include_purchases': include_purchases,
+            'revenue_pct': cfg.get('revenue_pct', 100.0),
         })
     return summaries
 
 
-def _compute_totals(quotes, user_ids=None):
+def _compute_totals(quotes, user_ids=None, owner_config=None):
     """Compute aggregate totals from a list of quotes, including EÜR data.
     
     total_cost includes ALL purchased items from the given owners,
     not just those appearing in the filtered quotes.
+    owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
     """
     site_settings = SiteSettings.query.first()
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
     tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
     tax_factor = 1 + tax_rate / 100
+    if owner_config is None:
+        owner_config = {}
 
-    total_revenue = sum(q.total for q in quotes)
+    # Build item_id → owner_id mapping for revenue_pct calculation
+    item_owner_map = {}
+    for uid in (user_ids or []):
+        for o in ItemOwnership.query.filter_by(user_id=uid).all():
+            item_owner_map[o.item_id] = uid
+
+    # Compute adjusted revenue (applying per-owner revenue_pct)
+    total_revenue_raw = sum(q.total for q in quotes)
+    adjusted_revenue = 0.0
+    for q in quotes:
+        subtotal = q.subtotal
+        discount_ratio = (q.total / subtotal) if subtotal > 0 else 1.0
+        for qi in q.quote_items:
+            item_revenue = qi.total_price * discount_ratio
+            if qi.item_id and qi.item_id in item_owner_map:
+                owner_uid = item_owner_map[qi.item_id]
+                pct = owner_config.get(owner_uid, {'revenue_pct': 100.0}).get('revenue_pct', 100.0) / 100.0
+                adjusted_revenue += item_revenue * pct
+            else:
+                adjusted_revenue += item_revenue
+    adjusted_revenue = round(adjusted_revenue, 2)
+
+    total_revenue = adjusted_revenue
     external_cost = sum(qi.total_external_cost for q in quotes for qi in q.quote_items)
 
     # Get purchase costs of ALL items from the relevant owners
+    # Only include purchases for owners where include_purchases is True
     if user_ids is None:
         user_ids = [u.id for u in User.query.filter_by(active=True).all()]
+    purchase_user_ids = [
+        uid for uid in user_ids
+        if owner_config.get(uid, {'include_purchases': True}).get('include_purchases', True)
+    ]
     all_ownerships_for_cost = ItemOwnership.query.filter(
-        ItemOwnership.user_id.in_(user_ids),
+        ItemOwnership.user_id.in_(purchase_user_ids),
         ItemOwnership.external_price_per_day.is_(None)
-    ).all() if user_ids else []
+    ).all() if purchase_user_ids else []
     total_cost = sum(o.total_purchase_cost for o in all_ownerships_for_cost)
 
     # Also collect all item_ids from quotes (still needed for EÜR Vorsteuer)
@@ -1720,8 +1784,9 @@ def _compute_totals(quotes, user_ids=None):
                 # Find the ownership to check its external_price_is_brutto flag
                 ownership = None
                 if qi.item_id:
-                    ownership = ItemOwnership.query.filter_by(
-                        item_id=qi.item_id, is_external=True
+                    ownership = ItemOwnership.query.filter(
+                        ItemOwnership.item_id == qi.item_id,
+                        ItemOwnership.external_price_per_day.isnot(None)
                     ).first()
                 if ownership and ownership.external_price_is_brutto:
                     netto_ext = round(ext_total / tax_factor, 2)
@@ -1796,7 +1861,8 @@ def finance_export():
         user_ids = [int(uid) for uid in selected_users] if selected_users else None
         quotes = _get_filtered_quotes(df, dt, user_ids)
         resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
-        totals = _compute_totals(quotes, resolved_user_ids)
+        owner_config = _parse_owner_config(resolved_user_ids)
+        totals = _compute_totals(quotes, resolved_user_ids, owner_config)
 
         preview = {
             'quotes': quotes,
@@ -1824,6 +1890,7 @@ def finance_export():
                            date_from=date_from,
                            date_to=date_to,
                            selected_users=selected_users,
+                           owner_config=owner_config if preview else {},
                            preview=preview)
 
 
@@ -1849,10 +1916,12 @@ def finance_export_csv():
     user_ids = [int(uid) for uid in selected_users] if selected_users else None
     quotes = _get_filtered_quotes(df, dt, user_ids)
     resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
-    totals = _compute_totals(quotes, resolved_user_ids)
+    owner_config = _parse_owner_config(resolved_user_ids)
+    totals = _compute_totals(quotes, resolved_user_ids, owner_config)
     owner_summaries = _compute_owner_summaries(
         resolved_user_ids,
-        quotes
+        quotes,
+        owner_config
     )
 
     zip_buf = BytesIO()
@@ -2011,10 +2080,12 @@ def finance_export_pdf():
     user_ids = [int(uid) for uid in selected_users] if selected_users else None
     quotes = _get_filtered_quotes(df, dt, user_ids)
     resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
-    totals = _compute_totals(quotes, resolved_user_ids)
+    owner_config = _parse_owner_config(resolved_user_ids)
+    totals = _compute_totals(quotes, resolved_user_ids, owner_config)
     owner_summaries = _compute_owner_summaries(
         resolved_user_ids,
-        quotes
+        quotes,
+        owner_config
     )
 
     site_settings = SiteSettings.query.first()

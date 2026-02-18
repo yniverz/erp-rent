@@ -34,37 +34,68 @@
     gap: 10px;
     margin-top: 12px;
 }
-.owner-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.owner-card {
     padding: 10px 14px;
     background: var(--bg-muted);
     border-radius: var(--radius-md);
-    cursor: pointer;
     transition: background 0.15s;
     border: 2px solid transparent;
 }
-.owner-checkbox:hover {
-    background: var(--color-gray-100);
-}
-.owner-checkbox.checked {
+.owner-card.checked {
     border-color: var(--color-accent);
     background: var(--color-accent-light, rgba(59, 130, 246, 0.08));
 }
-.owner-checkbox input[type="checkbox"] {
+.owner-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+.owner-card-header:hover {
+    opacity: 0.85;
+}
+.owner-card-header input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
 }
-.owner-checkbox label {
+.owner-card-header label {
     cursor: pointer;
     font-size: 0.95em;
     flex: 1;
 }
-.owner-checkbox .owner-detail {
+.owner-card-header .owner-detail {
     font-size: 0.8em;
     color: var(--color-text-muted);
+}
+.owner-options {
+    display: none;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border, #ddd);
+    gap: 6px;
+    flex-direction: column;
+}
+.owner-card.checked .owner-options {
+    display: flex;
+}
+.owner-options .option-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+}
+.owner-options .option-row input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+}
+.owner-options .option-row input[type="number"] {
+    width: 60px;
+    padding: 2px 6px;
+    font-size: 0.9em;
+    border-radius: var(--radius-sm, 4px);
+    border: 1px solid var(--color-border, #ccc);
+    text-align: right;
 }
 .select-all-bar {
     display: flex;
@@ -167,13 +198,32 @@
         </div>
         <div class="owner-grid">
             {% for user in users %}
-            <div class="owner-checkbox {{ 'checked' if user.id|string in selected_users or not selected_users }}" onclick="toggleOwner(this)">
-                <input type="checkbox" name="user_ids" value="{{ user.id }}"
-                    {{ 'checked' if user.id|string in selected_users or not selected_users }}>
-                <div>
-                    <label>{{ user.display_name or user.username }}</label>
-                    {% set user_items = ownerships_by_user.get(user.id, []) %}
-                    <div class="owner-detail">{{ user_items|length }} Artikel</div>
+            {% set is_selected = user.id|string in selected_users or not selected_users %}
+            <div class="owner-card {{ 'checked' if is_selected }}" data-uid="{{ user.id }}">
+                <div class="owner-card-header" onclick="toggleOwner(this.parentElement)">
+                    <input type="checkbox" name="user_ids" value="{{ user.id }}"
+                        {{ 'checked' if is_selected }}>
+                    <div>
+                        <label>{{ user.display_name or user.username }}</label>
+                        {% set user_items = ownerships_by_user.get(user.id, []) %}
+                        <div class="owner-detail">{{ user_items|length }} Artikel</div>
+                    </div>
+                </div>
+                <div class="owner-options">
+                    <div class="option-row">
+                        <input type="checkbox" name="include_purchases_{{ user.id }}" value="1"
+                            {{ 'checked' if owner_config.get(user.id, {}).get('include_purchases', true) }}
+                            onclick="event.stopPropagation()">
+                        <label onclick="event.stopPropagation()">Anschaffungskosten</label>
+                    </div>
+                    <div class="option-row">
+                        <label onclick="event.stopPropagation()">Gewinnanteil:</label>
+                        <input type="number" name="revenue_pct_{{ user.id }}"
+                            value="{{ owner_config.get(user.id, {}).get('revenue_pct', 100)|int }}"
+                            min="0" max="100" step="1"
+                            onclick="event.stopPropagation()">
+                        <span>%</span>
+                    </div>
                 </div>
             </div>
             {% endfor %}
@@ -379,24 +429,24 @@ function formatDate(d) {
 }
 
 function toggleOwner(el) {
-    const cb = el.querySelector('input[type="checkbox"]');
+    const cb = el.querySelector('.owner-card-header input[type="checkbox"]');
     cb.checked = !cb.checked;
     el.classList.toggle('checked', cb.checked);
 }
 
 function selectAllOwners(selectAll) {
-    document.querySelectorAll('.owner-checkbox').forEach(el => {
-        const cb = el.querySelector('input[type="checkbox"]');
+    document.querySelectorAll('.owner-card').forEach(el => {
+        const cb = el.querySelector('.owner-card-header input[type="checkbox"]');
         cb.checked = selectAll;
         el.classList.toggle('checked', selectAll);
     });
 }
 
-// Prevent checkbox double-toggle when clicking directly on checkbox
-document.querySelectorAll('.owner-checkbox input[type="checkbox"]').forEach(cb => {
+// Prevent checkbox double-toggle when clicking directly on the main checkbox
+document.querySelectorAll('.owner-card-header input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('click', e => e.stopPropagation());
     cb.addEventListener('change', function() {
-        this.closest('.owner-checkbox').classList.toggle('checked', this.checked);
+        this.closest('.owner-card').classList.toggle('checked', this.checked);
     });
 });
 </script>

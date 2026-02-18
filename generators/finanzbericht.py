@@ -147,22 +147,28 @@ def build_finance_report_pdf(
         owner_header = [
             Paragraph("Eigentümer", styles["table_header"]),
             Paragraph("Artikel", styles["table_header"]),
+            Paragraph("Anschaffung", styles["table_header"]),
             Paragraph("Investition", styles["table_header"]),
+            Paragraph("Gewinnanteil", styles["table_header"]),
             Paragraph("Umsatzanteil", styles["table_header"]),
             Paragraph("Ext. Kosten", styles["table_header"]),
         ]
         owner_data = [owner_header]
         for os_item in owner_summaries:
+            incl_purch = "Ja" if os_item.get('include_purchases', True) else "Nein"
+            rev_pct = f"{os_item.get('revenue_pct', 100):.0f}%"
             owner_data.append([
                 Paragraph(os_item['name'], styles["table_cell"]),
                 Paragraph(str(os_item['item_count']), styles["table_cell"]),
+                Paragraph(incl_purch, styles["table_cell"]),
                 Paragraph(fmt_eur(os_item['investment']), styles["table_cell_right"]),
+                Paragraph(rev_pct, styles["table_cell"]),
                 Paragraph(fmt_eur(os_item['revenue_share']), styles["table_cell_right"]),
                 Paragraph(fmt_eur(os_item['ext_cost']), styles["table_cell_right"]),
             ])
         
-        ow = L_CONTENT_W / 5
-        owner_table = Table(owner_data, colWidths=[ow * 1.5, ow * 0.5, ow, ow, ow], hAlign="LEFT")
+        ow = L_CONTENT_W / 7
+        owner_table = Table(owner_data, colWidths=[ow * 1.3, ow * 0.5, ow * 0.7, ow, ow * 0.7, ow, ow * 0.8], hAlign="LEFT")
         owner_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
             ("LINEBELOW", (0, 0), (-1, 0), 0.8, CLR_BLACK),
