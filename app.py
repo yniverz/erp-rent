@@ -392,6 +392,10 @@ with app.app_context():
         if not column_exists2('quote', 'payment_method'):
             cursor.execute("ALTER TABLE quote ADD COLUMN payment_method VARCHAR(20)")
 
+        # Quote: public_notes field (shown on PDFs)
+        if not column_exists2('quote', 'public_notes'):
+            cursor.execute("ALTER TABLE quote ADD COLUMN public_notes TEXT")
+
         # SiteSettings: configurable tax rate
         if not column_exists2('site_settings', 'tax_rate'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_rate FLOAT DEFAULT 19.0")

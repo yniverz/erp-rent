@@ -54,8 +54,12 @@
             {% endif %}
         </div>
         <div class="form-group">
-            <label>Notizen</label>
-            <textarea name="notes" rows="3">{{ quote.notes or '' }}</textarea>
+            <label>Interne Notizen</label>
+            <textarea name="notes" rows="3" placeholder="Nur intern sichtbar, nicht auf der Rechnung">{{ quote.notes or '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Bemerkungen (auf Rechnung/Angebot)</label>
+            <textarea name="public_notes" rows="3" placeholder="Wird auf Angebot, Rechnung und Lieferschein gedruckt">{{ quote.public_notes or '' }}</textarea>
         </div>
         <button type="submit" class="btn btn-primary">Details speichern</button>
     </form>
@@ -74,6 +78,7 @@
             <input type="hidden" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
             <input type="hidden" name="recipient_lines" value="{{ quote.recipient_lines or '' }}">
             <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
+            <input type="hidden" name="public_notes" value="{{ quote.public_notes or '' }}">
             <div class="d-flex gap-6 align-center">
                 <span class="text-muted">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}{% if quote.rental_days_override %} <strong class="text-accent">(manuell)</strong>{% endif %}</span>
                 <label class="text-muted text-sm m-0">— Überschreiben:</label>

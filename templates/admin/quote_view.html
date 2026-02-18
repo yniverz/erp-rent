@@ -85,8 +85,12 @@
         </div>
     </div>
 
+    {% if quote.public_notes %}
+        <p class="mt-14"><strong>Bemerkungen (auf Rechnung):</strong></p>
+        <p class="text-muted text-pre-line">{{ quote.public_notes }}</p>
+    {% endif %}
     {% if quote.notes %}
-        <p class="mt-14"><strong>Notizen:</strong></p>
+        <p class="mt-14"><strong>Interne Notizen:</strong></p>
         <p class="text-muted text-pre-line">{{ quote.notes }}</p>
     {% endif %}
 </div>

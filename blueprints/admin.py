@@ -679,6 +679,7 @@ def quote_edit(quote_id):
 
                 quote.recipient_lines = request.form.get('recipient_lines', '')
                 quote.notes = request.form.get('notes', '')
+                quote.public_notes = request.form.get('public_notes', '')
                 db.session.commit()
                 flash('Angebot aktualisiert!', 'success')
 
@@ -1854,7 +1855,7 @@ def finance_export_csv():
             'Ref-Nr.', 'Kunde', 'Leistungsbeginn', 'Leistungsende',
             'Miettage', 'Erstellt am', 'Finalisiert am', 'Bezahlt am',
             'Status', 'Zwischensumme (€)', 'Rabatt (€)', 'Rabatt (%)',
-            'Gesamtbetrag (€)', 'Ext. Kosten (€)', 'Bemerkungen'
+            'Gesamtbetrag (€)', 'Ext. Kosten (€)', 'Bemerkungen', 'Interne Notizen'
         ])
         for q in quotes:
             ext_cost = sum(qi.total_external_cost for qi in q.quote_items)
@@ -1873,6 +1874,7 @@ def finance_export_csv():
                 f'{q.discount_percent:.2f}'.replace('.', ','),
                 f'{q.total:.2f}'.replace('.', ','),
                 f'{ext_cost:.2f}'.replace('.', ','),
+                (q.public_notes or '').replace('\n', ' '),
                 (q.notes or '').replace('\n', ' '),
             ])
         zf.writestr('rechnungsliste.csv', text_buf.getvalue().encode('utf-8-sig'))
@@ -2099,7 +2101,7 @@ def finance_export_invoices_pdf():
             subtotal=quote.subtotal,
             total=quote.total,
             payment_terms_days=data['payment_terms_days'],
-            notes=quote.notes,
+            notes=quote.public_notes,
         )
         merger.append(BytesIO(pdf_bytes))
 
@@ -2419,7 +2421,7 @@ def angebot_pdf(quote_id):
         total=quote.total,
         payment_terms_days=data['payment_terms_days'],
         quote_validity_days=data['quote_validity_days'],
-        notes=quote.notes,
+        notes=quote.public_notes,
         terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
     )
     return _send_pdf_response(pdf_bytes, f"angebot_{quote.reference_number}.pdf")
@@ -2462,7 +2464,7 @@ def rechnung_pdf(quote_id):
         subtotal=quote.subtotal,
         total=quote.total,
         payment_terms_days=data['payment_terms_days'],
-        notes=quote.notes,
+        notes=quote.public_notes,
     )
     return _send_pdf_response(pdf_bytes, f"rechnung_{quote.reference_number}.pdf")
 
@@ -2496,7 +2498,7 @@ def lieferschein_pdf(quote_id):
         end_date_str=data['end_date_str'],
         items=items,
         kaution=kaution,
-        notes=quote.notes,
+        notes=quote.public_notes,
     )
     return _send_pdf_response(pdf_bytes, f"lieferschein_{quote.reference_number}.pdf")
 

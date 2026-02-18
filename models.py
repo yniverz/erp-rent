@@ -325,7 +325,8 @@ class Quote(db.Model):
     performed_at = db.Column(db.DateTime, nullable=True)  # When service was performed / Durchgeführt
     paid_at = db.Column(db.DateTime, nullable=True)
     payment_method = db.Column(db.String(20), nullable=True)  # 'cash' or 'bank'
-    notes = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)  # Internal notes (not on PDF)
+    public_notes = db.Column(db.Text, nullable=True)  # Shown on Angebot/Rechnung/Lieferschein
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)
     # ERPNext Journal Entry references (stored for cancellation)
     erpnext_je_receivable = db.Column(db.String(100), nullable=True)  # JE name for Forderung booking
