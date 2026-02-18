@@ -305,6 +305,10 @@
                         <td style="padding-left:20px;">+ Vorsteuer (ext. Mietkosten)</td>
                         <td style="text-align:right">&euro;{{ "%.2f"|format(preview.vorsteuer_external) }}</td>
                     </tr>
+                    <tr style="border-top:1px solid var(--color-border, #ddd);">
+                        <td><strong>Summe Ausgaben (brutto)</strong></td>
+                        <td style="text-align:right"><strong>&euro;{{ "%.2f"|format(preview.total_cost + preview.external_cost) }}</strong></td>
+                    </tr>
                     <tr><td colspan="2" style="height:12px;"></td></tr>
                     <tr style="border-top:2px solid var(--color-border, #ddd);">
                         <td><strong>Gewinn (EÜR)</strong></td>
