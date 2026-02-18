@@ -1675,7 +1675,7 @@ def _compute_totals(quotes, user_ids=None):
         user_ids = [u.id for u in User.query.filter_by(active=True).all()]
     all_ownerships_for_cost = ItemOwnership.query.filter(
         ItemOwnership.user_id.in_(user_ids),
-        ItemOwnership.is_external == False
+        ItemOwnership.external_price_per_day.is_(None)
     ).all() if user_ids else []
     total_cost = sum(o.total_purchase_cost for o in all_ownerships_for_cost)
 
