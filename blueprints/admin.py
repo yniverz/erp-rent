@@ -2059,6 +2059,7 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
                         )
                         depr_info = {
                             'category_name': pe['depreciation_category'].name,
+                            'summary': pe['depreciation_category'].summary,
                             'method': pe['depreciation_category'].method_label,
                             'period_amount': round(depr_amount, 2),
                         }
@@ -2213,6 +2214,10 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
                         date_from, date_to
                     )
                 else:
+                    # No AfA: only include if purchase date is within selected period
+                    if date_from and date_to and pe['purchase_date']:
+                        if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
+                            continue
                     effective_cost = cost
 
                 if effective_cost <= 0:

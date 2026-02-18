@@ -216,7 +216,7 @@ def build_finance_report_pdf(
             for os_item in owner_summaries:
                 for p in os_item.get('purchases', []):
                     depr = p.get('depreciation')
-                    afa_cat = depr['category_name'] if depr else '–'
+                    afa_cat = depr.get('summary', depr.get('category_name', '–')) if depr else '–'
                     afa_amount = fmt_eur(depr['period_amount']) if depr else '–'
                     purch_data.append([
                         Paragraph(os_item['name'], styles["table_cell"]),
