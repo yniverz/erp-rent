@@ -1801,6 +1801,7 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
                 if cost <= 0:
                     continue
                 if o.depreciation_category and o.purchase_date and date_from and date_to:
+                    # AfA: always include, calculation handles period automatically
                     depr = calculate_depreciation_for_period(
                         cost, o.purchase_date, o.depreciation_category,
                         date_from, date_to
@@ -1808,6 +1809,13 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
                     depreciation_total += depr
                     investment += depr
                 else:
+                    # No AfA: only include if purchase date is within the selected period
+                    if date_from and date_to and o.purchase_date:
+                        pd = o.purchase_date
+                        df_d = date_from.date() if hasattr(date_from, 'date') else date_from
+                        dt_d = date_to.date() if hasattr(date_to, 'date') else date_to
+                        if pd < df_d or pd > dt_d:
+                            continue
                     raw_purchase_total += cost
                     investment += cost
 
@@ -1835,9 +1843,8 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
         if include_purchases:
             for o in ownerships:
                 if o.purchase_cost and o.purchase_cost > 0:
-                    item_obj = Item.query.get(o.item_id)
-                    depr_info = None
                     if o.depreciation_category and o.purchase_date and date_from and date_to:
+                        # AfA: always show, calculation handles period
                         depr_amount = calculate_depreciation_for_period(
                             o.total_purchase_cost, o.purchase_date, o.depreciation_category,
                             date_from, date_to
@@ -1847,6 +1854,16 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
                             'method': o.depreciation_category.method_label,
                             'period_amount': round(depr_amount, 2),
                         }
+                    else:
+                        # No AfA: only include if purchase date in selected period
+                        depr_info = None
+                        if date_from and date_to and o.purchase_date:
+                            pd = o.purchase_date
+                            df_d = date_from.date() if hasattr(date_from, 'date') else date_from
+                            dt_d = date_to.date() if hasattr(date_to, 'date') else date_to
+                            if pd < df_d or pd > dt_d:
+                                continue
+                    item_obj = Item.query.get(o.item_id)
                     purchases.append({
                         'item_name': item_obj.name if item_obj else f'Item #{o.item_id}',
                         'cost': round(o.purchase_cost, 2),
@@ -1946,6 +1963,7 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         if cost <= 0:
             continue
         if o.depreciation_category and o.purchase_date and date_from and date_to:
+            # AfA: always include, calculation handles period automatically
             depr = calculate_depreciation_for_period(
                 cost, o.purchase_date, o.depreciation_category,
                 date_from, date_to
@@ -1953,6 +1971,12 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
             total_cost += depr
             total_depreciation += depr
         else:
+            # No AfA: only include if purchase date is within the selected period
+            if date_from and date_to and o.purchase_date:
+                if o.purchase_date < date_from.date() if hasattr(date_from, 'date') else date_from:
+                    continue
+                if o.purchase_date > (date_to.date() if hasattr(date_to, 'date') else date_to):
+                    continue
             total_cost += cost
             total_raw_purchases += cost
 
