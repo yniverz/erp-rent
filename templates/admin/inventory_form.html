@@ -148,7 +148,7 @@
                             </td>
                             {% if site_settings and site_settings.tax_mode == 'regular' %}
                             <td>
-                                <select name="ownership_purchase_cost_is_brutto" class="w-80">
+                                <select name="ownership_purchase_cost_is_brutto" class="w-80" onchange="updateUnitPriceForRow(this)">
                                     <option value="1" {{ 'selected' if o.purchase_cost_is_brutto }}>Brutto</option>
                                     <option value="0" {{ 'selected' if not o.purchase_cost_is_brutto }}>Netto</option>
                                 </select>
@@ -271,7 +271,7 @@ function addOwnershipRow() {
         </td>
         {% if site_settings and site_settings.tax_mode == 'regular' %}
         <td>
-            <select name="ownership_purchase_cost_is_brutto" class="w-80">
+            <select name="ownership_purchase_cost_is_brutto" class="w-80" onchange="updateUnitPriceForRow(this)">
                 <option value="1" selected>Brutto</option>
                 <option value="0">Netto</option>
             </select>
@@ -332,6 +332,9 @@ function onOwnershipUserChange(selectEl) {
 }
 
 // Live unit price calculation
+var _isRegularTax = {{ 'true' if site_settings and site_settings.tax_mode == 'regular' else 'false' }};
+var _taxRateUnit = _isRegularTax ? {{ tax_rate|default(19) }} : 0;
+
 function updateUnitPrice(costInput) {
     var row = costInput.closest('tr');
     var qtyInput = row.querySelector('input[name="ownership_quantities"]');
@@ -340,8 +343,36 @@ function updateUnitPrice(costInput) {
     var cost = parseFloat(costInput.value) || 0;
     var qty = parseInt(qtyInput.value) || 0;
     if (cost > 0 && qty > 0) {
-        var unit = (cost / qty).toFixed(2);
-        hint.textContent = '= ' + unit + ' €/Stk';
+        var unit = cost / qty;
+        var parts = ['= ' + unit.toFixed(2) + ' \u20ac/Stk'];
+        if (_isRegularTax) {
+            var bnSelect = row.querySelector('select[name="ownership_purchase_cost_is_brutto"]');
+            var isBrutto = bnSelect ? bnSelect.value === '1' : true;
+            var nettoTotal, nettoUnit;
+            if (isBrutto) {
+                nettoTotal = cost / (1 + _taxRateUnit / 100);
+                nettoUnit = nettoTotal / qty;
+                parts.push('(netto: ' + nettoTotal.toFixed(2) + ' \u20ac ges. / ' + nettoUnit.toFixed(2) + ' \u20ac/Stk)');
+            } else {
+                // already netto, show brutto
+                var bruttoTotal = cost * (1 + _taxRateUnit / 100);
+                var bruttoUnit = bruttoTotal / qty;
+                parts.push('(brutto: ' + bruttoTotal.toFixed(2) + ' \u20ac ges. / ' + bruttoUnit.toFixed(2) + ' \u20ac/Stk)');
+            }
+        }
+        hint.textContent = parts.join(' ');
+        hint.style.display = '';
+    } else if (cost > 0 && _isRegularTax) {
+        // no quantity but show netto/brutto conversion for total
+        var bnSelect = row.querySelector('select[name="ownership_purchase_cost_is_brutto"]');
+        var isBrutto = bnSelect ? bnSelect.value === '1' : true;
+        if (isBrutto) {
+            var netto = cost / (1 + _taxRateUnit / 100);
+            hint.textContent = 'netto: ' + netto.toFixed(2) + ' \u20ac';
+        } else {
+            var brutto = cost * (1 + _taxRateUnit / 100);
+            hint.textContent = 'brutto: ' + brutto.toFixed(2) + ' \u20ac';
+        }
         hint.style.display = '';
     } else {
         hint.style.display = 'none';
