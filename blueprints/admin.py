@@ -1697,7 +1697,7 @@ def _compute_totals(quotes, user_ids=None):
         purchases_netto = 0.0
         all_ownerships = all_ownerships_for_cost
         for o in all_ownerships:
-            cost = (o.purchase_cost or 0) * (o.quantity or 1)
+            cost = o.total_purchase_cost
             if cost <= 0:
                 continue
             if o.purchase_cost_is_brutto:
