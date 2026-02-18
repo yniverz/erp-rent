@@ -1908,34 +1908,17 @@ def serve_logo():
 
 def _get_filtered_quotes(date_from, date_to, user_ids):
     """Get quotes filtered by date range and owner user IDs.
-    Only includes paid quotes (no drafts, finalized, or performed).
+    Only includes paid quotes whose paid_at date falls within the range.
+    For EÜR: Zufluss-/Abflussprinzip — revenue counts when payment is received.
     Returns quotes where at least one quote item belongs to an item
     owned by one of the selected users.
     If user_ids is empty/None, return all quotes.
     """
-    from sqlalchemy import or_, and_
-
     query = Quote.query.filter(
-        # Only paid quotes
         Quote.status == 'paid',
-        or_(
-            # Paid within date range
-            and_(Quote.paid_at.isnot(None),
-                 Quote.paid_at >= date_from,
-                 Quote.paid_at <= date_to),
-            # OR rental period overlaps with date range
-            and_(Quote.start_date.isnot(None),
-                 Quote.end_date.isnot(None),
-                 Quote.start_date <= date_to,
-                 Quote.end_date >= date_from),
-            # OR finalized within date range
-            and_(Quote.finalized_at.isnot(None),
-                 Quote.finalized_at >= date_from,
-                 Quote.finalized_at <= date_to),
-            # OR created within date range (catch-all)
-            and_(Quote.created_at >= date_from,
-                 Quote.created_at <= date_to),
-        )
+        Quote.paid_at.isnot(None),
+        Quote.paid_at >= date_from,
+        Quote.paid_at <= date_to,
     )
 
     if user_ids:
