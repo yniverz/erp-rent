@@ -117,6 +117,44 @@ class Category(db.Model):
         return result
 
 
+class DepreciationCategory(db.Model):
+    """Depreciation category for German tax depreciation (AfA).
+
+    Methods:
+    - linear:    Lineare AfA (§7 Abs. 1 EStG), equal monthly amounts
+    - degressive: Degressive AfA (§7 Abs. 2 EStG), fixed % of remaining book value per year
+    - sofort:    Sofortabschreibung / GWG (§6 Abs. 2 EStG), immediate 100% write-off
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, unique=True)
+    method = db.Column(db.String(20), nullable=False, default='linear')  # linear, degressive, sofort
+    duration_months = db.Column(db.Integer, nullable=False, default=12)  # Total depreciation period
+    interval_months = db.Column(db.Integer, nullable=False, default=12)  # Booking interval
+    degressive_rate = db.Column(db.Float, nullable=True)  # Annual % for degressive method
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    METHODS = {
+        'linear': 'Lineare AfA',
+        'degressive': 'Degressive AfA',
+        'sofort': 'Sofortabschreibung (GWG)',
+    }
+
+    @property
+    def method_label(self):
+        return self.METHODS.get(self.method, self.method)
+
+    @property
+    def summary(self):
+        if self.method == 'sofort':
+            return 'Sofort 100%'
+        elif self.method == 'degressive':
+            years = self.duration_months / 12
+            return f'{self.degressive_rate:.0f}% p.a. / {years:.0f}J'
+        else:
+            years = self.duration_months / 12
+            return f'{years:.0f} Jahre linear'
+
+
 class ItemOwnership(db.Model):
     """Per-user ownership/supply of an item.
     If external_price_per_day is set, this user is an external provider for this item.
@@ -130,9 +168,11 @@ class ItemOwnership(db.Model):
     purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost (sum) for this owner's stock
     purchase_cost_is_brutto = db.Column(db.Boolean, default=True)  # True = purchase cost includes VAT (Vorsteuer paid)
     purchase_date = db.Column(db.DateTime, nullable=True)  # Date of purchase (required if purchase_cost > 0)
+    depreciation_category_id = db.Column(db.Integer, db.ForeignKey('depreciation_category.id'), nullable=True)
 
     item = db.relationship('Item', back_populates='ownerships')
     user = db.relationship('User')
+    depreciation_category = db.relationship('DepreciationCategory', lazy='selectin')
     documents = db.relationship('OwnershipDocument', back_populates='ownership',
                                 cascade='all, delete-orphan', lazy='selectin')
 

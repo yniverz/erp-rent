@@ -46,11 +46,12 @@
                     </div>
                 </div>
 
-                <div class="nav-dropdown {{ 'active' if request.endpoint == 'admin.report_payoff' or 'finance' in request.endpoint }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint == 'admin.report_payoff' or 'finance' in request.endpoint or 'depreciation' in request.endpoint }}">
                     <button class="nav-dropdown-toggle">Finanzen <span class="nav-arrow">▾</span></button>
                     <div class="nav-dropdown-menu">
                         <a href="{{ url_for('admin.report_payoff') }}" class="{{ 'active' if request.endpoint == 'admin.report_payoff' }}">Abrechnung</a>
                         <a href="{{ url_for('admin.finance_export') }}" class="{{ 'active' if 'finance' in request.endpoint }}">Finanz-Export</a>
+                        <a href="{{ url_for('admin.depreciation_categories') }}" class="{{ 'active' if 'depreciation' in request.endpoint }}">AfA-Kategorien</a>
                     </div>
                 </div>
 

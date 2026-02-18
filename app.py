@@ -1,6 +1,6 @@
 from flask import Flask, send_file, request
 from flask_login import LoginManager
-from models import db, User, SiteSettings, PackageComponent, ItemOwnership, OwnershipDocument
+from models import db, User, SiteSettings, PackageComponent, ItemOwnership, OwnershipDocument, DepreciationCategory
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import os
@@ -440,6 +440,26 @@ with app.app_context():
                 )
             """)
             print("Created quote_item_expense_document table")
+
+        # DepreciationCategory table migration
+        if not table_exists2('depreciation_category'):
+            cursor.execute("""
+                CREATE TABLE depreciation_category (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(200) NOT NULL UNIQUE,
+                    method VARCHAR(20) NOT NULL DEFAULT 'linear',
+                    duration_months INTEGER NOT NULL DEFAULT 12,
+                    interval_months INTEGER NOT NULL DEFAULT 12,
+                    degressive_rate FLOAT,
+                    created_at DATETIME
+                )
+            """)
+            print("Created depreciation_category table")
+
+        # ItemOwnership: add depreciation_category_id column
+        if table_exists2('item_ownership') and not column_exists2('item_ownership', 'depreciation_category_id'):
+            cursor.execute("ALTER TABLE item_ownership ADD COLUMN depreciation_category_id INTEGER REFERENCES depreciation_category(id)")
+            print("Added depreciation_category_id column to item_ownership table")
 
         conn.commit()
         conn.close()

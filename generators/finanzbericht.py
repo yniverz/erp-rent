@@ -105,11 +105,15 @@ def build_finance_report_pdf(
     # ── Summary Stats ──
     story.append(Paragraph("Zusammenfassung", styles["h2"]))
 
+    # Determine if there's depreciation data
+    has_depreciation = totals.get('total_depreciation', 0) > 0
+    cost_label = "Kosten (Ansch./AfA)" if has_depreciation else "Anschaffungskosten"
+
     summary_data = [
         [
             Paragraph("<b>Anzahl Rechnungen</b>", styles["info"]),
             Paragraph("<b>Gesamtumsatz</b>", styles["info"]),
-            Paragraph("<b>Anschaffungskosten</b>", styles["info"]),
+            Paragraph(f"<b>{cost_label}</b>", styles["info"]),
             Paragraph("<b>Ext. Mietkosten</b>", styles["info"]),
             Paragraph("<b>Gewinn/Verlust</b>", styles["info"]),
         ],
@@ -121,6 +125,20 @@ def build_finance_report_pdf(
             Paragraph(fmt_eur(totals['profit']), styles["info"]),
         ]
     ]
+
+    # Add depreciation breakdown row if applicable
+    if has_depreciation:
+        summary_data.append([
+            Paragraph("", styles["info"]),
+            Paragraph("", styles["info"]),
+            Paragraph(
+                f"<i>davon AfA: {fmt_eur(totals['total_depreciation'])}, "
+                f"Direkt: {fmt_eur(totals.get('total_raw_purchases', 0))}</i>",
+                styles["info"]
+            ),
+            Paragraph("", styles["info"]),
+            Paragraph("", styles["info"]),
+        ])
     sw = L_CONTENT_W / 5
     summary_table = Table(summary_data, colWidths=[sw] * 5, hAlign="LEFT")
     summary_table.setStyle(TableStyle([
@@ -184,27 +202,34 @@ def build_finance_report_pdf(
         # ── Purchase Details per Owner ──
         has_any_purchases = any(os_item.get('purchases') for os_item in owner_summaries)
         if has_any_purchases:
-            story.append(Paragraph("Anschaffungen nach Eigentümer", styles["h2"]))
+            story.append(Paragraph("Anschaffungen / Abschreibungen nach Eigentümer", styles["h2"]))
             
             purch_header = [
                 Paragraph("Eigentümer", styles["table_header"]),
                 Paragraph("Artikel", styles["table_header"]),
                 Paragraph("Ansch.kosten", styles["table_header"]),
                 Paragraph("Kaufdatum", styles["table_header"]),
+                Paragraph("AfA-Kategorie", styles["table_header"]),
+                Paragraph("AfA Zeitraum", styles["table_header"]),
             ]
             purch_data = [purch_header]
             for os_item in owner_summaries:
                 for p in os_item.get('purchases', []):
+                    depr = p.get('depreciation')
+                    afa_cat = depr['category_name'] if depr else '–'
+                    afa_amount = fmt_eur(depr['period_amount']) if depr else '–'
                     purch_data.append([
                         Paragraph(os_item['name'], styles["table_cell"]),
                         Paragraph(p['item_name'], styles["table_cell"]),
                         Paragraph(fmt_eur(p['cost']), styles["table_cell_right"]),
                         Paragraph(p['date'], styles["table_cell"]),
+                        Paragraph(afa_cat, styles["table_cell"]),
+                        Paragraph(afa_amount, styles["table_cell_right"]),
                     ])
             
             if len(purch_data) > 1:
-                pw = L_CONTENT_W / 4
-                purch_table = Table(purch_data, colWidths=[pw * 1.2, pw * 1.2, pw * 0.8, pw * 0.8], hAlign="LEFT")
+                pw = L_CONTENT_W / 6
+                purch_table = Table(purch_data, colWidths=[pw * 1.0, pw * 1.2, pw * 0.8, pw * 0.8, pw * 1.0, pw * 0.8], hAlign="LEFT")
                 purch_table.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
                     ("LINEBELOW", (0, 0), (-1, 0), 0.8, CLR_BLACK),

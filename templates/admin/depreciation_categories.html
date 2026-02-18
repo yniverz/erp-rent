@@ -1,0 +1,307 @@
+{% extends "admin/base.html" %}
+
+{% block title %}AfA-Kategorien - Verwaltung{% endblock %}
+
+{% block extra_head %}
+<style>
+.afa-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+.afa-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border, #e5e7eb);
+    position: relative;
+}
+.afa-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+.afa-card-title {
+    font-weight: 700;
+    font-size: 1.1em;
+}
+.afa-card-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: var(--color-accent-light, rgba(59, 130, 246, 0.12));
+    color: var(--color-accent, #3b82f6);
+}
+.afa-card-badge.degressive {
+    background: rgba(245, 158, 11, 0.12);
+    color: #d97706;
+}
+.afa-card-badge.sofort {
+    background: rgba(34, 197, 94, 0.12);
+    color: #16a34a;
+}
+.afa-card-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+}
+.afa-card-details dt {
+    color: var(--color-text-muted);
+}
+.afa-card-details dd {
+    font-weight: 600;
+    text-align: right;
+}
+.afa-card-usage {
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border, #e5e7eb);
+}
+.afa-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+.afa-form-section {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 24px;
+}
+.afa-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+.afa-form-grid .form-group {
+    margin-bottom: 0;
+}
+.degressive-fields {
+    display: none;
+}
+.degressive-fields.visible {
+    display: block;
+}
+.duration-fields {
+    display: block;
+}
+.duration-fields.hidden {
+    display: none;
+}
+
+/* Edit modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.active {
+    display: flex;
+}
+.modal-content {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.modal-content h2 {
+    margin-bottom: 16px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>AfA-Kategorien (Abschreibung)</h1>
+<p class="help-text mb-20">
+    Abschreibungskategorien für die Buchhaltung. Erstellen Sie Kategorien und weisen Sie diese dann bei Inventar-Artikeln den Eigentums-Einträgen zu.
+    Die Abschreibung wird im Finanzbericht automatisch berechnet.
+</p>
+
+<!-- Add Form -->
+<div class="afa-form-section">
+    <h2>Neue AfA-Kategorie</h2>
+    <form method="POST">
+        <input type="hidden" name="action" value="add">
+        <div class="afa-form-grid">
+            <div class="form-group">
+                <label>Name *</label>
+                <input type="text" name="name" required placeholder="z.B. Büroausstattung (3J)">
+            </div>
+            <div class="form-group">
+                <label>Methode *</label>
+                <select name="method" id="add-method" onchange="toggleAddFields()">
+                    {% for key, label in methods.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group duration-fields" id="add-duration-group">
+                <label>Nutzungsdauer (Monate) *</label>
+                <input type="number" name="duration_months" min="1" value="36" required>
+                <small class="help-text">z.B. 36 = 3 Jahre</small>
+            </div>
+            <div class="form-group duration-fields" id="add-interval-group">
+                <label>Buchungsintervall (Monate)</label>
+                <input type="number" name="interval_months" min="1" value="12">
+                <small class="help-text">z.B. 12 = jährlich, 1 = monatlich</small>
+            </div>
+            <div class="form-group degressive-fields" id="add-degressive-group">
+                <label>Degressive Rate (%/Jahr)</label>
+                <input type="number" name="degressive_rate" step="0.1" min="0.1" max="100" value="25">
+                <small class="help-text">Max. 25% oder 2,5× linear</small>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary mt-16">Kategorie erstellen</button>
+    </form>
+</div>
+
+<!-- Categories Grid -->
+{% if categories %}
+<div class="afa-grid">
+    {% for cat in categories %}
+    <div class="afa-card">
+        <div class="afa-card-header">
+            <span class="afa-card-title">{{ cat.name }}</span>
+            <span class="afa-card-badge {{ cat.method }}">{{ cat.method_label }}</span>
+        </div>
+        <dl class="afa-card-details">
+            {% if cat.method != 'sofort' %}
+            <dt>Nutzungsdauer</dt>
+            <dd>{{ cat.duration_months }} Monate ({{ (cat.duration_months / 12)|round(1) }} Jahre)</dd>
+            <dt>Buchungsintervall</dt>
+            <dd>{{ cat.interval_months }} Monate</dd>
+            {% endif %}
+            {% if cat.method == 'degressive' and cat.degressive_rate %}
+            <dt>Degressive Rate</dt>
+            <dd>{{ cat.degressive_rate }}% p.a.</dd>
+            {% endif %}
+            {% if cat.method == 'sofort' %}
+            <dt>Abschreibung</dt>
+            <dd>100% sofort</dd>
+            {% endif %}
+        </dl>
+        <div class="afa-card-usage">
+            {{ usage_counts.get(cat.id, 0) }} Eigentums-Einträge verwenden diese Kategorie
+        </div>
+        <div class="afa-card-actions">
+            <button type="button" class="btn btn-sm btn-outline"
+                onclick="openEditModal({{ cat.id }}, '{{ cat.name|e }}', '{{ cat.method }}', {{ cat.duration_months }}, {{ cat.interval_months }}, {{ cat.degressive_rate or 'null' }})">
+                Bearbeiten
+            </button>
+            <form method="POST" style="display:inline;" onsubmit="return confirm('AfA-Kategorie „{{ cat.name }}" wirklich löschen? Zuweisungen werden entfernt.')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="category_id" value="{{ cat.id }}">
+                <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:40px;">
+    <p class="text-muted">Noch keine AfA-Kategorien vorhanden.</p>
+    <p class="help-text">Erstellen Sie oben eine neue Kategorie, z.B. „Büroausstattung – 3 Jahre linear".</p>
+</div>
+{% endif %}
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-content">
+        <h2>AfA-Kategorie bearbeiten</h2>
+        <form method="POST">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="category_id" id="edit-id">
+            <div class="afa-form-grid">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" name="name" id="edit-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Methode *</label>
+                    <select name="method" id="edit-method" onchange="toggleEditFields()">
+                        {% for key, label in methods.items() %}
+                        <option value="{{ key }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group duration-fields" id="edit-duration-group">
+                    <label>Nutzungsdauer (Monate) *</label>
+                    <input type="number" name="duration_months" id="edit-duration" min="1" required>
+                </div>
+                <div class="form-group duration-fields" id="edit-interval-group">
+                    <label>Buchungsintervall (Monate)</label>
+                    <input type="number" name="interval_months" id="edit-interval" min="1">
+                </div>
+                <div class="form-group degressive-fields" id="edit-degressive-group">
+                    <label>Degressive Rate (%/Jahr)</label>
+                    <input type="number" name="degressive_rate" id="edit-degressive-rate" step="0.1" min="0.1" max="100">
+                </div>
+            </div>
+            <div class="d-flex gap-10 mt-16">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <button type="button" class="btn btn-outline" onclick="closeEditModal()">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAddFields() {
+    var method = document.getElementById('add-method').value;
+    document.getElementById('add-degressive-group').classList.toggle('visible', method === 'degressive');
+    document.getElementById('add-duration-group').classList.toggle('hidden', method === 'sofort');
+    document.getElementById('add-interval-group').classList.toggle('hidden', method === 'sofort');
+}
+
+function toggleEditFields() {
+    var method = document.getElementById('edit-method').value;
+    document.getElementById('edit-degressive-group').classList.toggle('visible', method === 'degressive');
+    document.getElementById('edit-duration-group').classList.toggle('hidden', method === 'sofort');
+    document.getElementById('edit-interval-group').classList.toggle('hidden', method === 'sofort');
+}
+
+function openEditModal(id, name, method, duration, interval, degressiveRate) {
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-name').value = name;
+    document.getElementById('edit-method').value = method;
+    document.getElementById('edit-duration').value = duration;
+    document.getElementById('edit-interval').value = interval;
+    if (degressiveRate !== null) {
+        document.getElementById('edit-degressive-rate').value = degressiveRate;
+    }
+    toggleEditFields();
+    document.getElementById('editModal').classList.add('active');
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').classList.remove('active');
+}
+
+// Close modal on overlay click
+document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditModal();
+});
+
+// Init add form fields
+toggleAddFields();
+</script>
+{% endblock %}

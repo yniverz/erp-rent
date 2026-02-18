@@ -247,7 +247,14 @@
             </div>
             <div class="preview-stat warning">
                 <div class="value">&euro;{{ "%.2f"|format(preview.total_cost) }}</div>
-                <div class="label">Kosten (Anschaffung)</div>
+                <div class="label">Kosten (Ansch./AfA)</div>
+                {% if preview.total_depreciation > 0 or preview.total_raw_purchases > 0 %}
+                <div style="font-size:0.75em;color:var(--color-text-muted);margin-top:4px;">
+                    {% if preview.total_depreciation > 0 %}AfA: &euro;{{ "%.2f"|format(preview.total_depreciation) }}{% endif %}
+                    {% if preview.total_depreciation > 0 and preview.total_raw_purchases > 0 %} | {% endif %}
+                    {% if preview.total_raw_purchases > 0 %}Direkt: &euro;{{ "%.2f"|format(preview.total_raw_purchases) }}{% endif %}
+                </div>
+                {% endif %}
             </div>
             <div class="preview-stat external">
                 <div class="value">&euro;{{ "%.2f"|format(preview.external_cost) }}</div>

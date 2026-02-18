@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument, QuoteItemExpense, QuoteItemExpenseDocument
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument, QuoteItemExpense, QuoteItemExpenseDocument, DepreciationCategory
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
 import erpnext_client
 from datetime import datetime
@@ -155,6 +155,7 @@ def inventory_add():
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
     users = User.query.filter_by(active=True).order_by(User.username).all()
+    depr_categories = DepreciationCategory.query.order_by(DepreciationCategory.name).all()
 
     if request.method == 'POST':
         try:
@@ -216,6 +217,7 @@ def inventory_add():
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
                 ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
+                ownership_depr_cat_ids = request.form.getlist('ownership_depreciation_category_ids')
 
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
@@ -227,6 +229,8 @@ def inventory_add():
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
                     purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
+                    depr_cat_str = ownership_depr_cat_ids[i] if i < len(ownership_depr_cat_ids) else ''
+                    depr_cat_id = int(depr_cat_str) if depr_cat_str.strip() else None
 
                     # Brutto/Netto flags (default to brutto=True)
                     ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
@@ -243,6 +247,7 @@ def inventory_add():
                                                categories=categories,
                                                category_tree=category_tree,
                                                users=users,
+                                               depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
@@ -255,6 +260,7 @@ def inventory_add():
                                                categories=categories,
                                                category_tree=category_tree,
                                                users=users,
+                                               depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     ownership = ItemOwnership(
@@ -265,7 +271,8 @@ def inventory_add():
                         external_price_is_brutto=ext_is_brutto,
                         purchase_cost=purchase_cost,
                         purchase_cost_is_brutto=pc_is_brutto,
-                        purchase_date=purchase_date
+                        purchase_date=purchase_date,
+                        depreciation_category_id=depr_cat_id
                     )
                     db.session.add(ownership)
 
@@ -282,6 +289,7 @@ def inventory_add():
                            categories=categories,
                            category_tree=category_tree,
                            users=users,
+                           depreciation_categories=depr_categories,
                            all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
 
@@ -293,6 +301,7 @@ def inventory_edit(item_id):
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
     users = User.query.filter_by(active=True).order_by(User.username).all()
+    depr_categories = DepreciationCategory.query.order_by(DepreciationCategory.name).all()
 
     if not current_user.can_edit_item(item):
         flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
@@ -340,6 +349,7 @@ def inventory_edit(item_id):
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
                 ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
+                ownership_depr_cat_ids = request.form.getlist('ownership_depreciation_category_ids')
 
                 # Collect existing ownership IDs BEFORE processing so new inserts don't interfere
                 existing_ownership_ids = {o.id for o in ItemOwnership.query.filter_by(item_id=item.id).all()}
@@ -354,6 +364,8 @@ def inventory_edit(item_id):
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
                     purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
+                    depr_cat_str = ownership_depr_cat_ids[i] if i < len(ownership_depr_cat_ids) else ''
+                    depr_cat_id = int(depr_cat_str) if depr_cat_str.strip() else None
 
                     # Brutto/Netto flags (default to brutto=True)
                     ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
@@ -370,6 +382,7 @@ def inventory_edit(item_id):
                                                categories=categories,
                                                category_tree=category_tree,
                                                users=users,
+                                               depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
@@ -382,6 +395,7 @@ def inventory_edit(item_id):
                                                categories=categories,
                                                category_tree=category_tree,
                                                users=users,
+                                               depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     oid_str = ownership_ids[i] if i < len(ownership_ids) else ''
@@ -398,6 +412,7 @@ def inventory_edit(item_id):
                             ownership.purchase_cost = purchase_cost
                             ownership.purchase_cost_is_brutto = pc_is_brutto
                             ownership.purchase_date = purchase_date
+                            ownership.depreciation_category_id = depr_cat_id
                             submitted_ids.add(oid)
                         else:
                             # ID invalid, create new
@@ -407,7 +422,8 @@ def inventory_edit(item_id):
                                 external_price_is_brutto=ext_is_brutto,
                                 purchase_cost=purchase_cost,
                                 purchase_cost_is_brutto=pc_is_brutto,
-                                purchase_date=purchase_date
+                                purchase_date=purchase_date,
+                                depreciation_category_id=depr_cat_id
                             )
                             db.session.add(ownership)
                     else:
@@ -417,7 +433,8 @@ def inventory_edit(item_id):
                             external_price_is_brutto=ext_is_brutto,
                             purchase_cost=purchase_cost,
                             purchase_cost_is_brutto=pc_is_brutto,
-                            purchase_date=purchase_date
+                            purchase_date=purchase_date,
+                            depreciation_category_id=depr_cat_id
                         )
                         db.session.add(ownership)
 
@@ -468,6 +485,7 @@ def inventory_edit(item_id):
                            categories=categories,
                            category_tree=category_tree,
                            users=users,
+                           depreciation_categories=depr_categories,
                            all_items=Item.query.filter(Item.is_package == False, Item.id != item.id).order_by(Item.name).all())
 
 
@@ -1750,7 +1768,10 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
     
     owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
     date_from/date_to: If set, only count external expenses paid within this range.
+    For ownerships with a depreciation category, show depreciation for the period
+    instead of total purchase cost.
     """
+    from helpers import calculate_depreciation_for_period
     if not user_ids:
         user_ids = [u.id for u in User.query.filter_by(active=True).all()]
     if owner_config is None:
@@ -1766,7 +1787,30 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
         revenue_pct = cfg.get('revenue_pct', 100.0) / 100.0
 
         ownerships = ItemOwnership.query.filter_by(user_id=uid).all()
-        investment = sum(o.total_purchase_cost for o in ownerships if not o.is_external) if include_purchases else 0
+
+        # Calculate investment: for items with depreciation category, use period depreciation
+        # For items without, use full purchase cost (as before)
+        investment = 0.0
+        depreciation_total = 0.0
+        raw_purchase_total = 0.0
+        if include_purchases:
+            for o in ownerships:
+                if o.is_external:
+                    continue
+                cost = o.total_purchase_cost
+                if cost <= 0:
+                    continue
+                if o.depreciation_category and o.purchase_date and date_from and date_to:
+                    depr = calculate_depreciation_for_period(
+                        cost, o.purchase_date, o.depreciation_category,
+                        date_from, date_to
+                    )
+                    depreciation_total += depr
+                    investment += depr
+                else:
+                    raw_purchase_total += cost
+                    investment += cost
+
         ext_cost = 0
         revenue_share = 0
 
@@ -1792,16 +1836,30 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
             for o in ownerships:
                 if o.purchase_cost and o.purchase_cost > 0:
                     item_obj = Item.query.get(o.item_id)
+                    depr_info = None
+                    if o.depreciation_category and o.purchase_date and date_from and date_to:
+                        depr_amount = calculate_depreciation_for_period(
+                            o.total_purchase_cost, o.purchase_date, o.depreciation_category,
+                            date_from, date_to
+                        )
+                        depr_info = {
+                            'category_name': o.depreciation_category.name,
+                            'method': o.depreciation_category.method_label,
+                            'period_amount': round(depr_amount, 2),
+                        }
                     purchases.append({
                         'item_name': item_obj.name if item_obj else f'Item #{o.item_id}',
                         'cost': round(o.purchase_cost, 2),
                         'date': o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '–',
+                        'depreciation': depr_info,
                     })
 
         summaries.append({
             'name': user.display_name or user.username,
             'item_count': len(ownerships),
             'investment': round(investment, 2),
+            'depreciation_total': round(depreciation_total, 2),
+            'raw_purchase_total': round(raw_purchase_total, 2),
             'revenue_share': round(revenue_share, 2),
             'ext_cost': round(ext_cost, 2),
             'purchases': purchases,
@@ -1816,9 +1874,13 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
     
     total_cost includes ALL purchased items from the given owners,
     not just those appearing in the filtered quotes.
+    For ownerships with a depreciation category, use period depreciation instead
+    of full purchase cost.
     owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
     date_from/date_to: If set, only count external expenses paid within this range.
     """
+    from helpers import calculate_depreciation_for_period
+
     site_settings = SiteSettings.query.first()
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
     tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
@@ -1861,8 +1923,10 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
                     external_cost += qi.expense.amount
     external_cost = round(external_cost, 2)
 
-    # Get purchase costs of ALL items from the relevant owners
+    # Get purchase costs / depreciation of ALL items from the relevant owners
     # Only include purchases for owners where include_purchases is True
+    # For ownerships with depreciation category: use period depreciation
+    # For ownerships without: use full purchase cost
     if user_ids is None:
         user_ids = [u.id for u in User.query.filter_by(active=True).all()]
     purchase_user_ids = [
@@ -1873,7 +1937,24 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         ItemOwnership.user_id.in_(purchase_user_ids),
         ItemOwnership.external_price_per_day.is_(None)
     ).all() if purchase_user_ids else []
-    total_cost = sum(o.total_purchase_cost for o in all_ownerships_for_cost)
+
+    total_cost = 0.0
+    total_depreciation = 0.0
+    total_raw_purchases = 0.0
+    for o in all_ownerships_for_cost:
+        cost = o.total_purchase_cost
+        if cost <= 0:
+            continue
+        if o.depreciation_category and o.purchase_date and date_from and date_to:
+            depr = calculate_depreciation_for_period(
+                cost, o.purchase_date, o.depreciation_category,
+                date_from, date_to
+            )
+            total_cost += depr
+            total_depreciation += depr
+        else:
+            total_cost += cost
+            total_raw_purchases += cost
 
     # Also collect all item_ids from quotes (still needed for EÜR Vorsteuer)
     item_ids = set()
@@ -1889,6 +1970,7 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         ust_collected = round(total_revenue - revenue_netto, 2)
 
         # Vorsteuer from purchase costs (all items from relevant owners)
+        # For depreciation items: Vorsteuer is proportional to the depreciation amount
         vorsteuer_purchases = 0.0
         purchases_netto = 0.0
         all_ownerships = all_ownerships_for_cost
@@ -1896,14 +1978,27 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
             cost = o.total_purchase_cost
             if cost <= 0:
                 continue
+
+            # Determine the effective cost for this period
+            if o.depreciation_category and o.purchase_date and date_from and date_to:
+                effective_cost = calculate_depreciation_for_period(
+                    cost, o.purchase_date, o.depreciation_category,
+                    date_from, date_to
+                )
+            else:
+                effective_cost = cost
+
+            if effective_cost <= 0:
+                continue
+
             if o.purchase_cost_is_brutto:
-                # Brutto → extract Vorsteuer
-                netto_cost = round(cost / tax_factor, 2)
-                vorsteuer_purchases += round(cost - netto_cost, 2)
+                # Brutto → extract Vorsteuer proportionally
+                netto_cost = round(effective_cost / tax_factor, 2)
+                vorsteuer_purchases += round(effective_cost - netto_cost, 2)
                 purchases_netto += netto_cost
             else:
                 # Already netto, no Vorsteuer
-                purchases_netto += cost
+                purchases_netto += effective_cost
 
         # Vorsteuer from external rental costs (only paid expenses)
         vorsteuer_external = 0.0
@@ -1952,6 +2047,8 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         'quote_count': len(quotes),
         'total_revenue': round(total_revenue, 2),
         'total_cost': round(total_cost, 2),
+        'total_depreciation': round(total_depreciation, 2),
+        'total_raw_purchases': round(total_raw_purchases, 2),
         'external_cost': round(external_cost, 2),
         'profit': round(total_revenue - total_cost - external_cost, 2),
         # EÜR fields
@@ -1966,6 +2063,86 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         'ust_zahllast': ust_zahllast,
         'gewinn_euer': gewinn_euer,
     }
+
+
+# ============= DEPRECIATION CATEGORIES (AfA) =============
+
+@admin_bp.route('/depreciation-categories', methods=['GET', 'POST'])
+@admin_required
+def depreciation_categories():
+    """Manage depreciation categories (AfA-Kategorien)"""
+    if request.method == 'POST':
+        action = request.form.get('action')
+        try:
+            if action == 'add':
+                name = request.form.get('name', '').strip()
+                method = request.form.get('method', 'linear').strip()
+                duration_months = int(request.form.get('duration_months', 12) or 12)
+                interval_months = int(request.form.get('interval_months', 12) or 12)
+                degressive_rate = None
+                if method == 'degressive':
+                    degressive_rate = float(request.form.get('degressive_rate', 25) or 25)
+                if method == 'sofort':
+                    duration_months = 1
+                    interval_months = 1
+                if name:
+                    cat = DepreciationCategory(
+                        name=name, method=method,
+                        duration_months=duration_months,
+                        interval_months=interval_months,
+                        degressive_rate=degressive_rate,
+                    )
+                    db.session.add(cat)
+                    db.session.commit()
+                    flash(f'AfA-Kategorie "{name}" erstellt.', 'success')
+                else:
+                    flash('Name ist erforderlich.', 'error')
+
+            elif action == 'edit':
+                cat_id = request.form.get('category_id', type=int)
+                cat = DepreciationCategory.query.get_or_404(cat_id)
+                cat.name = request.form.get('name', '').strip()
+                cat.method = request.form.get('method', 'linear').strip()
+                cat.duration_months = int(request.form.get('duration_months', 12) or 12)
+                cat.interval_months = int(request.form.get('interval_months', 12) or 12)
+                if cat.method == 'degressive':
+                    cat.degressive_rate = float(request.form.get('degressive_rate', 25) or 25)
+                else:
+                    cat.degressive_rate = None
+                if cat.method == 'sofort':
+                    cat.duration_months = 1
+                    cat.interval_months = 1
+                db.session.commit()
+                flash(f'AfA-Kategorie "{cat.name}" aktualisiert.', 'success')
+
+            elif action == 'delete':
+                cat_id = request.form.get('category_id', type=int)
+                cat = DepreciationCategory.query.get_or_404(cat_id)
+                # Clear references in ownerships
+                ItemOwnership.query.filter_by(depreciation_category_id=cat_id).update(
+                    {'depreciation_category_id': None}
+                )
+                name = cat.name
+                db.session.delete(cat)
+                db.session.commit()
+                flash(f'AfA-Kategorie "{name}" gelöscht.', 'success')
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Fehler: {str(e)}', 'error')
+
+        return redirect(url_for('admin.depreciation_categories'))
+
+    categories = DepreciationCategory.query.order_by(DepreciationCategory.name).all()
+    # Count how many ownerships use each category
+    usage_counts = {}
+    for cat in categories:
+        usage_counts[cat.id] = ItemOwnership.query.filter_by(depreciation_category_id=cat.id).count()
+
+    return render_template('admin/depreciation_categories.html',
+                           categories=categories,
+                           usage_counts=usage_counts,
+                           methods=DepreciationCategory.METHODS)
 
 
 @admin_bp.route('/finance-export')
@@ -2007,6 +2184,8 @@ def finance_export():
             'quote_count': totals['quote_count'],
             'total_revenue': totals['total_revenue'],
             'total_cost': totals['total_cost'],
+            'total_depreciation': totals['total_depreciation'],
+            'total_raw_purchases': totals['total_raw_purchases'],
             'external_cost': totals['external_cost'],
             'profit': totals['profit'],
             # EÜR fields
@@ -2137,7 +2316,12 @@ def finance_export_csv():
         writer3.writerow(['Zeitraum', f'{date_from} bis {date_to}'])
         writer3.writerow(['Anzahl Rechnungen', str(totals['quote_count'])])
         writer3.writerow(['Gesamtumsatz', f'{totals["total_revenue"]:.2f}'.replace('.', ',')])
-        writer3.writerow(['Anschaffungskosten', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
+        if totals.get('total_depreciation', 0) > 0:
+            writer3.writerow(['Kosten (Ansch./AfA)', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['  davon AfA im Zeitraum', f'{totals["total_depreciation"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['  davon Direkt (ohne AfA)', f'{totals["total_raw_purchases"]:.2f}'.replace('.', ',')])
+        else:
+            writer3.writerow(['Anschaffungskosten', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
         writer3.writerow(['Ext. Mietkosten', f'{totals["external_cost"]:.2f}'.replace('.', ',')])
         writer3.writerow(['Gewinn/Verlust', f'{totals["profit"]:.2f}'.replace('.', ',')])
         # EÜR rows (only meaningful for regular tax mode)
@@ -2154,15 +2338,30 @@ def finance_export_csv():
             writer3.writerow(['USt-Zahllast', f'{totals["ust_zahllast"]:.2f}'.replace('.', ',')])
             writer3.writerow(['Gewinn (EÜR)', f'{totals["gewinn_euer"]:.2f}'.replace('.', ',')])
         writer3.writerow([])
-        writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
+        has_any_depr = any(os_item.get('depreciation_total', 0) > 0 for os_item in owner_summaries)
+        if has_any_depr:
+            writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'AfA Zeitraum (€)', 'Direkt (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
+        else:
+            writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
         for os_item in owner_summaries:
-            writer3.writerow([
-                os_item['name'],
-                str(os_item['item_count']),
-                f'{os_item["investment"]:.2f}'.replace('.', ','),
-                f'{os_item["revenue_share"]:.2f}'.replace('.', ','),
-                f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
-            ])
+            if has_any_depr:
+                writer3.writerow([
+                    os_item['name'],
+                    str(os_item['item_count']),
+                    f'{os_item["investment"]:.2f}'.replace('.', ','),
+                    f'{os_item.get("depreciation_total", 0):.2f}'.replace('.', ','),
+                    f'{os_item.get("raw_purchase_total", 0):.2f}'.replace('.', ','),
+                    f'{os_item["revenue_share"]:.2f}'.replace('.', ','),
+                    f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
+                ])
+            else:
+                writer3.writerow([
+                    os_item['name'],
+                    str(os_item['item_count']),
+                    f'{os_item["investment"]:.2f}'.replace('.', ','),
+                    f'{os_item["revenue_share"]:.2f}'.replace('.', ','),
+                    f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
+                ])
         zf.writestr('zusammenfassung.csv', text_buf3.getvalue().encode('utf-8-sig'))
 
         # 4. Anschaffungen (purchases with dates)
@@ -2170,7 +2369,8 @@ def finance_export_csv():
         writer4 = csv.writer(text_buf4, delimiter=';', quoting=csv.QUOTE_ALL)
         writer4.writerow([
             'Artikel', 'Eigentümer', 'Menge', 'Anschaffungskosten (€)',
-            'Kosten brutto/netto', 'Kaufdatum', 'Ext. Preis/Tag (€)',
+            'Kosten brutto/netto', 'Kaufdatum', 'AfA-Kategorie',
+            'AfA-Methode', 'Ext. Preis/Tag (€)',
             'Ext. Preis brutto/netto', 'Typ'
         ])
         # Gather all ownerships for relevant items or selected users
@@ -2180,6 +2380,7 @@ def finance_export_csv():
         for o in ownership_query.order_by(ItemOwnership.item_id).all():
             item_obj = Item.query.get(o.item_id)
             owner_obj = User.query.get(o.user_id)
+            depr_cat = o.depreciation_category
             writer4.writerow([
                 item_obj.name if item_obj else f'Item #{o.item_id}',
                 (owner_obj.display_name or owner_obj.username) if owner_obj else f'User #{o.user_id}',
@@ -2187,6 +2388,8 @@ def finance_export_csv():
                 f'{(o.purchase_cost or 0):.2f}'.replace('.', ','),
                 'brutto' if o.purchase_cost_is_brutto else 'netto',
                 o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '',
+                depr_cat.name if depr_cat else '',
+                depr_cat.method_label if depr_cat else '',
                 f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
                 'brutto' if o.external_price_is_brutto else 'netto',
                 'Extern' if o.is_external else 'Intern',
