@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument, QuoteItemExpense, QuoteItemExpenseDocument, DepreciationCategory
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument, OwnershipPurchaseItem, PurchaseItemDocument, QuoteItemExpense, QuoteItemExpenseDocument, DepreciationCategory
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
 import erpnext_client
 from datetime import datetime
@@ -218,6 +218,7 @@ def inventory_add():
                 ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
                 ownership_depr_cat_ids = request.form.getlist('ownership_depreciation_category_ids')
+                ownership_purchase_items_json = request.form.getlist('ownership_purchase_items_json')
 
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
@@ -232,23 +233,30 @@ def inventory_add():
                     depr_cat_str = ownership_depr_cat_ids[i] if i < len(ownership_depr_cat_ids) else ''
                     depr_cat_id = int(depr_cat_str) if depr_cat_str.strip() else None
 
+                    # Parse purchase items JSON (line-item mode)
+                    import json as _json
+                    pi_json_str = ownership_purchase_items_json[i] if i < len(ownership_purchase_items_json) else ''
+                    purchase_items_data = _json.loads(pi_json_str) if pi_json_str.strip() else []
+
                     # Brutto/Netto flags (default to brutto=True)
                     ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
                     pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
                     ext_is_brutto = ext_is_brutto_str == '1'
                     pc_is_brutto = pc_is_brutto_str == '1'
 
-                    # Purchase date is required when purchase cost > 0
-                    if purchase_cost > 0 and not purchase_date:
-                        flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
-                        db.session.rollback()
-                        return render_template('admin/inventory_form.html',
-                                               item=None,
-                                               categories=categories,
-                                               category_tree=category_tree,
-                                               users=users,
-                                               depreciation_categories=depr_categories,
-                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
+                    # Validation for simple mode (no line items)
+                    if not purchase_items_data:
+                        # Purchase date is required when purchase cost > 0
+                        if purchase_cost > 0 and not purchase_date:
+                            flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
+                            db.session.rollback()
+                            return render_template('admin/inventory_form.html',
+                                                   item=None,
+                                                   categories=categories,
+                                                   category_tree=category_tree,
+                                                   users=users,
+                                                   depreciation_categories=depr_categories,
+                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
                     owner_user = User.query.get(uid)
@@ -263,6 +271,13 @@ def inventory_add():
                                                depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
+                    # When using line items, compute the sum for the top-level purchase_cost cache
+                    if purchase_items_data:
+                        purchase_cost = sum(float(pi.get('cost', 0) or 0) for pi in purchase_items_data)
+                        purchase_date = None
+                        pc_is_brutto = True
+                        depr_cat_id = None
+
                     ownership = ItemOwnership(
                         item_id=item.id,
                         user_id=uid,
@@ -275,6 +290,40 @@ def inventory_add():
                         depreciation_category_id=depr_cat_id
                     )
                     db.session.add(ownership)
+                    db.session.flush()
+
+                    # Create purchase line items if provided
+                    for pi_data in purchase_items_data:
+                        pi_cost = float(pi_data.get('cost', 0) or 0)
+                        pi_date_str = pi_data.get('purchase_date', '')
+                        pi_date = datetime.strptime(pi_date_str, '%Y-%m-%d') if pi_date_str and pi_date_str.strip() else None
+                        pi_depr_str = str(pi_data.get('depreciation_category_id', '') or '')
+                        pi_depr_id = int(pi_depr_str) if pi_depr_str.strip() else None
+                        pi_name = (pi_data.get('name', '') or '').strip()
+                        pi_is_brutto = pi_data.get('cost_is_brutto', True)
+                        if isinstance(pi_is_brutto, str):
+                            pi_is_brutto = pi_is_brutto == '1' or pi_is_brutto.lower() == 'true'
+
+                        if pi_cost > 0 and not pi_date:
+                            flash(f'Kaufdatum ist erforderlich für Anschaffungsposten "{pi_name or "ohne Name"}".', 'error')
+                            db.session.rollback()
+                            return render_template('admin/inventory_form.html',
+                                                   item=None,
+                                                   categories=categories,
+                                                   category_tree=category_tree,
+                                                   users=users,
+                                                   depreciation_categories=depr_categories,
+                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
+
+                        pi_obj = OwnershipPurchaseItem(
+                            ownership_id=ownership.id,
+                            name=pi_name or 'Posten',
+                            cost=pi_cost,
+                            cost_is_brutto=pi_is_brutto,
+                            purchase_date=pi_date,
+                            depreciation_category_id=pi_depr_id
+                        )
+                        db.session.add(pi_obj)
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -341,6 +390,7 @@ def inventory_edit(item_id):
                         db.session.add(pc)
             else:
                 # Update ownership entries — preserve existing rows (and their documents)
+                import json as _json
                 ownership_ids = request.form.getlist('ownership_ids')
                 ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
@@ -350,6 +400,7 @@ def inventory_edit(item_id):
                 ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
                 ownership_depr_cat_ids = request.form.getlist('ownership_depreciation_category_ids')
+                ownership_purchase_items_json = request.form.getlist('ownership_purchase_items_json')
 
                 # Collect existing ownership IDs BEFORE processing so new inserts don't interfere
                 existing_ownership_ids = {o.id for o in ItemOwnership.query.filter_by(item_id=item.id).all()}
@@ -367,23 +418,28 @@ def inventory_edit(item_id):
                     depr_cat_str = ownership_depr_cat_ids[i] if i < len(ownership_depr_cat_ids) else ''
                     depr_cat_id = int(depr_cat_str) if depr_cat_str.strip() else None
 
+                    # Parse purchase items JSON (line-item mode)
+                    pi_json_str = ownership_purchase_items_json[i] if i < len(ownership_purchase_items_json) else ''
+                    purchase_items_data = _json.loads(pi_json_str) if pi_json_str.strip() else []
+
                     # Brutto/Netto flags (default to brutto=True)
                     ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
                     pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
                     ext_is_brutto = ext_is_brutto_str == '1'
                     pc_is_brutto = pc_is_brutto_str == '1'
 
-                    # Purchase date is required when purchase cost > 0
-                    if purchase_cost > 0 and not purchase_date:
-                        flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
-                        db.session.rollback()
-                        return render_template('admin/inventory_form.html',
-                                               item=item,
-                                               categories=categories,
-                                               category_tree=category_tree,
-                                               users=users,
-                                               depreciation_categories=depr_categories,
-                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
+                    # Validation for simple mode (no line items)
+                    if not purchase_items_data:
+                        if purchase_cost > 0 and not purchase_date:
+                            flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
+                            db.session.rollback()
+                            return render_template('admin/inventory_form.html',
+                                                   item=item,
+                                                   categories=categories,
+                                                   category_tree=category_tree,
+                                                   users=users,
+                                                   depreciation_categories=depr_categories,
+                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
                     owner_user = User.query.get(uid)
@@ -397,6 +453,13 @@ def inventory_edit(item_id):
                                                users=users,
                                                depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
+
+                    # When using line items, compute the sum for the top-level purchase_cost cache
+                    if purchase_items_data:
+                        purchase_cost = sum(float(pi.get('cost', 0) or 0) for pi in purchase_items_data)
+                        purchase_date = None
+                        pc_is_brutto = True
+                        depr_cat_id = None
 
                     oid_str = ownership_ids[i] if i < len(ownership_ids) else ''
                     oid = int(oid_str) if oid_str.strip() else None
@@ -437,6 +500,76 @@ def inventory_edit(item_id):
                             depreciation_category_id=depr_cat_id
                         )
                         db.session.add(ownership)
+
+                    db.session.flush()
+
+                    # Update purchase line items — preserve existing rows (and their documents)
+                    existing_pi_ids = {pi.id for pi in OwnershipPurchaseItem.query.filter_by(ownership_id=ownership.id).all()}
+                    submitted_pi_ids = set()
+                    for pi_data in purchase_items_data:
+                        pi_cost = float(pi_data.get('cost', 0) or 0)
+                        pi_date_str = pi_data.get('purchase_date', '')
+                        pi_date = datetime.strptime(pi_date_str, '%Y-%m-%d') if pi_date_str and pi_date_str.strip() else None
+                        pi_depr_str = str(pi_data.get('depreciation_category_id', '') or '')
+                        pi_depr_id = int(pi_depr_str) if pi_depr_str.strip() else None
+                        pi_name = (pi_data.get('name', '') or '').strip()
+                        pi_is_brutto = pi_data.get('cost_is_brutto', True)
+                        if isinstance(pi_is_brutto, str):
+                            pi_is_brutto = pi_is_brutto == '1' or pi_is_brutto.lower() == 'true'
+
+                        if pi_cost > 0 and not pi_date:
+                            flash(f'Kaufdatum ist erforderlich für Anschaffungsposten "{pi_name or "ohne Name"}".', 'error')
+                            db.session.rollback()
+                            return render_template('admin/inventory_form.html',
+                                                   item=item,
+                                                   categories=categories,
+                                                   category_tree=category_tree,
+                                                   users=users,
+                                                   depreciation_categories=depr_categories,
+                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
+
+                        pi_id_str = str(pi_data.get('id', '') or '')
+                        pi_id = int(pi_id_str) if pi_id_str.strip() else None
+
+                        if pi_id and pi_id in existing_pi_ids:
+                            # Update existing purchase item
+                            pi_obj = OwnershipPurchaseItem.query.get(pi_id)
+                            pi_obj.name = pi_name or 'Posten'
+                            pi_obj.cost = pi_cost
+                            pi_obj.cost_is_brutto = pi_is_brutto
+                            pi_obj.purchase_date = pi_date
+                            pi_obj.depreciation_category_id = pi_depr_id
+                            submitted_pi_ids.add(pi_id)
+                        else:
+                            # Create new purchase item
+                            pi_obj = OwnershipPurchaseItem(
+                                ownership_id=ownership.id,
+                                name=pi_name or 'Posten',
+                                cost=pi_cost,
+                                cost_is_brutto=pi_is_brutto,
+                                purchase_date=pi_date,
+                                depreciation_category_id=pi_depr_id
+                            )
+                            db.session.add(pi_obj)
+
+                    # Delete removed purchase items (and their document files)
+                    for removed_pi_id in existing_pi_ids - submitted_pi_ids:
+                        old_pi = OwnershipPurchaseItem.query.get(removed_pi_id)
+                        if old_pi:
+                            for doc in old_pi.documents:
+                                doc_path = os.path.join(get_upload_path(), doc.filename)
+                                if os.path.exists(doc_path):
+                                    os.remove(doc_path)
+                            db.session.delete(old_pi)
+
+                    # If no purchase items remain (switched to simple mode), delete any leftover
+                    if not purchase_items_data:
+                        for old_pi in OwnershipPurchaseItem.query.filter_by(ownership_id=ownership.id).all():
+                            for doc in old_pi.documents:
+                                doc_path = os.path.join(get_upload_path(), doc.filename)
+                                if os.path.exists(doc_path):
+                                    os.remove(doc_path)
+                            db.session.delete(old_pi)
 
                 # Delete removed ownership rows (and their document files)
                 for removed_id in existing_ownership_ids - submitted_ids:
@@ -583,6 +716,81 @@ def ownership_delete_document(doc_id):
     """Delete an ownership document (AJAX)"""
     doc = OwnershipDocument.query.get_or_404(doc_id)
     ownership = ItemOwnership.query.get_or_404(doc.ownership_id)
+    item = Item.query.get_or_404(ownership.item_id)
+
+    if not current_user.can_edit_item(item):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+
+    file_path = os.path.join(get_upload_path(), doc.filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ============= PURCHASE ITEM DOCUMENTS =============
+
+@admin_bp.route('/purchase-item/<int:pi_id>/upload-document', methods=['POST'])
+@login_required
+def pi_upload_document(pi_id):
+    """Upload a document to an individual purchase item (AJAX)"""
+    pi = OwnershipPurchaseItem.query.get_or_404(pi_id)
+    ownership = ItemOwnership.query.get_or_404(pi.ownership_id)
+    item = Item.query.get_or_404(ownership.item_id)
+
+    if not current_user.can_edit_item(item):
+        return jsonify({'error': 'Keine Berechtigung'}), 403
+
+    if 'document' not in request.files:
+        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+
+    file = request.files['document']
+    if not file or not file.filename:
+        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+
+    if not allowed_document_file(file.filename):
+        return jsonify({'error': 'Dateityp nicht erlaubt. Erlaubt: PDF, Bilder, Office-Dokumente, TXT, CSV'}), 400
+
+    original_name = secure_filename(file.filename)
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    stored_name = f"{uuid.uuid4().hex}.{ext}"
+    file.save(os.path.join(get_upload_path(), stored_name))
+
+    doc = PurchaseItemDocument(
+        purchase_item_id=pi.id,
+        filename=stored_name,
+        original_name=original_name
+    )
+    db.session.add(doc)
+    db.session.commit()
+
+    return jsonify({
+        'id': doc.id,
+        'original_name': doc.original_name,
+        'download_url': url_for('admin.pi_download_document', doc_id=doc.id),
+        'delete_url': url_for('admin.pi_delete_document', doc_id=doc.id)
+    })
+
+
+@admin_bp.route('/purchase-item/document/<int:doc_id>/download')
+@login_required
+def pi_download_document(doc_id):
+    """Download a purchase item document"""
+    doc = PurchaseItemDocument.query.get_or_404(doc_id)
+    from flask import send_from_directory
+    return send_from_directory(get_upload_path(), doc.filename,
+                               download_name=doc.original_name, as_attachment=True)
+
+
+@admin_bp.route('/purchase-item/document/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def pi_delete_document(doc_id):
+    """Delete a purchase item document (AJAX)"""
+    doc = PurchaseItemDocument.query.get_or_404(doc_id)
+    pi = OwnershipPurchaseItem.query.get_or_404(doc.purchase_item_id)
+    ownership = ItemOwnership.query.get_or_404(pi.ownership_id)
     item = Item.query.get_or_404(ownership.item_id)
 
     if not current_user.can_edit_item(item):
@@ -1788,8 +1996,8 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
 
         ownerships = ItemOwnership.query.filter_by(user_id=uid).all()
 
-        # Calculate investment: for items with depreciation category, use period depreciation
-        # For items without, use full purchase cost (as before)
+        # Calculate investment: for entries with depreciation category, use period depreciation
+        # For entries without, use full purchase cost (as before)
         investment = 0.0
         depreciation_total = 0.0
         raw_purchase_total = 0.0
@@ -1797,24 +2005,23 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
             for o in ownerships:
                 if o.is_external:
                     continue
-                cost = o.total_purchase_cost
-                if cost <= 0:
-                    continue
-                if o.depreciation_category and o.purchase_date and date_from and date_to:
-                    # AfA: always include, calculation handles period automatically
-                    depr = calculate_depreciation_for_period(
-                        cost, o.purchase_date, o.depreciation_category,
-                        date_from, date_to
-                    )
-                    depreciation_total += depr
-                    investment += depr
-                else:
-                    # No AfA: only include if purchase date is within the selected period
-                    if date_from and date_to and o.purchase_date:
-                        if o.purchase_date < date_from or o.purchase_date > date_to:
-                            continue
-                    raw_purchase_total += cost
-                    investment += cost
+                for pe in o.purchase_entries:
+                    cost = pe['cost']
+                    if cost <= 0:
+                        continue
+                    if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
+                        depr = calculate_depreciation_for_period(
+                            cost, pe['purchase_date'], pe['depreciation_category'],
+                            date_from, date_to
+                        )
+                        depreciation_total += depr
+                        investment += depr
+                    else:
+                        if date_from and date_to and pe['purchase_date']:
+                            if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
+                                continue
+                        raw_purchase_total += cost
+                        investment += cost
 
         ext_cost = 0
         revenue_share = 0
@@ -1839,29 +2046,34 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
         purchases = []
         if include_purchases:
             for o in ownerships:
-                if o.purchase_cost and o.purchase_cost > 0:
-                    if o.depreciation_category and o.purchase_date and date_from and date_to:
-                        # AfA: always show, calculation handles period
+                item_obj = Item.query.get(o.item_id)
+                item_name = item_obj.name if item_obj else f'Item #{o.item_id}'
+                for pe in o.purchase_entries:
+                    cost = pe['cost']
+                    if cost <= 0:
+                        continue
+                    if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
                         depr_amount = calculate_depreciation_for_period(
-                            o.total_purchase_cost, o.purchase_date, o.depreciation_category,
+                            cost, pe['purchase_date'], pe['depreciation_category'],
                             date_from, date_to
                         )
                         depr_info = {
-                            'category_name': o.depreciation_category.name,
-                            'method': o.depreciation_category.method_label,
+                            'category_name': pe['depreciation_category'].name,
+                            'method': pe['depreciation_category'].method_label,
                             'period_amount': round(depr_amount, 2),
                         }
                     else:
-                        # No AfA: only include if purchase date in selected period
                         depr_info = None
-                        if date_from and date_to and o.purchase_date:
-                            if o.purchase_date < date_from or o.purchase_date > date_to:
+                        if date_from and date_to and pe['purchase_date']:
+                            if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
                                 continue
-                    item_obj = Item.query.get(o.item_id)
+                    label = item_name
+                    if pe.get('label'):
+                        label = f"{item_name} — {pe['label']}"
                     purchases.append({
-                        'item_name': item_obj.name if item_obj else f'Item #{o.item_id}',
-                        'cost': round(o.purchase_cost, 2),
-                        'date': o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '–',
+                        'item_name': label,
+                        'cost': round(cost, 2),
+                        'date': pe['purchase_date'].strftime('%d.%m.%Y') if pe['purchase_date'] else '–',
                         'depreciation': depr_info,
                     })
 
@@ -1953,24 +2165,23 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
     total_depreciation = 0.0
     total_raw_purchases = 0.0
     for o in all_ownerships_for_cost:
-        cost = o.total_purchase_cost
-        if cost <= 0:
-            continue
-        if o.depreciation_category and o.purchase_date and date_from and date_to:
-            # AfA: always include, calculation handles period automatically
-            depr = calculate_depreciation_for_period(
-                cost, o.purchase_date, o.depreciation_category,
-                date_from, date_to
-            )
-            total_cost += depr
-            total_depreciation += depr
-        else:
-            # No AfA: only include if purchase date is within the selected period
-            if date_from and date_to and o.purchase_date:
-                if o.purchase_date < date_from or o.purchase_date > date_to:
-                    continue
-            total_cost += cost
-            total_raw_purchases += cost
+        for pe in o.purchase_entries:
+            cost = pe['cost']
+            if cost <= 0:
+                continue
+            if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
+                depr = calculate_depreciation_for_period(
+                    cost, pe['purchase_date'], pe['depreciation_category'],
+                    date_from, date_to
+                )
+                total_cost += depr
+                total_depreciation += depr
+            else:
+                if date_from and date_to and pe['purchase_date']:
+                    if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
+                        continue
+                total_cost += cost
+                total_raw_purchases += cost
 
     # Also collect all item_ids from quotes (still needed for EÜR Vorsteuer)
     item_ids = set()
@@ -1989,32 +2200,32 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         # For depreciation items: Vorsteuer is proportional to the depreciation amount
         vorsteuer_purchases = 0.0
         purchases_netto = 0.0
-        all_ownerships = all_ownerships_for_cost
-        for o in all_ownerships:
-            cost = o.total_purchase_cost
-            if cost <= 0:
-                continue
+        for o in all_ownerships_for_cost:
+            for pe in o.purchase_entries:
+                cost = pe['cost']
+                if cost <= 0:
+                    continue
 
-            # Determine the effective cost for this period
-            if o.depreciation_category and o.purchase_date and date_from and date_to:
-                effective_cost = calculate_depreciation_for_period(
-                    cost, o.purchase_date, o.depreciation_category,
-                    date_from, date_to
-                )
-            else:
-                effective_cost = cost
+                # Determine the effective cost for this period
+                if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
+                    effective_cost = calculate_depreciation_for_period(
+                        cost, pe['purchase_date'], pe['depreciation_category'],
+                        date_from, date_to
+                    )
+                else:
+                    effective_cost = cost
 
-            if effective_cost <= 0:
-                continue
+                if effective_cost <= 0:
+                    continue
 
-            if o.purchase_cost_is_brutto:
-                # Brutto → extract Vorsteuer proportionally
-                netto_cost = round(effective_cost / tax_factor, 2)
-                vorsteuer_purchases += round(effective_cost - netto_cost, 2)
-                purchases_netto += netto_cost
-            else:
-                # Already netto, no Vorsteuer
-                purchases_netto += effective_cost
+                if pe['cost_is_brutto']:
+                    # Brutto → extract Vorsteuer proportionally
+                    netto_cost = round(effective_cost / tax_factor, 2)
+                    vorsteuer_purchases += round(effective_cost - netto_cost, 2)
+                    purchases_netto += netto_cost
+                else:
+                    # Already netto, no Vorsteuer
+                    purchases_netto += effective_cost
 
         # Vorsteuer from external rental costs (only paid expenses)
         vorsteuer_external = 0.0
@@ -2396,20 +2607,43 @@ def finance_export_csv():
         for o in ownership_query.order_by(ItemOwnership.item_id).all():
             item_obj = Item.query.get(o.item_id)
             owner_obj = User.query.get(o.user_id)
-            depr_cat = o.depreciation_category
-            writer4.writerow([
-                item_obj.name if item_obj else f'Item #{o.item_id}',
-                (owner_obj.display_name or owner_obj.username) if owner_obj else f'User #{o.user_id}',
-                o.quantity,
-                f'{(o.purchase_cost or 0):.2f}'.replace('.', ','),
-                'brutto' if o.purchase_cost_is_brutto else 'netto',
-                o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '',
-                depr_cat.name if depr_cat else '',
-                depr_cat.method_label if depr_cat else '',
-                f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
-                'brutto' if o.external_price_is_brutto else 'netto',
-                'Extern' if o.is_external else 'Intern',
-            ])
+            item_name = item_obj.name if item_obj else f'Item #{o.item_id}'
+            owner_name = (owner_obj.display_name or owner_obj.username) if owner_obj else f'User #{o.user_id}'
+            entries = o.purchase_entries
+            if entries:
+                for pe in entries:
+                    depr_cat = pe.get('depreciation_category')
+                    label = item_name
+                    if pe.get('label'):
+                        label = f"{item_name} — {pe['label']}"
+                    writer4.writerow([
+                        label,
+                        owner_name,
+                        o.quantity,
+                        f'{(pe["cost"] or 0):.2f}'.replace('.', ','),
+                        'brutto' if pe.get('cost_is_brutto', True) else 'netto',
+                        pe['purchase_date'].strftime('%d.%m.%Y') if pe.get('purchase_date') else '',
+                        depr_cat.name if depr_cat else '',
+                        depr_cat.method_label if depr_cat else '',
+                        f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
+                        'brutto' if o.external_price_is_brutto else 'netto',
+                        'Extern' if o.is_external else 'Intern',
+                    ])
+            else:
+                # No purchase entries (no cost) — still write a row for external ownerships
+                writer4.writerow([
+                    item_name,
+                    owner_name,
+                    o.quantity,
+                    '0,00',
+                    '',
+                    '',
+                    '',
+                    '',
+                    f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
+                    'brutto' if o.external_price_is_brutto else 'netto',
+                    'Extern' if o.is_external else 'Intern',
+                ])
         zf.writestr('anschaffungen.csv', text_buf4.getvalue().encode('utf-8-sig'))
 
     zip_buf.seek(0)

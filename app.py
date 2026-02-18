@@ -461,6 +461,37 @@ with app.app_context():
             cursor.execute("ALTER TABLE item_ownership ADD COLUMN depreciation_category_id INTEGER REFERENCES depreciation_category(id)")
             print("Added depreciation_category_id column to item_ownership table")
 
+        # OwnershipPurchaseItem table migration (per-line-item purchase costs)
+        if not table_exists2('ownership_purchase_item'):
+            cursor.execute("""
+                CREATE TABLE ownership_purchase_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ownership_id INTEGER NOT NULL,
+                    name VARCHAR(300) NOT NULL,
+                    cost FLOAT NOT NULL DEFAULT 0.0,
+                    cost_is_brutto BOOLEAN DEFAULT 1,
+                    purchase_date DATETIME,
+                    depreciation_category_id INTEGER,
+                    FOREIGN KEY (ownership_id) REFERENCES item_ownership(id),
+                    FOREIGN KEY (depreciation_category_id) REFERENCES depreciation_category(id)
+                )
+            """)
+            print("Created ownership_purchase_item table")
+
+        # PurchaseItemDocument table migration
+        if not table_exists2('purchase_item_document'):
+            cursor.execute("""
+                CREATE TABLE purchase_item_document (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    purchase_item_id INTEGER NOT NULL,
+                    filename VARCHAR(300) NOT NULL,
+                    original_name VARCHAR(300) NOT NULL,
+                    uploaded_at DATETIME,
+                    FOREIGN KEY (purchase_item_id) REFERENCES ownership_purchase_item(id)
+                )
+            """)
+            print("Created purchase_item_document table")
+
         conn.commit()
         conn.close()
 

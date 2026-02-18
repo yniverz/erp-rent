@@ -158,6 +158,12 @@ class DepreciationCategory(db.Model):
 class ItemOwnership(db.Model):
     """Per-user ownership/supply of an item.
     If external_price_per_day is set, this user is an external provider for this item.
+
+    Purchase costs can be tracked in two modes:
+    - Simple mode: a single purchase_cost / purchase_date / depreciation_category on this row
+    - Line-item mode: multiple OwnershipPurchaseItem children (purchase_items relationship)
+    When purchase_items exist, they are authoritative and the top-level purchase_cost field
+    is kept as a cached sum for backward-compatible reads.
     """
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
@@ -175,6 +181,14 @@ class ItemOwnership(db.Model):
     depreciation_category = db.relationship('DepreciationCategory', lazy='selectin')
     documents = db.relationship('OwnershipDocument', back_populates='ownership',
                                 cascade='all, delete-orphan', lazy='selectin')
+    purchase_items = db.relationship('OwnershipPurchaseItem', back_populates='ownership',
+                                     cascade='all, delete-orphan', lazy='selectin',
+                                     order_by='OwnershipPurchaseItem.id')
+
+    @property
+    def has_purchase_items(self):
+        """True when individual acquisition line items are used instead of the single purchase_cost."""
+        return bool(self.purchase_items)
 
     @property
     def is_external(self):
@@ -184,7 +198,37 @@ class ItemOwnership(db.Model):
     def total_purchase_cost(self):
         if self.is_external:
             return 0
+        if self.has_purchase_items:
+            return round(sum(pi.cost or 0 for pi in self.purchase_items), 2)
         return round(self.purchase_cost or 0, 2)
+
+    @property
+    def purchase_entries(self):
+        """Return a unified list of purchase entry dicts used by depreciation/finance code.
+        Each entry has: cost, cost_is_brutto, purchase_date, depreciation_category, label.
+        When line items exist, one entry per line item; otherwise one entry from the top-level fields.
+        """
+        if self.has_purchase_items:
+            entries = []
+            for pi in self.purchase_items:
+                entries.append({
+                    'cost': pi.cost or 0,
+                    'cost_is_brutto': pi.cost_is_brutto,
+                    'purchase_date': pi.purchase_date,
+                    'depreciation_category': pi.depreciation_category,
+                    'label': pi.name or '',
+                })
+            return entries
+        # Single-value mode – return one entry (if there is a cost)
+        if (self.purchase_cost or 0) > 0:
+            return [{
+                'cost': self.purchase_cost,
+                'cost_is_brutto': self.purchase_cost_is_brutto,
+                'purchase_date': self.purchase_date,
+                'depreciation_category': self.depreciation_category,
+                'label': '',
+            }]
+        return []
 
 
 class OwnershipDocument(db.Model):
@@ -196,6 +240,48 @@ class OwnershipDocument(db.Model):
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     ownership = db.relationship('ItemOwnership', back_populates='documents')
+
+
+class OwnershipPurchaseItem(db.Model):
+    """Individual acquisition line item within an ownership entry.
+    Allows splitting the purchase cost into named components (e.g. lamp vs case)
+    each with its own cost, date, and depreciation category.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    ownership_id = db.Column(db.Integer, db.ForeignKey('item_ownership.id'), nullable=False)
+    name = db.Column(db.String(300), nullable=False)  # e.g. "Lampe", "Case"
+    cost = db.Column(db.Float, nullable=False, default=0.0)
+    cost_is_brutto = db.Column(db.Boolean, default=True)
+    purchase_date = db.Column(db.DateTime, nullable=True)
+    depreciation_category_id = db.Column(db.Integer, db.ForeignKey('depreciation_category.id'), nullable=True)
+
+    ownership = db.relationship('ItemOwnership', back_populates='purchase_items')
+    depreciation_category = db.relationship('DepreciationCategory', lazy='selectin')
+    documents = db.relationship('PurchaseItemDocument', back_populates='purchase_item',
+                                cascade='all, delete-orphan', lazy='selectin')
+
+    @property
+    def to_dict(self):
+        """Serialize for JSON (used in template hidden field via Jinja map filter)."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'cost': self.cost,
+            'cost_is_brutto': self.cost_is_brutto,
+            'purchase_date': self.purchase_date.strftime('%Y-%m-%d') if self.purchase_date else '',
+            'depreciation_category_id': self.depreciation_category_id or '',
+        }
+
+
+class PurchaseItemDocument(db.Model):
+    """Document (invoice, receipt, etc.) attached to an individual purchase item."""
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_item_id = db.Column(db.Integer, db.ForeignKey('ownership_purchase_item.id'), nullable=False)
+    filename = db.Column(db.String(300), nullable=False)  # stored filename (UUID-based)
+    original_name = db.Column(db.String(300), nullable=False)  # original upload name
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    purchase_item = db.relationship('OwnershipPurchaseItem', back_populates='documents')
 
 
 class Item(db.Model):
