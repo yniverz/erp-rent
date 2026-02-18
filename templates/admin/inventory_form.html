@@ -132,7 +132,7 @@
                                     {% endfor %}
                                 </select>
                             </td>
-                            <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-80"></td>
+                            <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-80" oninput="updateUnitPriceForRow(this)"></td>
                             <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
                             {% if site_settings and site_settings.tax_mode == 'regular' %}
                             <td>
@@ -142,7 +142,10 @@
                                 </select>
                             </td>
                             {% endif %}
-                            <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
+                            <td>
+                                <input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)" oninput="updateUnitPrice(this)">
+                                <small class="unit-price-hint help-text" style="display:none"></small>
+                            </td>
                             {% if site_settings and site_settings.tax_mode == 'regular' %}
                             <td>
                                 <select name="ownership_purchase_cost_is_brutto" class="w-80">
@@ -252,7 +255,7 @@ function addOwnershipRow() {
                 {% endfor %}
             </select>
         </td>
-        <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-80"></td>
+        <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-80" oninput="updateUnitPriceForRow(this)"></td>
         <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-100" placeholder="leer = intern"></td>
         {% if site_settings and site_settings.tax_mode == 'regular' %}
         <td>
@@ -262,7 +265,10 @@ function addOwnershipRow() {
             </select>
         </td>
         {% endif %}
-        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
+        <td>
+            <input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)" oninput="updateUnitPrice(this)">
+            <small class="unit-price-hint help-text" style="display:none"></small>
+        </td>
         {% if site_settings and site_settings.tax_mode == 'regular' %}
         <td>
             <select name="ownership_purchase_cost_is_brutto" class="w-80">
@@ -325,6 +331,28 @@ function onOwnershipUserChange(selectEl) {
     }
 }
 
+// Live unit price calculation
+function updateUnitPrice(costInput) {
+    var row = costInput.closest('tr');
+    var qtyInput = row.querySelector('input[name="ownership_quantities"]');
+    var hint = row.querySelector('.unit-price-hint');
+    if (!hint) return;
+    var cost = parseFloat(costInput.value) || 0;
+    var qty = parseInt(qtyInput.value) || 0;
+    if (cost > 0 && qty > 0) {
+        var unit = (cost / qty).toFixed(2);
+        hint.textContent = '= ' + unit + ' €/Stk';
+        hint.style.display = '';
+    } else {
+        hint.style.display = 'none';
+    }
+}
+function updateUnitPriceForRow(qtyInput) {
+    var row = qtyInput.closest('tr');
+    var costInput = row.querySelector('input[name="ownership_purchase_costs"]');
+    if (costInput) updateUnitPrice(costInput);
+}
+
 // Handle purchase cost changes – require purchase_date when cost > 0
 function onPurchaseCostChange(input) {
     var row = input.closest('tr');
@@ -352,9 +380,10 @@ document.addEventListener('change', function(e) {
 document.querySelectorAll('#ownership-tbody select[name="ownership_user_ids"]').forEach(function(sel) {
     onOwnershipUserChange(sel);
 });
-// Initialize purchase cost validation
+// Initialize purchase cost validation & unit price hints
 document.querySelectorAll('#ownership-tbody input[name="ownership_purchase_costs"]').forEach(function(input) {
     onPurchaseCostChange(input);
+    updateUnitPrice(input);
 });
 
 // ── Ownership Document Upload/Delete (AJAX) ──
