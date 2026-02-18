@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument, QuoteItemExpense, QuoteItemExpenseDocument
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
 import erpnext_client
 from datetime import datetime
@@ -579,6 +579,109 @@ def ownership_delete_document(doc_id):
     return jsonify({'success': True})
 
 
+# ============= QUOTE ITEM EXPENSES =============
+
+@admin_bp.route('/expense/<int:expense_id>/mark_paid', methods=['POST'])
+@login_required
+def expense_mark_paid(expense_id):
+    """Mark an external cost expense as paid"""
+    expense = QuoteItemExpense.query.get_or_404(expense_id)
+    try:
+        paid_date_str = request.form.get('paid_at', '').strip()
+        if paid_date_str:
+            expense.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
+        else:
+            expense.paid_at = datetime.utcnow()
+        expense.paid = True
+        notes = request.form.get('notes', '').strip()
+        if notes:
+            expense.notes = notes
+        db.session.commit()
+        flash('Ausgabe als bezahlt markiert.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
+
+
+@admin_bp.route('/expense/<int:expense_id>/mark_unpaid', methods=['POST'])
+@login_required
+def expense_mark_unpaid(expense_id):
+    """Mark an external cost expense as unpaid"""
+    expense = QuoteItemExpense.query.get_or_404(expense_id)
+    try:
+        expense.paid = False
+        # Keep paid_at so it can be prefilled when re-marking as paid
+        db.session.commit()
+        flash('Ausgabe als unbezahlt markiert.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
+
+
+@admin_bp.route('/expense/<int:expense_id>/upload-document', methods=['POST'])
+@login_required
+def expense_upload_document(expense_id):
+    """Upload a document (invoice, receipt) to an expense entry (AJAX)"""
+    expense = QuoteItemExpense.query.get_or_404(expense_id)
+
+    if 'document' not in request.files:
+        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+
+    file = request.files['document']
+    if not file or not file.filename:
+        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+
+    if not allowed_document_file(file.filename):
+        return jsonify({'error': 'Dateityp nicht erlaubt.'}), 400
+
+    original_name = secure_filename(file.filename)
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    stored_name = f"{uuid.uuid4().hex}.{ext}"
+    file.save(os.path.join(get_upload_path(), stored_name))
+
+    doc = QuoteItemExpenseDocument(
+        expense_id=expense.id,
+        filename=stored_name,
+        original_name=original_name
+    )
+    db.session.add(doc)
+    db.session.commit()
+
+    return jsonify({
+        'id': doc.id,
+        'original_name': doc.original_name,
+        'download_url': url_for('admin.expense_download_document', doc_id=doc.id),
+        'delete_url': url_for('admin.expense_delete_document', doc_id=doc.id)
+    })
+
+
+@admin_bp.route('/expense/document/<int:doc_id>/download')
+@login_required
+def expense_download_document(doc_id):
+    """Download an expense document"""
+    doc = QuoteItemExpenseDocument.query.get_or_404(doc_id)
+    from flask import send_from_directory
+    return send_from_directory(get_upload_path(), doc.filename,
+                               download_name=doc.original_name, as_attachment=True)
+
+
+@admin_bp.route('/expense/document/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def expense_delete_document(doc_id):
+    """Delete an expense document (AJAX)"""
+    doc = QuoteItemExpenseDocument.query.get_or_404(doc_id)
+
+    file_path = os.path.join(get_upload_path(), doc.filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
 # ============= QUOTES =============
 
 @admin_bp.route('/quotes')
@@ -900,6 +1003,16 @@ def quote_edit(quote_id):
                     quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
                 else:
                     quote.finalized_at = datetime.utcnow()
+
+                # Create QuoteItemExpense entries for items with external costs
+                for qi in quote.quote_items:
+                    if qi.rental_cost_per_day and qi.rental_cost_per_day > 0 and not qi.expense:
+                        expense = QuoteItemExpense(
+                            quote_item_id=qi.id,
+                            amount=qi.total_external_cost,
+                        )
+                        db.session.add(expense)
+
                 db.session.commit()
                 flash('Angebot finalisiert!', 'success')
                 return redirect(url_for('admin.quote_view', quote_id=quote.id))
@@ -930,7 +1043,8 @@ def quote_edit(quote_id):
 def quote_view(quote_id):
     """View quote details"""
     quote = Quote.query.get_or_404(quote_id)
-    return render_template('admin/quote_view.html', quote=quote)
+    from datetime import date as date_cls
+    return render_template('admin/quote_view.html', quote=quote, today=date_cls.today().isoformat())
 
 
 @admin_bp.route('/quotes/<int:quote_id>/unfinalize', methods=['POST'])
@@ -1568,7 +1682,7 @@ def serve_logo():
 
 def _get_filtered_quotes(date_from, date_to, user_ids):
     """Get quotes filtered by date range and owner user IDs.
-    Only includes finalized, performed, or paid quotes (no drafts).
+    Only includes paid quotes (no drafts, finalized, or performed).
     Returns quotes where at least one quote item belongs to an item
     owned by one of the selected users.
     If user_ids is empty/None, return all quotes.
@@ -1576,8 +1690,8 @@ def _get_filtered_quotes(date_from, date_to, user_ids):
     from sqlalchemy import or_, and_
 
     query = Quote.query.filter(
-        # Only finalized, performed, or paid
-        Quote.status.in_(['finalized', 'performed', 'paid']),
+        # Only paid quotes
+        Quote.status == 'paid',
         or_(
             # Paid within date range
             and_(Quote.paid_at.isnot(None),
@@ -1631,10 +1745,11 @@ def _parse_owner_config(user_ids):
     return config
 
 
-def _compute_owner_summaries(user_ids, quotes, owner_config=None):
+def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None, date_to=None):
     """Compute per-owner financial summaries.
     
     owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
+    date_from/date_to: If set, only count external expenses paid within this range.
     """
     if not user_ids:
         user_ids = [u.id for u in User.query.filter_by(active=True).all()]
@@ -1660,8 +1775,14 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None):
             for qi in q.quote_items:
                 if qi.item_id and qi.item_id in owned_item_ids:
                     revenue_share += qi.total_price
-                    if qi.rental_cost_per_day:
-                        ext_cost += qi.total_external_cost
+                    if qi.rental_cost_per_day and qi.expense:
+                        if qi.expense.paid:
+                            # Check if paid_at is within date range
+                            if date_from and date_to and qi.expense.paid_at:
+                                if qi.expense.paid_at >= date_from and qi.expense.paid_at <= date_to:
+                                    ext_cost += qi.expense.amount
+                            else:
+                                ext_cost += qi.expense.amount
 
         revenue_share = revenue_share * revenue_pct
 
@@ -1690,12 +1811,13 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None):
     return summaries
 
 
-def _compute_totals(quotes, user_ids=None, owner_config=None):
+def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, date_to=None):
     """Compute aggregate totals from a list of quotes, including EÜR data.
     
     total_cost includes ALL purchased items from the given owners,
     not just those appearing in the filtered quotes.
     owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
+    date_from/date_to: If set, only count external expenses paid within this range.
     """
     site_settings = SiteSettings.query.first()
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
@@ -1727,7 +1849,17 @@ def _compute_totals(quotes, user_ids=None, owner_config=None):
     adjusted_revenue = round(adjusted_revenue, 2)
 
     total_revenue = adjusted_revenue
-    external_cost = sum(qi.total_external_cost for q in quotes for qi in q.quote_items)
+    # Only count external costs for expenses that are marked as paid (and within date range)
+    external_cost = 0.0
+    for q in quotes:
+        for qi in q.quote_items:
+            if qi.rental_cost_per_day and qi.expense and qi.expense.paid:
+                if date_from and date_to and qi.expense.paid_at:
+                    if qi.expense.paid_at >= date_from and qi.expense.paid_at <= date_to:
+                        external_cost += qi.expense.amount
+                else:
+                    external_cost += qi.expense.amount
+    external_cost = round(external_cost, 2)
 
     # Get purchase costs of ALL items from the relevant owners
     # Only include purchases for owners where include_purchases is True
@@ -1773,12 +1905,18 @@ def _compute_totals(quotes, user_ids=None, owner_config=None):
                 # Already netto, no Vorsteuer
                 purchases_netto += cost
 
-        # Vorsteuer from external rental costs
+        # Vorsteuer from external rental costs (only paid expenses)
         vorsteuer_external = 0.0
         external_netto = 0.0
         for q in quotes:
             for qi in q.quote_items:
-                ext_total = qi.total_external_cost
+                # Only count if expense exists, is paid, and within date range
+                if not (qi.rental_cost_per_day and qi.expense and qi.expense.paid):
+                    continue
+                if date_from and date_to and qi.expense.paid_at:
+                    if not (qi.expense.paid_at >= date_from and qi.expense.paid_at <= date_to):
+                        continue
+                ext_total = qi.expense.amount
                 if ext_total <= 0:
                     continue
                 # Find the ownership to check its external_price_is_brutto flag
@@ -1862,7 +2000,7 @@ def finance_export():
         quotes = _get_filtered_quotes(df, dt, user_ids)
         resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
         owner_config = _parse_owner_config(resolved_user_ids)
-        totals = _compute_totals(quotes, resolved_user_ids, owner_config)
+        totals = _compute_totals(quotes, resolved_user_ids, owner_config, date_from=df, date_to=dt)
 
         preview = {
             'quotes': quotes,
@@ -1917,11 +2055,13 @@ def finance_export_csv():
     quotes = _get_filtered_quotes(df, dt, user_ids)
     resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
     owner_config = _parse_owner_config(resolved_user_ids)
-    totals = _compute_totals(quotes, resolved_user_ids, owner_config)
+    totals = _compute_totals(quotes, resolved_user_ids, owner_config, date_from=df, date_to=dt)
     owner_summaries = _compute_owner_summaries(
         resolved_user_ids,
         quotes,
-        owner_config
+        owner_config,
+        date_from=df,
+        date_to=dt
     )
 
     zip_buf = BytesIO()
@@ -1938,7 +2078,11 @@ def finance_export_csv():
             'Gesamtbetrag (€)', 'Ext. Kosten (€)', 'Bemerkungen', 'Interne Notizen'
         ])
         for q in quotes:
-            ext_cost = sum(qi.total_external_cost for qi in q.quote_items)
+            ext_cost = sum(
+                qi.expense.amount for qi in q.quote_items
+                if qi.expense and qi.expense.paid
+                and (not df or not dt or not qi.expense.paid_at or (qi.expense.paid_at >= df and qi.expense.paid_at <= dt))
+            )
             writer.writerow([
                 q.reference_number or f'RE{q.id:04d}',
                 q.customer_name,
@@ -2081,11 +2225,13 @@ def finance_export_pdf():
     quotes = _get_filtered_quotes(df, dt, user_ids)
     resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
     owner_config = _parse_owner_config(resolved_user_ids)
-    totals = _compute_totals(quotes, resolved_user_ids, owner_config)
+    totals = _compute_totals(quotes, resolved_user_ids, owner_config, date_from=df, date_to=dt)
     owner_summaries = _compute_owner_summaries(
         resolved_user_ids,
         quotes,
-        owner_config
+        owner_config,
+        date_from=df,
+        date_to=dt
     )
 
     site_settings = SiteSettings.query.first()
@@ -2094,7 +2240,11 @@ def finance_export_pdf():
 
     quote_dicts = []
     for q in quotes:
-        ext_cost = sum(qi.total_external_cost for qi in q.quote_items)
+        ext_cost = sum(
+            qi.expense.amount for qi in q.quote_items
+            if qi.expense and qi.expense.paid
+            and (not df or not dt or not qi.expense.paid_at or (qi.expense.paid_at >= df and qi.expense.paid_at <= dt))
+        )
         quote_dicts.append({
             'ref': q.reference_number or f'RE{q.id:04d}',
             'customer': q.customer_name,

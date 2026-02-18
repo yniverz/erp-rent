@@ -149,7 +149,7 @@ def build_finance_report_pdf(
             Paragraph("Artikel", styles["table_header"]),
             Paragraph("Anschaffung", styles["table_header"]),
             Paragraph("Investition", styles["table_header"]),
-            Paragraph("Gewinnanteil", styles["table_header"]),
+            Paragraph("GuV Anteil", styles["table_header"]),
             Paragraph("Umsatzanteil", styles["table_header"]),
             Paragraph("Ext. Kosten", styles["table_header"]),
         ]

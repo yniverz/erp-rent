@@ -217,7 +217,7 @@
                         <label onclick="event.stopPropagation()">Anschaffungskosten</label>
                     </div>
                     <div class="option-row">
-                        <label onclick="event.stopPropagation()">Gewinnanteil:</label>
+                        <label onclick=\"event.stopPropagation()\">GuV Anteil:</label>
                         <input type="number" name="revenue_pct_{{ user.id }}"
                             value="{{ owner_config.get(user.id, {}).get('revenue_pct', 100)|int }}"
                             min="0" max="100" step="1"

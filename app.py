@@ -351,6 +351,10 @@ with app.app_context():
             cursor.execute(f"PRAGMA table_info({table})")
             return any(row[1] == column for row in cursor.fetchall())
 
+        def table_exists2(name):
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,))
+            return cursor.fetchone() is not None
+
         if not column_exists2('site_settings', 'tax_number'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_number VARCHAR(100)")
 
@@ -401,11 +405,41 @@ with app.app_context():
             cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_rate FLOAT DEFAULT 19.0")
 
         # ItemOwnership: brutto/netto flags for purchase cost and external price
-        if table_exists('item_ownership'):
+        if table_exists2('item_ownership'):
             if not column_exists2('item_ownership', 'purchase_cost_is_brutto'):
                 cursor.execute("ALTER TABLE item_ownership ADD COLUMN purchase_cost_is_brutto BOOLEAN DEFAULT 1")
             if not column_exists2('item_ownership', 'external_price_is_brutto'):
                 cursor.execute("ALTER TABLE item_ownership ADD COLUMN external_price_is_brutto BOOLEAN DEFAULT 1")
+
+        # QuoteItemExpense table migration
+        if not table_exists2('quote_item_expense'):
+            cursor.execute("""
+                CREATE TABLE quote_item_expense (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    quote_item_id INTEGER NOT NULL UNIQUE,
+                    amount FLOAT NOT NULL DEFAULT 0,
+                    paid BOOLEAN DEFAULT 0,
+                    paid_at DATETIME,
+                    notes TEXT,
+                    created_at DATETIME,
+                    FOREIGN KEY (quote_item_id) REFERENCES quote_item(id)
+                )
+            """)
+            print("Created quote_item_expense table")
+
+        # QuoteItemExpenseDocument table migration
+        if not table_exists2('quote_item_expense_document'):
+            cursor.execute("""
+                CREATE TABLE quote_item_expense_document (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    expense_id INTEGER NOT NULL,
+                    filename VARCHAR(300) NOT NULL,
+                    original_name VARCHAR(300) NOT NULL,
+                    uploaded_at DATETIME,
+                    FOREIGN KEY (expense_id) REFERENCES quote_item_expense(id)
+                )
+            """)
+            print("Created quote_item_expense_document table")
 
         conn.commit()
         conn.close()
@@ -435,6 +469,30 @@ with app.app_context():
         db.session.add(settings)
         db.session.commit()
         print("Created default site settings")
+
+    # Migrate: create QuoteItemExpense entries for existing finalized quotes with external costs
+    from models import QuoteItem, QuoteItemExpense, Quote as QuoteModel
+    existing_qi_with_cost = QuoteItem.query.filter(
+        QuoteItem.rental_cost_per_day > 0
+    ).join(QuoteModel).filter(
+        QuoteModel.status.in_(['finalized', 'performed', 'paid'])
+    ).all()
+    created_expenses = 0
+    for qi in existing_qi_with_cost:
+        if not qi.expense:
+            expense = QuoteItemExpense(
+                quote_item_id=qi.id,
+                amount=qi.total_external_cost,
+            )
+            # For already-paid quotes, auto-mark expense as paid with the quote's paid_at date
+            if qi.quote.status == 'paid' and qi.quote.paid_at:
+                expense.paid = True
+                expense.paid_at = qi.quote.paid_at
+            db.session.add(expense)
+            created_expenses += 1
+    if created_expenses > 0:
+        db.session.commit()
+        print(f"Created {created_expenses} QuoteItemExpense entries for existing quotes")
 
     # Load favicon from URL
     _load_favicon()

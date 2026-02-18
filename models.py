@@ -390,6 +390,8 @@ class QuoteItem(db.Model):
     quote = db.relationship('Quote', back_populates='quote_items')
     item = db.relationship('Item', foreign_keys=[item_id], back_populates='quote_items')
     package = db.relationship('Item', foreign_keys=[package_id])  # The package this component belongs to
+    expense = db.relationship('QuoteItemExpense', back_populates='quote_item', uselist=False,
+                              cascade='all, delete-orphan')
 
     @property
     def display_name(self):
@@ -407,6 +409,35 @@ class QuoteItem(db.Model):
         """Total cost we pay externally for this quote item"""
         days = self.quote.calculate_rental_days()
         return round(self.quantity * (self.rental_cost_per_day or 0) * days, 2)
+
+
+class QuoteItemExpense(db.Model):
+    """Tracks payment status of external costs for a quote item.
+    Created when a quote with external costs is finalized.
+    The paid_at date determines when this expense appears in the GuV.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    quote_item_id = db.Column(db.Integer, db.ForeignKey('quote_item.id'), nullable=False, unique=True)
+    amount = db.Column(db.Float, nullable=False, default=0.0)  # Total external cost
+    paid = db.Column(db.Boolean, default=False)
+    paid_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    quote_item = db.relationship('QuoteItem', back_populates='expense')
+    documents = db.relationship('QuoteItemExpenseDocument', back_populates='expense',
+                                cascade='all, delete-orphan', lazy='selectin')
+
+
+class QuoteItemExpenseDocument(db.Model):
+    """Document (invoice, receipt, etc.) attached to an external cost expense."""
+    id = db.Column(db.Integer, primary_key=True)
+    expense_id = db.Column(db.Integer, db.ForeignKey('quote_item_expense.id'), nullable=False)
+    filename = db.Column(db.String(300), nullable=False)  # stored filename (UUID-based)
+    original_name = db.Column(db.String(300), nullable=False)  # original upload name
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    expense = db.relationship('QuoteItemExpense', back_populates='documents')
 
 
 class Inquiry(db.Model):
