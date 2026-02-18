@@ -1656,8 +1656,12 @@ def _compute_owner_summaries(user_ids, quotes):
     return summaries
 
 
-def _compute_totals(quotes):
-    """Compute aggregate totals from a list of quotes, including EÜR data."""
+def _compute_totals(quotes, user_ids=None):
+    """Compute aggregate totals from a list of quotes, including EÜR data.
+    
+    total_cost includes ALL purchased items from the given owners,
+    not just those appearing in the filtered quotes.
+    """
     site_settings = SiteSettings.query.first()
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
     tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
@@ -1666,14 +1670,21 @@ def _compute_totals(quotes):
     total_revenue = sum(q.total for q in quotes)
     external_cost = sum(qi.total_external_cost for q in quotes for qi in q.quote_items)
 
-    # Get purchase costs of all items involved
+    # Get purchase costs of ALL items from the relevant owners
+    if user_ids is None:
+        user_ids = [u.id for u in User.query.filter_by(active=True).all()]
+    all_ownerships_for_cost = ItemOwnership.query.filter(
+        ItemOwnership.user_id.in_(user_ids),
+        ItemOwnership.is_external == False
+    ).all() if user_ids else []
+    total_cost = sum(o.total_purchase_cost for o in all_ownerships_for_cost)
+
+    # Also collect all item_ids from quotes (still needed for EÜR Vorsteuer)
     item_ids = set()
     for q in quotes:
         for qi in q.quote_items:
             if qi.item_id:
                 item_ids.add(qi.item_id)
-    items = Item.query.filter(Item.id.in_(item_ids)).all() if item_ids else []
-    total_cost = sum(i.total_purchase_cost for i in items)
 
     # ── EÜR calculations (only meaningful for 'regular' tax mode) ──
     if tax_mode == 'regular':
@@ -1681,12 +1692,10 @@ def _compute_totals(quotes):
         revenue_netto = round(total_revenue / tax_factor, 2)
         ust_collected = round(total_revenue - revenue_netto, 2)
 
-        # Vorsteuer from purchase costs
+        # Vorsteuer from purchase costs (all items from relevant owners)
         vorsteuer_purchases = 0.0
         purchases_netto = 0.0
-        all_ownerships = ItemOwnership.query.filter(
-            ItemOwnership.item_id.in_(item_ids)
-        ).all() if item_ids else []
+        all_ownerships = all_ownerships_for_cost
         for o in all_ownerships:
             cost = (o.purchase_cost or 0) * (o.quantity or 1)
             if cost <= 0:
@@ -1786,7 +1795,8 @@ def finance_export():
 
         user_ids = [int(uid) for uid in selected_users] if selected_users else None
         quotes = _get_filtered_quotes(df, dt, user_ids)
-        totals = _compute_totals(quotes)
+        resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
+        totals = _compute_totals(quotes, resolved_user_ids)
 
         preview = {
             'quotes': quotes,
@@ -1838,9 +1848,10 @@ def finance_export_csv():
 
     user_ids = [int(uid) for uid in selected_users] if selected_users else None
     quotes = _get_filtered_quotes(df, dt, user_ids)
-    totals = _compute_totals(quotes)
+    resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
+    totals = _compute_totals(quotes, resolved_user_ids)
     owner_summaries = _compute_owner_summaries(
-        user_ids or [u.id for u in User.query.filter_by(active=True).all()],
+        resolved_user_ids,
         quotes
     )
 
@@ -1999,9 +2010,10 @@ def finance_export_pdf():
 
     user_ids = [int(uid) for uid in selected_users] if selected_users else None
     quotes = _get_filtered_quotes(df, dt, user_ids)
-    totals = _compute_totals(quotes)
+    resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
+    totals = _compute_totals(quotes, resolved_user_ids)
     owner_summaries = _compute_owner_summaries(
-        user_ids or [u.id for u in User.query.filter_by(active=True).all()],
+        resolved_user_ids,
         quotes
     )
 
