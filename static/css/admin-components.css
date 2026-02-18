@@ -137,3 +137,8 @@
     padding: 2px 8px;
 }
 .btn-xs { font-size: 0.78em; padding: 2px 8px; }
+
+/* ── Purchase Items Table ── */
+.purchase-items-table th,
+.purchase-items-table td { vertical-align: top; }
+.purchase-items-table select.pi-depr { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
