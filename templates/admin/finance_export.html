@@ -193,7 +193,7 @@
             </div>
             <div class="preview-stat success">
                 <div class="value">&euro;{{ "%.2f"|format(preview.total_revenue) }}</div>
-                <div class="label">Gesamtumsatz</div>
+                <div class="label">Gesamtumsatz (brutto)</div>
             </div>
             <div class="preview-stat warning">
                 <div class="value">&euro;{{ "%.2f"|format(preview.total_cost) }}</div>
@@ -208,6 +208,68 @@
                 <div class="label">Gewinn/Verlust</div>
             </div>
         </div>
+
+        {% if preview.tax_mode == 'regular' %}
+        <!-- EÜR Section -->
+        <div style="margin-top: 24px;">
+            <h3>Einnahmenüberschussrechnung (EÜR)</h3>
+            <table class="euer-table" style="width:100%;max-width:600px;margin-top:12px;">
+                <tbody>
+                    <tr>
+                        <td><strong>Betriebseinnahmen (netto)</strong></td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.revenue_netto) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">+ vereinnahmte USt ({{ preview.tax_rate }}%)</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.ust_collected) }}</td>
+                    </tr>
+                    <tr style="border-top:1px solid var(--color-border, #ddd);">
+                        <td><strong>Summe Einnahmen (brutto)</strong></td>
+                        <td style="text-align:right"><strong>&euro;{{ "%.2f"|format(preview.total_revenue) }}</strong></td>
+                    </tr>
+                    <tr><td colspan="2" style="height:12px;"></td></tr>
+                    <tr>
+                        <td><strong>Betriebsausgaben (netto)</strong></td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.expenses_netto) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">davon Anschaffungen (netto)</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.expenses_netto - (preview.external_cost - preview.vorsteuer_external)) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">davon ext. Mietkosten (netto)</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.external_cost - preview.vorsteuer_external) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">+ Vorsteuer (Anschaffungen)</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.vorsteuer_purchases) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">+ Vorsteuer (ext. Mietkosten)</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.vorsteuer_external) }}</td>
+                    </tr>
+                    <tr><td colspan="2" style="height:12px;"></td></tr>
+                    <tr style="border-top:2px solid var(--color-border, #ddd);">
+                        <td><strong>Gewinn (EÜR)</strong></td>
+                        <td style="text-align:right"><strong style="color:{{ 'var(--color-success)' if preview.gewinn_euer >= 0 else 'var(--color-warning)' }}">&euro;{{ "%.2f"|format(preview.gewinn_euer) }}</strong></td>
+                    </tr>
+                    <tr><td colspan="2" style="height:8px;"></td></tr>
+                    <tr style="border-top:1px solid var(--color-border, #ddd);">
+                        <td>USt-Zahllast</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.ust_zahllast) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">USt eingenommen</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.ust_collected) }}</td>
+                    </tr>
+                    <tr style="color:var(--color-text-muted);font-size:0.9em;">
+                        <td style="padding-left:20px;">– Vorsteuer abziehbar</td>
+                        <td style="text-align:right">&euro;{{ "%.2f"|format(preview.vorsteuer_total) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
 
         {% if preview.quotes %}
         <div style="margin-top: 20px; overflow-x: auto;">

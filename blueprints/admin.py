@@ -212,7 +212,9 @@ def inventory_add():
                 ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
                 ownership_ext_prices = request.form.getlist('ownership_ext_prices')
+                ownership_ext_price_is_brutto = request.form.getlist('ownership_ext_price_is_brutto')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
+                ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
 
                 for i, uid in enumerate(ownership_user_ids):
@@ -225,6 +227,12 @@ def inventory_add():
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
                     purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
+
+                    # Brutto/Netto flags (default to brutto=True)
+                    ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
+                    pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
+                    ext_is_brutto = ext_is_brutto_str == '1'
+                    pc_is_brutto = pc_is_brutto_str == '1'
 
                     # Purchase date is required when purchase cost > 0
                     if purchase_cost > 0 and not purchase_date:
@@ -254,7 +262,9 @@ def inventory_add():
                         user_id=uid,
                         quantity=qty,
                         external_price_per_day=ext_price,
+                        external_price_is_brutto=ext_is_brutto,
                         purchase_cost=purchase_cost,
+                        purchase_cost_is_brutto=pc_is_brutto,
                         purchase_date=purchase_date
                     )
                     db.session.add(ownership)
@@ -326,7 +336,9 @@ def inventory_edit(item_id):
                 ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
                 ownership_ext_prices = request.form.getlist('ownership_ext_prices')
+                ownership_ext_price_is_brutto = request.form.getlist('ownership_ext_price_is_brutto')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
+                ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
                 ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
 
                 # Collect existing ownership IDs BEFORE processing so new inserts don't interfere
@@ -342,6 +354,12 @@ def inventory_edit(item_id):
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
                     purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
+
+                    # Brutto/Netto flags (default to brutto=True)
+                    ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
+                    pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
+                    ext_is_brutto = ext_is_brutto_str == '1'
+                    pc_is_brutto = pc_is_brutto_str == '1'
 
                     # Purchase date is required when purchase cost > 0
                     if purchase_cost > 0 and not purchase_date:
@@ -376,7 +394,9 @@ def inventory_edit(item_id):
                             ownership.user_id = uid
                             ownership.quantity = qty
                             ownership.external_price_per_day = ext_price
+                            ownership.external_price_is_brutto = ext_is_brutto
                             ownership.purchase_cost = purchase_cost
+                            ownership.purchase_cost_is_brutto = pc_is_brutto
                             ownership.purchase_date = purchase_date
                             submitted_ids.add(oid)
                         else:
@@ -384,14 +404,20 @@ def inventory_edit(item_id):
                             ownership = ItemOwnership(
                                 item_id=item.id, user_id=uid, quantity=qty,
                                 external_price_per_day=ext_price,
-                                purchase_cost=purchase_cost, purchase_date=purchase_date
+                                external_price_is_brutto=ext_is_brutto,
+                                purchase_cost=purchase_cost,
+                                purchase_cost_is_brutto=pc_is_brutto,
+                                purchase_date=purchase_date
                             )
                             db.session.add(ownership)
                     else:
                         ownership = ItemOwnership(
                             item_id=item.id, user_id=uid, quantity=qty,
                             external_price_per_day=ext_price,
-                            purchase_cost=purchase_cost, purchase_date=purchase_date
+                            external_price_is_brutto=ext_is_brutto,
+                            purchase_cost=purchase_cost,
+                            purchase_cost_is_brutto=pc_is_brutto,
+                            purchase_date=purchase_date
                         )
                         db.session.add(ownership)
 
@@ -1473,6 +1499,7 @@ def settings():
             settings_record.bank_lines = request.form.get('bank_lines', '')
             settings_record.tax_number = request.form.get('tax_number', '').strip()
             settings_record.tax_mode = request.form.get('tax_mode', 'kleinunternehmer').strip()
+            settings_record.tax_rate = float(request.form.get('tax_rate', '19.0') or 19.0)
             settings_record.payment_terms_days = int(request.form.get('payment_terms_days', '14') or 14)
             settings_record.quote_validity_days = int(request.form.get('quote_validity_days', '14') or 14)
             settings_record.shop_description = request.form.get('shop_description', '')
@@ -1629,9 +1656,15 @@ def _compute_owner_summaries(user_ids, quotes):
 
 
 def _compute_totals(quotes):
-    """Compute aggregate totals from a list of quotes."""
+    """Compute aggregate totals from a list of quotes, including EÜR data."""
+    site_settings = SiteSettings.query.first()
+    tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
+    tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
+    tax_factor = 1 + tax_rate / 100
+
     total_revenue = sum(q.total for q in quotes)
     external_cost = sum(qi.total_external_cost for q in quotes for qi in q.quote_items)
+
     # Get purchase costs of all items involved
     item_ids = set()
     for q in quotes:
@@ -1641,12 +1674,84 @@ def _compute_totals(quotes):
     items = Item.query.filter(Item.id.in_(item_ids)).all() if item_ids else []
     total_cost = sum(i.total_purchase_cost for i in items)
 
+    # ── EÜR calculations (only meaningful for 'regular' tax mode) ──
+    if tax_mode == 'regular':
+        # Revenue: all prices stored as brutto
+        revenue_netto = round(total_revenue / tax_factor, 2)
+        ust_collected = round(total_revenue - revenue_netto, 2)
+
+        # Vorsteuer from purchase costs
+        vorsteuer_purchases = 0.0
+        purchases_netto = 0.0
+        all_ownerships = ItemOwnership.query.filter(
+            ItemOwnership.item_id.in_(item_ids)
+        ).all() if item_ids else []
+        for o in all_ownerships:
+            cost = (o.purchase_cost or 0) * (o.quantity or 1)
+            if cost <= 0:
+                continue
+            if o.purchase_cost_is_brutto:
+                # Brutto → extract Vorsteuer
+                netto_cost = round(cost / tax_factor, 2)
+                vorsteuer_purchases += round(cost - netto_cost, 2)
+                purchases_netto += netto_cost
+            else:
+                # Already netto, no Vorsteuer
+                purchases_netto += cost
+
+        # Vorsteuer from external rental costs
+        vorsteuer_external = 0.0
+        external_netto = 0.0
+        for q in quotes:
+            for qi in q.quote_items:
+                ext_total = qi.total_external_cost
+                if ext_total <= 0:
+                    continue
+                # Find the ownership to check its external_price_is_brutto flag
+                ownership = None
+                if qi.item_id:
+                    ownership = ItemOwnership.query.filter_by(
+                        item_id=qi.item_id, is_external=True
+                    ).first()
+                if ownership and ownership.external_price_is_brutto:
+                    netto_ext = round(ext_total / tax_factor, 2)
+                    vorsteuer_external += round(ext_total - netto_ext, 2)
+                    external_netto += netto_ext
+                else:
+                    external_netto += ext_total
+
+        vorsteuer_total = round(vorsteuer_purchases + vorsteuer_external, 2)
+        expenses_netto = round(purchases_netto + external_netto, 2)
+        ust_zahllast = round(ust_collected - vorsteuer_total, 2)
+        gewinn_euer = round(revenue_netto - expenses_netto, 2)
+    else:
+        # Kleinunternehmer: no tax breakdown needed
+        revenue_netto = total_revenue
+        ust_collected = 0.0
+        vorsteuer_total = 0.0
+        vorsteuer_purchases = 0.0
+        vorsteuer_external = 0.0
+        expenses_netto = round(total_cost + external_cost, 2)
+        ust_zahllast = 0.0
+        gewinn_euer = round(total_revenue - total_cost - external_cost, 2)
+
     return {
         'quote_count': len(quotes),
         'total_revenue': round(total_revenue, 2),
         'total_cost': round(total_cost, 2),
         'external_cost': round(external_cost, 2),
         'profit': round(total_revenue - total_cost - external_cost, 2),
+        # EÜR fields
+        'tax_mode': tax_mode,
+        'tax_rate': tax_rate,
+        'revenue_netto': revenue_netto,
+        'ust_collected': ust_collected,
+        'vorsteuer_total': vorsteuer_total,
+        'vorsteuer_purchases': vorsteuer_purchases,
+        'vorsteuer_external': vorsteuer_external,
+        'expenses_netto': expenses_netto,
+        'ust_zahllast': ust_zahllast,
+        'gewinn_euer': gewinn_euer,
     }
 
 
@@ -1689,6 +1794,17 @@ def finance_export():
             'total_cost': totals['total_cost'],
             'external_cost': totals['external_cost'],
             'profit': totals['profit'],
+            # EÜR fields
+            'tax_mode': totals['tax_mode'],
+            'tax_rate': totals['tax_rate'],
+            'revenue_netto': totals['revenue_netto'],
+            'ust_collected': totals['ust_collected'],
+            'vorsteuer_total': totals['vorsteuer_total'],
+            'vorsteuer_purchases': totals['vorsteuer_purchases'],
+            'vorsteuer_external': totals['vorsteuer_external'],
+            'expenses_netto': totals['expenses_netto'],
+            'ust_zahllast': totals['ust_zahllast'],
+            'gewinn_euer': totals['gewinn_euer'],
         }
 
     return render_template('admin/finance_export.html',
@@ -1798,6 +1914,19 @@ def finance_export_csv():
         writer3.writerow(['Anschaffungskosten', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
         writer3.writerow(['Ext. Mietkosten', f'{totals["external_cost"]:.2f}'.replace('.', ',')])
         writer3.writerow(['Gewinn/Verlust', f'{totals["profit"]:.2f}'.replace('.', ',')])
+        # EÜR rows (only meaningful for regular tax mode)
+        if totals.get('tax_mode') == 'regular':
+            writer3.writerow([])
+            writer3.writerow(['--- EÜR ---', ''])
+            writer3.writerow([f'Steuersatz', f'{totals["tax_rate"]}%'])
+            writer3.writerow(['Einnahmen netto', f'{totals["revenue_netto"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['Vereinnahmte USt', f'{totals["ust_collected"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['Ausgaben netto', f'{totals["expenses_netto"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['Vorsteuer (Anschaffungen)', f'{totals["vorsteuer_purchases"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['Vorsteuer (Ext. Mietkosten)', f'{totals["vorsteuer_external"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['Vorsteuer gesamt', f'{totals["vorsteuer_total"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['USt-Zahllast', f'{totals["ust_zahllast"]:.2f}'.replace('.', ',')])
+            writer3.writerow(['Gewinn (EÜR)', f'{totals["gewinn_euer"]:.2f}'.replace('.', ',')])
         writer3.writerow([])
         writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
         for os_item in owner_summaries:
@@ -1815,7 +1944,8 @@ def finance_export_csv():
         writer4 = csv.writer(text_buf4, delimiter=';', quoting=csv.QUOTE_ALL)
         writer4.writerow([
             'Artikel', 'Eigentümer', 'Menge', 'Anschaffungskosten (€)',
-            'Kaufdatum', 'Ext. Preis/Tag (€)', 'Typ'
+            'Kosten brutto/netto', 'Kaufdatum', 'Ext. Preis/Tag (€)',
+            'Ext. Preis brutto/netto', 'Typ'
         ])
         # Gather all ownerships for relevant items or selected users
         ownership_query = ItemOwnership.query
@@ -1829,8 +1959,10 @@ def finance_export_csv():
                 (owner_obj.display_name or owner_obj.username) if owner_obj else f'User #{o.user_id}',
                 o.quantity,
                 f'{(o.purchase_cost or 0):.2f}'.replace('.', ','),
+                'brutto' if o.purchase_cost_is_brutto else 'netto',
                 o.purchase_date.strftime('%d.%m.%Y') if o.purchase_date else '',
                 f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
+                'brutto' if o.external_price_is_brutto else 'netto',
                 'Extern' if o.is_external else 'Intern',
             ])
         zf.writestr('anschaffungen.csv', text_buf4.getvalue().encode('utf-8-sig'))
@@ -1952,6 +2084,7 @@ def finance_export_invoices_pdf():
             bank_lines=data['bank_lines'],
             tax_number=data['tax_number'],
             tax_mode=data['tax_mode'],
+            tax_rate=data['tax_rate'],
             logo_path=data['logo_path'],
             recipient_lines=data['recipient_lines'],
             reference_number=quote.reference_number or f"RE-{quote.id:04d}",
@@ -2126,6 +2259,7 @@ def _extract_common_pdf_data(quote, site_settings):
             recipient.insert(0, customer_name)
     tax_number = site_settings.tax_number if site_settings else None
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
+    tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
     payment_terms_days = (site_settings.payment_terms_days or 14) if site_settings else 14
     quote_validity_days = (site_settings.quote_validity_days or 14) if site_settings else 14
 
@@ -2149,6 +2283,7 @@ def _extract_common_pdf_data(quote, site_settings):
         'recipient_lines': recipient,
         'tax_number': tax_number,
         'tax_mode': tax_mode,
+        'tax_rate': tax_rate,
         'payment_terms_days': payment_terms_days,
         'quote_validity_days': quote_validity_days,
         'logo_path': logo_path,
@@ -2269,6 +2404,7 @@ def angebot_pdf(quote_id):
         bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
         tax_mode=data['tax_mode'],
+        tax_rate=data['tax_rate'],
         logo_path=data['logo_path'],
         recipient_lines=data['recipient_lines'],
         reference_number=quote.reference_number or f"AN-{quote.id:04d}",
@@ -2311,6 +2447,7 @@ def rechnung_pdf(quote_id):
         bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
         tax_mode=data['tax_mode'],
+        tax_rate=data['tax_rate'],
         logo_path=data['logo_path'],
         recipient_lines=data['recipient_lines'],
         reference_number=quote.reference_number or f"RE-{quote.id:04d}",

@@ -47,7 +47,18 @@
 
         <div class="form-group">
             <label>Standard-Mietpreis pro Tag (&euro;)</label>
-            <input type="number" name="default_rental_price" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required>
+            <div class="d-flex gap-10" style="align-items:center;">
+                <input type="number" name="default_rental_price" id="rental_price_input" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required style="flex:1;">
+                {% if site_settings and site_settings.tax_mode == 'regular' %}
+                <select name="rental_price_mode" id="rental_price_mode" style="width:auto;min-width:100px;" onchange="updateRentalPriceHint()">
+                    <option value="brutto" selected>Brutto</option>
+                    <option value="netto">Netto</option>
+                </select>
+                {% endif %}
+            </div>
+            {% if site_settings and site_settings.tax_mode == 'regular' %}
+            <small class="help-text" id="rental_price_hint">Gespeichert wird immer als Brutto (inkl. {{ tax_rate }}% MwSt). Bei Netto-Eingabe wird automatisch umgerechnet.</small>
+            {% endif %}
         </div>
 
         <div class="form-group" id="bundle-discount-option" style="display:none;">
@@ -99,7 +110,9 @@
                         <th>Benutzer</th>
                         <th>Menge (-1 = ∞)</th>
                         <th>Ext. Preis/Tag/Stk (&euro;)</th>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th>Ext. B/N</th>{% endif %}
                         <th>Ansch.kosten ges. (&euro;)</th>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th>Kosten B/N</th>{% endif %}
                         <th>Kaufdatum</th>
                         {% if item %}<th>Dokumente</th>{% endif %}
                         <th></th>
@@ -120,7 +133,24 @@
                             </td>
                             <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-80"></td>
                             <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-100" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
+                            {% if site_settings and site_settings.tax_mode == 'regular' %}
+                            <td>
+                                <select name="ownership_ext_price_is_brutto" class="w-80">
+                                    <option value="1" {{ 'selected' if o.external_price_is_brutto }}>Brutto</option>
+                                    <option value="0" {{ 'selected' if not o.external_price_is_brutto }}>Netto</option>
+                                </select>
+                            </td>
+                            {% endif %}
                             <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
+                            {% if site_settings and site_settings.tax_mode == 'regular' %}
+                            <td>
+                                <select name="ownership_purchase_cost_is_brutto" class="w-80">
+                                    <option value="1" {{ 'selected' if o.purchase_cost_is_brutto }}>Brutto</option>
+                                    <option value="0" {{ 'selected' if not o.purchase_cost_is_brutto }}>Netto</option>
+                                </select>
+                                <small class="help-text">Brutto = Vorsteuer gezahlt</small>
+                            </td>
+                            {% endif %}
                             <td><input type="date" name="ownership_purchase_dates" value="{{ o.purchase_date.strftime('%Y-%m-%d') if o.purchase_date else '' }}" class="w-130" {{ 'required' if o.purchase_cost and o.purchase_cost > 0 }}></td>
                             <td class="ownership-docs-cell" data-ownership-id="{{ o.id }}">
                                 <div class="ownership-docs-list">
@@ -215,7 +245,24 @@ function addOwnershipRow() {
         </td>
         <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-80"></td>
         <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-100" placeholder="leer = intern"></td>
+        {% if site_settings and site_settings.tax_mode == 'regular' %}
+        <td>
+            <select name="ownership_ext_price_is_brutto" class="w-80">
+                <option value="1" selected>Brutto</option>
+                <option value="0">Netto</option>
+            </select>
+        </td>
+        {% endif %}
         <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-100" placeholder="0.00" onchange="onPurchaseCostChange(this)"></td>
+        {% if site_settings and site_settings.tax_mode == 'regular' %}
+        <td>
+            <select name="ownership_purchase_cost_is_brutto" class="w-80">
+                <option value="1" selected>Brutto</option>
+                <option value="0">Netto</option>
+            </select>
+            <small class="help-text">Brutto = Vorsteuer gezahlt</small>
+        </td>
+        {% endif %}
         <td><input type="date" name="ownership_purchase_dates" value="" class="w-130"></td>
         ${docsCol}
         <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
@@ -348,5 +395,38 @@ function deleteOwnershipDoc(docId, btn) {
         alert('Fehler beim Löschen: ' + err);
     });
 }
+
+// ── Rental price: netto→brutto conversion on form submit ──
+{% if site_settings and site_settings.tax_mode == 'regular' %}
+var _taxRate = {{ tax_rate }};
+
+function updateRentalPriceHint() {
+    var mode = document.getElementById('rental_price_mode');
+    var hint = document.getElementById('rental_price_hint');
+    var input = document.getElementById('rental_price_input');
+    if (!mode || !hint) return;
+    if (mode.value === 'netto') {
+        var netto = parseFloat(input.value) || 0;
+        var brutto = Math.round(netto * (1 + _taxRate / 100) * 100) / 100;
+        hint.textContent = 'Netto-Eingabe: ' + netto.toFixed(2) + ' € → wird als ' + brutto.toFixed(2) + ' € Brutto gespeichert (inkl. ' + _taxRate + '% MwSt)';
+    } else {
+        hint.textContent = 'Gespeichert wird immer als Brutto (inkl. ' + _taxRate + '% MwSt). Bei Netto-Eingabe wird automatisch umgerechnet.';
+    }
+}
+
+document.getElementById('rental_price_input').addEventListener('input', updateRentalPriceHint);
+
+// Convert netto to brutto before form submit
+document.querySelector('form').addEventListener('submit', function(e) {
+    var mode = document.getElementById('rental_price_mode');
+    if (mode && mode.value === 'netto') {
+        var input = document.getElementById('rental_price_input');
+        var netto = parseFloat(input.value) || 0;
+        var brutto = Math.round(netto * (1 + _taxRate / 100) * 100) / 100;
+        input.value = brutto.toFixed(2);
+        mode.value = 'brutto'; // reset so it doesn't double-convert
+    }
+});
+{% endif %}
 </script>
 {% endblock %}

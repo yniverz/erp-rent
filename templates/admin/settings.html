@@ -37,10 +37,16 @@
 
         <div class="form-group">
             <label>Umsatzsteuer-Modus</label>
-            <select name="tax_mode">
+            <select name="tax_mode" id="tax_mode_select" onchange="toggleTaxRate()">
                 <option value="kleinunternehmer" {{ 'selected' if (settings.tax_mode or 'kleinunternehmer') == 'kleinunternehmer' }}>Kleinunternehmer (&sect;19 UStG) &ndash; keine MwSt</option>
-                <option value="regular" {{ 'selected' if settings.tax_mode == 'regular' }}>Regul&auml;r &ndash; 19% MwSt ausweisen</option>
+                <option value="regular" {{ 'selected' if settings.tax_mode == 'regular' }}>Regul&auml;r &ndash; MwSt ausweisen</option>
             </select>
+        </div>
+
+        <div class="form-group" id="tax_rate_group" style="{{ '' if settings.tax_mode == 'regular' else 'display:none;' }}">
+            <label>MwSt-Satz (%)</label>
+            <input type="number" name="tax_rate" step="0.1" min="0" max="100" value="{{ settings.tax_rate if settings.tax_rate is not none else 19.0 }}">
+            <small class="help-text">&Uuml;blicher Satz: 19% (oder 7% f&uuml;r erm&auml;&szlig;igte G&uuml;ter)</small>
         </div>
 
         <div class="form-row">
@@ -119,6 +125,13 @@
     </form>
 </div>
 
+<script>
+function toggleTaxRate() {
+    var mode = document.getElementById('tax_mode_select').value;
+    document.getElementById('tax_rate_group').style.display = mode === 'regular' ? '' : 'none';
+}
+</script>
+
 {% if erpnext_enabled %}
 <div class="card" id="erpnext-settings">
     <h2>ERPNext Integration</h2>
@@ -137,6 +150,7 @@
         <input type="hidden" name="bank_lines" value="{{ settings.bank_lines or '' }}">
         <input type="hidden" name="tax_number" value="{{ settings.tax_number or '' }}">
         <input type="hidden" name="tax_mode" value="{{ settings.tax_mode or 'kleinunternehmer' }}">
+        <input type="hidden" name="tax_rate" value="{{ settings.tax_rate if settings.tax_rate is not none else 19.0 }}">
         <input type="hidden" name="payment_terms_days" value="{{ settings.payment_terms_days or 14 }}">
         <input type="hidden" name="quote_validity_days" value="{{ settings.quote_validity_days or 14 }}">
         <input type="hidden" name="shop_description" value="{{ settings.shop_description or '' }}">

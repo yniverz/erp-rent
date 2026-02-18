@@ -126,7 +126,9 @@ class ItemOwnership(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=0)  # -1 for unlimited
     external_price_per_day = db.Column(db.Float, nullable=True)  # If set, this user is external provider
+    external_price_is_brutto = db.Column(db.Boolean, default=True)  # True = ext price includes VAT
     purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost (sum) for this owner's stock
+    purchase_cost_is_brutto = db.Column(db.Boolean, default=True)  # True = purchase cost includes VAT (Vorsteuer paid)
     purchase_date = db.Column(db.DateTime, nullable=True)  # Date of purchase (required if purchase_cost > 0)
 
     item = db.relationship('Item', back_populates='ownerships')
@@ -455,6 +457,7 @@ class SiteSettings(db.Model):
     # Tax / invoicing
     tax_number = db.Column(db.String(100), nullable=True)  # Steuernummer or USt-IdNr
     tax_mode = db.Column(db.String(20), default='kleinunternehmer')  # 'kleinunternehmer' or 'regular'
+    tax_rate = db.Column(db.Float, default=19.0)  # MwSt-Satz in %, configurable
     payment_terms_days = db.Column(db.Integer, default=14)
     quote_validity_days = db.Column(db.Integer, default=14)
     logo_filename = db.Column(db.String(300), nullable=True)  # Uploaded logo file

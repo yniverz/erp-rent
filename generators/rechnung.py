@@ -32,6 +32,7 @@ def build_rechnung_pdf(
     bank_lines: list[str],
     tax_number: str | None = None,
     tax_mode: str = "kleinunternehmer",
+    tax_rate: float = 19.0,
     logo_path: str | None = None,
 
     # Recipient
@@ -205,14 +206,14 @@ def build_rechnung_pdf(
         brutto = subtotal
 
     if tax_mode == "regular":
-        netto = round(brutto / 1.19, 2)
+        netto = round(brutto / (1 + tax_rate / 100), 2)
         mwst = round(brutto - netto, 2)
         summary_data.append([
             Paragraph("<b>Rechnungsbetrag</b>", styles["right"]),
             Paragraph(f"<b>{fmt_eur(brutto)}</b>", styles["right"]),
         ])
         summary_data.append([
-            Paragraph("darin enthaltene 19 % MwSt.", styles["right"]),
+            Paragraph(f"darin enthaltene {tax_rate:g} % MwSt.", styles["right"]),
             Paragraph(fmt_eur(mwst), styles["right"]),
         ])
     else:

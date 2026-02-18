@@ -87,20 +87,25 @@ def inject_site_settings():
     from erpnext_client import is_erpnext_enabled
     settings = SiteSettings.query.first()
     show_netto = request.cookies.get('price_mode') == 'netto'
+    tax_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
     return dict(
         site_settings=settings,
         has_favicon=_favicon_data is not None,
         favicon_mimetype=_favicon_mimetype,
         erpnext_enabled=is_erpnext_enabled(),
         show_netto=show_netto,
+        tax_rate=tax_rate,
     )
 
 
 @app.template_filter('netto')
 def netto_filter(value):
-    """Convert brutto price to netto (÷1.19) if price_mode cookie is set to netto."""
+    """Convert brutto price to netto if price_mode cookie is set to netto.
+    Uses the configured tax rate from SiteSettings."""
     if request.cookies.get('price_mode') == 'netto':
-        return round(value / 1.19, 2)
+        settings = SiteSettings.query.first()
+        rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
+        return round(value / (1 + rate / 100), 2)
     return value
 
 
@@ -386,6 +391,17 @@ with app.app_context():
             cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_payment VARCHAR(100)")
         if not column_exists2('quote', 'payment_method'):
             cursor.execute("ALTER TABLE quote ADD COLUMN payment_method VARCHAR(20)")
+
+        # SiteSettings: configurable tax rate
+        if not column_exists2('site_settings', 'tax_rate'):
+            cursor.execute("ALTER TABLE site_settings ADD COLUMN tax_rate FLOAT DEFAULT 19.0")
+
+        # ItemOwnership: brutto/netto flags for purchase cost and external price
+        if table_exists('item_ownership'):
+            if not column_exists2('item_ownership', 'purchase_cost_is_brutto'):
+                cursor.execute("ALTER TABLE item_ownership ADD COLUMN purchase_cost_is_brutto BOOLEAN DEFAULT 1")
+            if not column_exists2('item_ownership', 'external_price_is_brutto'):
+                cursor.execute("ALTER TABLE item_ownership ADD COLUMN external_price_is_brutto BOOLEAN DEFAULT 1")
 
         conn.commit()
         conn.close()
