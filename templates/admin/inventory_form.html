@@ -111,7 +111,7 @@
                         <input type="hidden" name="ownership_ids" value="{{ o.id }}">
                         <input type="hidden" name="ownership_purchase_items_json" value='{{ o.purchase_items|map(attribute="to_dict")|list|tojson if o.has_purchase_items else "" }}' class="purchase-items-json">
                         <div class="d-flex gap-10 flex-wrap" style="align-items:flex-start;">
-                            <div class="form-group mb-0" style="min-width:120px;max-width:200px;flex:1;">
+                            <div class="form-group mb-0" style="min-width:120px;flex:1;">
                                 <label class="mb-2" style="font-size:0.85em;">Benutzer</label>
                                 <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
                                     <option value="">— Benutzer wählen —</option>
@@ -120,16 +120,16 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="form-group mb-0" style="width:90px;">
+                            <div class="form-group mb-0" style="width:120px;">
                                 <label class="mb-2" style="font-size:0.85em;">Menge (-1=∞)</label>
                                 <input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-full">
                             </div>
-                            <div class="form-group mb-0" style="width:120px;">
+                            <div class="form-group mb-0" style="width:140px;">
                                 <label class="mb-2" style="font-size:0.85em;">Ext. Preis/Tag (&euro;)</label>
                                 <input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-full" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}>
                             </div>
                             {% if site_settings and site_settings.tax_mode == 'regular' %}
-                            <div class="form-group mb-0" style="width:80px;">
+                            <div class="form-group mb-0" style="width:90px;">
                                 <label class="mb-2" style="font-size:0.85em;">Ext. B/N</label>
                                 <select name="ownership_ext_price_is_brutto" class="w-full">
                                     <option value="1" {{ 'selected' if o.external_price_is_brutto }}>Brutto</option>
@@ -171,12 +171,12 @@
                             <!-- Simple mode (single purchase cost) -->
                             <div class="purchase-simple {{ 'd-none' if o.has_purchase_items }}" style="margin-top:6px;">
                                 <div class="d-flex gap-10 flex-wrap">
-                                    <div class="form-group mb-0" style="width:120px;">
+                                    <div class="form-group mb-0" style="width:140px;">
                                         <label class="mb-2" style="font-size:0.8em;">Ansch.kosten (&euro;)</label>
                                         <input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost and not o.has_purchase_items else '' }}" class="w-full" placeholder="0.00">
                                     </div>
                                     {% if site_settings and site_settings.tax_mode == 'regular' %}
-                                    <div class="form-group mb-0" style="width:80px;">
+                                    <div class="form-group mb-0" style="width:90px;">
                                         <label class="mb-2" style="font-size:0.8em;">B/N</label>
                                         <select name="ownership_purchase_cost_is_brutto" class="w-full">
                                             <option value="1" {{ 'selected' if o.purchase_cost_is_brutto }}>Brutto</option>
@@ -206,10 +206,10 @@
                                     <thead>
                                         <tr>
                                             <th>Bezeichnung</th>
-                                            <th style="width:100px;">Kosten (&euro;)</th>
-                                            {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:80px;">B/N</th>{% endif %}
+                                            <th style="width:120px;">Kosten (&euro;)</th>
+                                            {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:90px;">B/N</th>{% endif %}
                                             <th style="width:130px;">Kaufdatum</th>
-                                            <th style="max-width:180px;">AfA-Kategorie</th>
+                                            <th>AfA-Kategorie</th>
                                             <th style="min-width:100px;">Dokumente</th>
                                             <th style="width:30px;"></th>
                                         </tr>
@@ -346,7 +346,7 @@ function addOwnershipCard() {
         <input type="hidden" name="ownership_ids" value="">
         <input type="hidden" name="ownership_purchase_items_json" value="" class="purchase-items-json">
         <div class="d-flex gap-10 flex-wrap" style="align-items:flex-start;">
-            <div class="form-group mb-0" style="min-width:120px;max-width:200px;flex:1;">
+            <div class="form-group mb-0" style="min-width:120px;flex:1;">
                 <label class="mb-2" style="font-size:0.85em;">Benutzer</label>
                 <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
                     <option value="">— Benutzer wählen —</option>
@@ -355,16 +355,16 @@ function addOwnershipCard() {
                     {% endfor %}
                 </select>
             </div>
-            <div class="form-group mb-0" style="width:90px;">
+            <div class="form-group mb-0" style="width:120px;">
                 <label class="mb-2" style="font-size:0.85em;">Menge (-1=∞)</label>
                 <input type="number" name="ownership_quantities" value="0" min="-1" class="w-full">
             </div>
-            <div class="form-group mb-0" style="width:120px;">
+            <div class="form-group mb-0" style="width:140px;">
                 <label class="mb-2" style="font-size:0.85em;">Ext. Preis/Tag (€)</label>
                 <input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-full" placeholder="leer = intern">
             </div>
             {% if site_settings and site_settings.tax_mode == 'regular' %}
-            <div class="form-group mb-0" style="width:80px;">
+            <div class="form-group mb-0" style="width:90px;">
                 <label class="mb-2" style="font-size:0.85em;">Ext. B/N</label>
                 <select name="ownership_ext_price_is_brutto" class="w-full">
                     <option value="1" selected>Brutto</option>
@@ -386,12 +386,12 @@ function addOwnershipCard() {
             </div>
             <div class="purchase-simple" style="margin-top:6px;">
                 <div class="d-flex gap-10 flex-wrap">
-                    <div class="form-group mb-0" style="width:120px;">
+                    <div class="form-group mb-0" style="width:140px;">
                         <label class="mb-2" style="font-size:0.8em;">Ansch.kosten (€)</label>
                         <input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-full" placeholder="0.00">
                     </div>
                     {% if site_settings and site_settings.tax_mode == 'regular' %}
-                    <div class="form-group mb-0" style="width:80px;">
+                    <div class="form-group mb-0" style="width:90px;">
                         <label class="mb-2" style="font-size:0.8em;">B/N</label>
                         <select name="ownership_purchase_cost_is_brutto" class="w-full">
                             <option value="1" selected>Brutto</option>
@@ -419,10 +419,10 @@ function addOwnershipCard() {
                     <thead>
                         <tr>
                             <th>Bezeichnung</th>
-                            <th style="width:100px;">Kosten (€)</th>
-                            ${_isRegularTax ? '<th style="width:80px;">B/N</th>' : ''}
+                            <th style="width:120px;">Kosten (€)</th>
+                            ${_isRegularTax ? '<th style="width:90px;">B/N</th>' : ''}
                             <th style="width:130px;">Kaufdatum</th>
-                            <th style="max-width:180px;">AfA-Kategorie</th>
+                            <th>AfA-Kategorie</th>
                             <th style="min-width:100px;">Dokumente</th>
                             <th style="width:30px;"></th>
                         </tr>
