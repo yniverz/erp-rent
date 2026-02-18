@@ -132,6 +132,37 @@ def build_angebot_pdf(
     is_regular = (tax_mode == "regular")
     tax_factor = 1 + tax_rate / 100
 
+    # ── Pre-compute netto values from brutto (rückwärts) ──
+    if is_regular:
+        import math as _math
+
+        # 1. Tax from known brutto total
+        brutto_total = subtotal - (discount_amount if discount_percent > 0 else 0)
+        netto_total = round(brutto_total / tax_factor, 2)
+        mwst = round(brutto_total - netto_total, 2)
+
+        # 2. Derive netto subtotal so that netto_subtotal - netto_discount == netto_total
+        netto_subtotal = round(subtotal / tax_factor, 2)
+        netto_discount = round(netto_subtotal - netto_total, 2) if discount_percent > 0 else 0.0
+
+        # 3. Distribute netto_subtotal across positions (largest-remainder)
+        position_bruttos = [item["total"] for item in positions]
+        brutto_sum = sum(position_bruttos) or 1  # avoid div-by-zero
+        raw_nettos = [netto_subtotal * (pb / brutto_sum) for pb in position_bruttos]
+
+        floored = [_math.floor(r * 100) / 100 for r in raw_nettos]
+        deficit_cents = round((netto_subtotal - sum(floored)) * 100)
+        idx_by_remainder = sorted(
+            range(len(raw_nettos)),
+            key=lambda i: -(raw_nettos[i] * 100 - _math.floor(raw_nettos[i] * 100)),
+        )
+        position_nettos = list(floored)
+        for k in range(max(0, deficit_cents)):
+            position_nettos[idx_by_remainder[k]] += 0.01
+        position_nettos = [round(n, 2) for n in position_nettos]
+    else:
+        position_nettos = None  # not used in Kleinunternehmer mode
+
     col_widths = [
         22,           # Pos
         cw - 22 - 30 - 30 - 50 - 58,  # Bezeichnung (flexible)
@@ -152,17 +183,10 @@ def build_angebot_pdf(
     table_data = [header_row]
 
     pos_nr = 1
-    netto_position_sum = 0  # sum of individually rounded netto totals
-
-    for item in positions:
+    for pos_idx, item in enumerate(positions):
         if item.get("is_bundle"):
             # Bundle header row – price only as pauschal in Gesamt
-            bundle_total = item["total"]
-            if is_regular:
-                display_total = round(bundle_total / tax_factor, 2)
-            else:
-                display_total = bundle_total
-            netto_position_sum += display_total if is_regular else 0
+            display_total = position_nettos[pos_idx] if is_regular else item["total"]
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
                 Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
@@ -185,11 +209,10 @@ def build_angebot_pdf(
             # Regular item
             if is_regular:
                 display_ppd = round(item["price_per_day"] / tax_factor, 2)
-                display_total = round(item["total"] / tax_factor, 2)
+                display_total = position_nettos[pos_idx]
             else:
                 display_ppd = item["price_per_day"]
                 display_total = item["total"]
-            netto_position_sum += display_total if is_regular else 0
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
                 Paragraph(item["name"], styles["table_cell"]),
@@ -231,16 +254,12 @@ def build_angebot_pdf(
     summary_data = []
 
     if is_regular:
-        # Netto layout: positions are netto, add MwSt to get brutto
-        netto_sub = netto_position_sum
-
         summary_data.append([
             Paragraph("Zwischensumme (netto)", styles["right"]),
-            Paragraph(fmt_eur(netto_sub), styles["right_bold"]),
+            Paragraph(fmt_eur(netto_subtotal), styles["right_bold"]),
         ])
 
         if discount_percent > 0:
-            netto_discount = round(discount_amount / tax_factor, 2)
             dl = "Rabatt"
             if discount_label:
                 dl += f" – {discount_label}"
@@ -249,16 +268,10 @@ def build_angebot_pdf(
                 Paragraph(dl, styles["right"]),
                 Paragraph(f"– {fmt_eur(netto_discount)}", styles["right"]),
             ])
-            netto_after_discount = round(netto_sub - netto_discount, 2)
-        else:
-            netto_after_discount = netto_sub
-
-        brutto = subtotal - discount_amount  # known brutto total
-        mwst = round(brutto - netto_after_discount, 2)
 
         summary_data.append([
             Paragraph("Nettobetrag", styles["right"]),
-            Paragraph(fmt_eur(netto_after_discount), styles["right"]),
+            Paragraph(fmt_eur(netto_total), styles["right"]),
         ])
         summary_data.append([
             Paragraph(f"zzgl. {tax_rate:g} % MwSt.", styles["right"]),
@@ -266,7 +279,7 @@ def build_angebot_pdf(
         ])
         summary_data.append([
             Paragraph("<b>Gesamtbetrag</b>", styles["right"]),
-            Paragraph(f"<b>{fmt_eur(brutto)}</b>", styles["right"]),
+            Paragraph(f"<b>{fmt_eur(brutto_total)}</b>", styles["right"]),
         ])
     else:
         # Kleinunternehmer: brutto layout
