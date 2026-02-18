@@ -1811,10 +1811,7 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
                 else:
                     # No AfA: only include if purchase date is within the selected period
                     if date_from and date_to and o.purchase_date:
-                        pd = o.purchase_date
-                        df_d = date_from.date() if hasattr(date_from, 'date') else date_from
-                        dt_d = date_to.date() if hasattr(date_to, 'date') else date_to
-                        if pd < df_d or pd > dt_d:
+                        if o.purchase_date < date_from or o.purchase_date > date_to:
                             continue
                     raw_purchase_total += cost
                     investment += cost
@@ -1858,10 +1855,7 @@ def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None
                         # No AfA: only include if purchase date in selected period
                         depr_info = None
                         if date_from and date_to and o.purchase_date:
-                            pd = o.purchase_date
-                            df_d = date_from.date() if hasattr(date_from, 'date') else date_from
-                            dt_d = date_to.date() if hasattr(date_to, 'date') else date_to
-                            if pd < df_d or pd > dt_d:
+                            if o.purchase_date < date_from or o.purchase_date > date_to:
                                 continue
                     item_obj = Item.query.get(o.item_id)
                     purchases.append({
@@ -1973,9 +1967,7 @@ def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, da
         else:
             # No AfA: only include if purchase date is within the selected period
             if date_from and date_to and o.purchase_date:
-                if o.purchase_date < date_from.date() if hasattr(date_from, 'date') else date_from:
-                    continue
-                if o.purchase_date > (date_to.date() if hasattr(date_to, 'date') else date_to):
+                if o.purchase_date < date_from or o.purchase_date > date_to:
                     continue
             total_cost += cost
             total_raw_purchases += cost
