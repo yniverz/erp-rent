@@ -327,7 +327,7 @@ def inventory_add():
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
-            return redirect(url_for('admin.inventory_list'))
+            return redirect(url_for('admin.inventory_edit', item_id=item.id))
 
         except Exception as e:
             db.session.rollback()
@@ -607,7 +607,7 @@ def inventory_edit(item_id):
 
             db.session.commit()
             flash(f'{item.name} erfolgreich aktualisiert!', 'success')
-            return redirect(url_for('admin.inventory_list'))
+            return redirect(url_for('admin.inventory_edit', item_id=item.id))
 
         except Exception as e:
             db.session.rollback()
