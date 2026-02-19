@@ -104,170 +104,57 @@
         <div id="ownership-section">
             <h3>Eigentümer / Anbieter</h3>
             <p class="help-text mb-10">Pro Benutzer: Menge und optional einen externen Mietpreis (= externer Anbieter). Gesamtmenge ergibt sich aus der Summe.</p>
-            <div id="ownership-container">
-                {% if item and item.ownerships %}
-                    {% for o in item.ownerships %}
-                    <div class="ownership-card card mb-10" data-ownership-index="{{ loop.index0 }}">
-                        <input type="hidden" name="ownership_ids" value="{{ o.id }}">
-                        <input type="hidden" name="ownership_purchase_items_json" value='{{ o.purchase_items|map(attribute="to_dict")|list|tojson if o.has_purchase_items else "" }}' class="purchase-items-json">
-                        <div class="d-flex gap-10 flex-wrap" style="align-items:flex-start;">
-                            <div class="form-group mb-0" style="min-width:120px;flex:1;">
-                                <label class="mb-2" style="font-size:0.85em;">Benutzer</label>
-                                <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
-                                    <option value="">— Benutzer wählen —</option>
-                                    {% for u in users %}
-                                        <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}" {{ 'selected' if u.id == o.user_id }}>{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="form-group mb-0" style="width:120px;">
-                                <label class="mb-2" style="font-size:0.85em;">Menge (-1=∞)</label>
-                                <input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-full">
-                            </div>
-                            <div class="form-group mb-0" style="width:140px;">
-                                <label class="mb-2" style="font-size:0.85em;">Ext. Preis/Tag (&euro;)</label>
-                                <input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-full" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}>
-                            </div>
-                            {% if site_settings and site_settings.tax_mode == 'regular' %}
-                            <div class="form-group mb-0" style="width:90px;">
-                                <label class="mb-2" style="font-size:0.85em;">Ext. B/N</label>
-                                <select name="ownership_ext_price_is_brutto" class="w-full">
-                                    <option value="1" {{ 'selected' if o.external_price_is_brutto }}>Brutto</option>
-                                    <option value="0" {{ 'selected' if not o.external_price_is_brutto }}>Netto</option>
-                                </select>
-                            </div>
-                            {% endif %}
-                            {% if item %}
-                            <div class="form-group mb-0 ownership-docs-cell" style="min-width:120px;" data-ownership-id="{{ o.id }}">
-                                <label class="mb-2" style="font-size:0.85em;">Dokumente</label>
-                                <div class="ownership-docs-list">
-                                    {% for doc in o.documents %}
-                                    <div class="ownership-doc-item" data-doc-id="{{ doc.id }}">
-                                        <a href="{{ url_for('admin.ownership_download_document', doc_id=doc.id) }}" class="ownership-doc-link" title="{{ doc.original_name }}">📄 {{ doc.original_name|truncate(20) }}</a>
-                                        <button type="button" class="btn-doc-delete" onclick="deleteOwnershipDoc({{ doc.id }}, this)" title="Löschen">✕</button>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                <label class="btn btn-xs btn-outline ownership-doc-upload-btn">
-                                    + Datei
-                                    <input type="file" class="d-none" onchange="uploadOwnershipDoc({{ o.id }}, this)" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv">
-                                </label>
-                            </div>
-                            {% endif %}
-                            <div class="form-group mb-0" style="width:30px;padding-top:22px;">
-                                <button type="button" class="btn btn-sm btn-danger" onclick="removeOwnershipCard(this)">✕</button>
-                            </div>
-                        </div>
-
-                        <!-- Acquisition section -->
-                        <div class="mt-10 ownership-acquisition">
-                            <div class="d-flex gap-10" style="align-items:center;">
-                                <strong style="font-size:0.85em;">Anschaffung</strong>
-                                <label style="font-size:0.8em;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;width:10px">
-                                    <input type="checkbox" class="purchase-mode-toggle" onchange="togglePurchaseMode(this)" {{ 'checked' if o.has_purchase_items }}> Einzelposten
-                                </label>
-                            </div>
-
-                            <!-- Simple mode (single purchase cost) -->
-                            <div class="purchase-simple {{ 'd-none' if o.has_purchase_items }}" style="margin-top:6px;">
-                                <div class="d-flex gap-10 flex-wrap">
-                                    <div class="form-group mb-0" style="width:140px;">
-                                        <label class="mb-2" style="font-size:0.8em;">Ansch.kosten (&euro;)</label>
-                                        <input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost and not o.has_purchase_items else '' }}" class="w-full" placeholder="0.00">
-                                    </div>
-                                    {% if site_settings and site_settings.tax_mode == 'regular' %}
-                                    <div class="form-group mb-0" style="width:90px;">
-                                        <label class="mb-2" style="font-size:0.8em;">B/N</label>
-                                        <select name="ownership_purchase_cost_is_brutto" class="w-full">
-                                            <option value="1" {{ 'selected' if o.purchase_cost_is_brutto }}>Brutto</option>
-                                            <option value="0" {{ 'selected' if not o.purchase_cost_is_brutto }}>Netto</option>
-                                        </select>
-                                    </div>
-                                    {% endif %}
-                                    <div class="form-group mb-0" style="width:140px;">
-                                        <label class="mb-2" style="font-size:0.8em;">Kaufdatum</label>
-                                        <input type="date" name="ownership_purchase_dates" value="{{ o.purchase_date.strftime('%Y-%m-%d') if o.purchase_date and not o.has_purchase_items else '' }}" class="w-full">
-                                    </div>
-                                    <div class="form-group mb-0" style="min-width:160px;flex:1;">
-                                        <label class="mb-2" style="font-size:0.8em;">AfA-Kategorie</label>
-                                        <select name="ownership_depreciation_category_ids" class="w-full">
-                                            <option value="">— Keine AfA —</option>
-                                            {% for dc in depreciation_categories %}
-                                                <option value="{{ dc.id }}" {{ 'selected' if o.depreciation_category_id == dc.id and not o.has_purchase_items }}>{{ dc.name }} ({{ dc.summary }})</option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Line-item mode (multiple purchase items) -->
-                            <div class="purchase-items {{ 'd-none' if not o.has_purchase_items }}" style="margin-top:6px;">
-                                <table class="purchase-items-table" style="width:100%;font-size:0.85em;">
-                                    <thead>
-                                        <tr>
-                                            <th>Bezeichnung</th>
-                                            <th style="width:150px;">Kosten (&euro;)</th>
-                                            {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:100px;">B/N</th>{% endif %}
-                                            <th style="width:130px;">Kaufdatum</th>
-                                            <th>AfA-Kategorie</th>
-                                            <th style="min-width:100px;">Dokumente</th>
-                                            <th style="width:30px;"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="purchase-items-tbody">
-                                        {% if o.has_purchase_items %}
-                                            {% for pi in o.purchase_items %}
-                                            <tr data-pi-id="{{ pi.id }}">
-                                                <td><input type="text" class="pi-name w-full" value="{{ pi.name }}" placeholder="z.B. Lampe"></td>
-                                                <td><input type="number" class="pi-cost w-full" step="0.01" min="0" value="{{ '%.2f'|format(pi.cost) }}" placeholder="0.00"></td>
-                                                {% if site_settings and site_settings.tax_mode == 'regular' %}
-                                                <td>
-                                                    <select class="pi-brutto w-full">
-                                                        <option value="1" {{ 'selected' if pi.cost_is_brutto }}>Brutto</option>
-                                                        <option value="0" {{ 'selected' if not pi.cost_is_brutto }}>Netto</option>
-                                                    </select>
-                                                </td>
-                                                {% endif %}
-                                                <td><input type="date" class="pi-date w-full" value="{{ pi.purchase_date.strftime('%Y-%m-%d') if pi.purchase_date else '' }}"></td>
-                                                <td>
-                                                    <select class="pi-depr w-full">
-                                                        <option value="">— Keine AfA —</option>
-                                                        {% for dc in depreciation_categories %}
-                                                            <option value="{{ dc.id }}" {{ 'selected' if pi.depreciation_category_id == dc.id }}>{{ dc.name }} ({{ dc.summary }})</option>
-                                                        {% endfor %}
-                                                    </select>
-                                                </td>
-                                                <td class="pi-docs-cell" data-pi-id="{{ pi.id }}">
-                                                    <div class="pi-docs-list">
-                                                        {% for doc in pi.documents %}
-                                                        <div class="ownership-doc-item" data-doc-id="{{ doc.id }}">
-                                                            <a href="{{ url_for('admin.pi_download_document', doc_id=doc.id) }}" class="ownership-doc-link" title="{{ doc.original_name }}">📄 {{ doc.original_name|truncate(15) }}</a>
-                                                            <button type="button" class="btn-doc-delete" onclick="deletePIDoc({{ doc.id }}, this)" title="Löschen">✕</button>
-                                                        </div>
-                                                        {% endfor %}
-                                                    </div>
-                                                    <label class="btn btn-xs btn-outline" style="margin-top:2px;">
-                                                        + Datei
-                                                        <input type="file" class="d-none" onchange="uploadPIDoc({{ pi.id }}, this)" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv">
-                                                    </label>
-                                                </td>
-                                                <td><button type="button" class="btn btn-sm btn-danger" onclick="removePurchaseItemRow(this)">✕</button></td>
-                                            </tr>
-                                            {% endfor %}
-                                        {% endif %}
-                                    </tbody>
-                                </table>
-                                <div class="d-flex gap-10 mt-6" style="align-items:center;">
-                                    <button type="button" class="btn btn-xs btn-outline" onclick="addPurchaseItemRow(this)">+ Posten</button>
-                                    <small class="purchase-items-sum help-text"></small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addOwnershipCard()">+ Eigentümer hinzufügen</button>
+            <table id="ownership-table" style="width:100%;font-size:0.9em;">
+                <thead>
+                    <tr>
+                        <th>Benutzer</th>
+                        <th style="width:90px;">Menge</th>
+                        <th style="width:130px;">Ext. Preis/Tag (&euro;)</th>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:80px;">Ext. B/N</th>{% endif %}
+                        <th style="width:130px;">Ansch.kosten (&euro;)</th>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:80px;">B/N</th>{% endif %}
+                        <th style="width:30px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="ownership-container">
+                    {% if item and item.ownerships %}
+                        {% for o in item.ownerships %}
+                    <tr class="ownership-card" data-ownership-index="{{ loop.index0 }}">
+                        <td>
+                            <input type="hidden" name="ownership_ids" value="{{ o.id }}">
+                            <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
+                                <option value="">— Benutzer wählen —</option>
+                                {% for u in users %}
+                                    <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}" {{ 'selected' if u.id == o.user_id }}>{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
+                        <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-full" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}
+                        <td>
+                            <select name="ownership_ext_price_is_brutto" class="w-full">
+                                <option value="1" {{ 'selected' if o.external_price_is_brutto }}>Brutto</option>
+                                <option value="0" {{ 'selected' if not o.external_price_is_brutto }}>Netto</option>
+                            </select>
+                        </td>
+                        {% endif %}
+                        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-full" placeholder="0.00"></td>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}
+                        <td>
+                            <select name="ownership_purchase_cost_is_brutto" class="w-full">
+                                <option value="1" {{ 'selected' if o.purchase_cost_is_brutto }}>Brutto</option>
+                                <option value="0" {{ 'selected' if not o.purchase_cost_is_brutto }}>Netto</option>
+                            </select>
+                        </td>
+                        {% endif %}
+                        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeOwnershipRow(this)">✕</button></td>
+                    </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addOwnershipRow()">+ Eigentümer hinzufügen</button>
         </div>
 
         <div class="d-flex gap-10 mt-24">
@@ -325,222 +212,38 @@ function togglePackageFields() {
     }
 }
 
-// ── Ownership card management ──
-function removeOwnershipCard(btn) {
-    btn.closest('.ownership-card').remove();
+// ── Ownership row management ──
+function removeOwnershipRow(btn) {
+    btn.closest('tr').remove();
 }
 
-function addOwnershipCard() {
-    var container = document.getElementById('ownership-container');
-    var card = document.createElement('div');
-    card.className = 'ownership-card card mb-10';
-    var docsHtml = '';
-    if (_isEdit) {
-        docsHtml = `
-            <div class="form-group mb-0" style="min-width:120px;">
-                <label class="mb-2" style="font-size:0.85em;">Dokumente</label>
-                <small class="text-muted">Erst nach Speichern verfügbar</small>
-            </div>`;
-    }
-    card.innerHTML = `
-        <input type="hidden" name="ownership_ids" value="">
-        <input type="hidden" name="ownership_purchase_items_json" value="" class="purchase-items-json">
-        <div class="d-flex gap-10 flex-wrap" style="align-items:flex-start;">
-            <div class="form-group mb-0" style="min-width:120px;flex:1;">
-                <label class="mb-2" style="font-size:0.85em;">Benutzer</label>
-                <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
-                    <option value="">— Benutzer wählen —</option>
-                    {% for u in users %}
-                    <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}">{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group mb-0" style="width:120px;">
-                <label class="mb-2" style="font-size:0.85em;">Menge (-1=∞)</label>
-                <input type="number" name="ownership_quantities" value="0" min="-1" class="w-full">
-            </div>
-            <div class="form-group mb-0" style="width:140px;">
-                <label class="mb-2" style="font-size:0.85em;">Ext. Preis/Tag (€)</label>
-                <input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-full" placeholder="leer = intern">
-            </div>
-            {% if site_settings and site_settings.tax_mode == 'regular' %}
-            <div class="form-group mb-0" style="width:90px;">
-                <label class="mb-2" style="font-size:0.85em;">Ext. B/N</label>
-                <select name="ownership_ext_price_is_brutto" class="w-full">
-                    <option value="1" selected>Brutto</option>
-                    <option value="0">Netto</option>
-                </select>
-            </div>
-            {% endif %}
-            ${docsHtml}
-            <div class="form-group mb-0" style="width:30px;padding-top:22px;">
-                <button type="button" class="btn btn-sm btn-danger" onclick="removeOwnershipCard(this)">✕</button>
-            </div>
-        </div>
-        <div class="mt-10 ownership-acquisition">
-            <div class="d-flex gap-10" style="align-items:center;">
-                <strong style="font-size:0.85em;">Anschaffung</strong>
-                <label style="font-size:0.8em;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;">
-                    <input type="checkbox" class="purchase-mode-toggle" onchange="togglePurchaseMode(this)"> Einzelposten
-                </label>
-            </div>
-            <div class="purchase-simple" style="margin-top:6px;">
-                <div class="d-flex gap-10 flex-wrap">
-                    <div class="form-group mb-0" style="width:140px;">
-                        <label class="mb-2" style="font-size:0.8em;">Ansch.kosten (€)</label>
-                        <input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-full" placeholder="0.00">
-                    </div>
-                    {% if site_settings and site_settings.tax_mode == 'regular' %}
-                    <div class="form-group mb-0" style="width:90px;">
-                        <label class="mb-2" style="font-size:0.8em;">B/N</label>
-                        <select name="ownership_purchase_cost_is_brutto" class="w-full">
-                            <option value="1" selected>Brutto</option>
-                            <option value="0">Netto</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    <div class="form-group mb-0" style="width:140px;">
-                        <label class="mb-2" style="font-size:0.8em;">Kaufdatum</label>
-                        <input type="date" name="ownership_purchase_dates" value="" class="w-full">
-                    </div>
-                    <div class="form-group mb-0" style="min-width:160px;flex:1;">
-                        <label class="mb-2" style="font-size:0.8em;">AfA-Kategorie</label>
-                        <select name="ownership_depreciation_category_ids" class="w-full">
-                            <option value="">— Keine AfA —</option>
-                            {% for dc in depreciation_categories %}
-                            <option value="{{ dc.id }}">{{ dc.name }} ({{ dc.summary }})</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="purchase-items d-none" style="margin-top:6px;">
-                <table class="purchase-items-table" style="width:100%;font-size:0.85em;">
-                    <thead>
-                        <tr>
-                            <th>Bezeichnung</th>
-                            <th style="width:150px;">Kosten (€)</th>
-                            ${_isRegularTax ? '<th style="width:100px;">B/N</th>' : ''}
-                            <th style="width:130px;">Kaufdatum</th>
-                            <th>AfA-Kategorie</th>
-                            <th style="min-width:100px;">Dokumente</th>
-                            <th style="width:30px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="purchase-items-tbody"></tbody>
-                </table>
-                <div class="d-flex gap-10 mt-6" style="align-items:center;">
-                    <button type="button" class="btn btn-xs btn-outline" onclick="addPurchaseItemRow(this)">+ Posten</button>
-                    <small class="purchase-items-sum help-text"></small>
-                </div>
-            </div>
-        </div>
-    `;
-    container.appendChild(card);
-}
-
-// ── Toggle between simple and line-item purchase mode ──
-function togglePurchaseMode(checkbox) {
-    var card = checkbox.closest('.ownership-card');
-    var simpleDiv = card.querySelector('.purchase-simple');
-    var itemsDiv = card.querySelector('.purchase-items');
-    if (checkbox.checked) {
-        simpleDiv.classList.add('d-none');
-        itemsDiv.classList.remove('d-none');
-        // If no rows exist yet, add one
-        if (itemsDiv.querySelector('.purchase-items-tbody').children.length === 0) {
-            addPurchaseItemRow(itemsDiv.querySelector('.btn'));
-        }
-    } else {
-        simpleDiv.classList.remove('d-none');
-        itemsDiv.classList.add('d-none');
-    }
-}
-
-// ── Purchase item row management ──
-function addPurchaseItemRow(btn) {
-    var card = btn.closest('.ownership-card');
-    var tbody = card.querySelector('.purchase-items-tbody');
+function addOwnershipRow() {
+    var tbody = document.getElementById('ownership-container');
     var tr = document.createElement('tr');
+    tr.className = 'ownership-card';
     tr.innerHTML = `
-        <td><input type="text" class="pi-name w-full" value="" placeholder="z.B. Lampe"></td>
-        <td><input type="number" class="pi-cost w-full" step="0.01" min="0" value="" placeholder="0.00" oninput="updatePurchaseItemsSum(this)"></td>
-        ${_isRegularTax ? '<td><select class="pi-brutto w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
-        <td><input type="date" class="pi-date w-full" value=""></td>
         <td>
-            <select class="pi-depr w-full">
-                <option value="">— Keine AfA —</option>
-                {% for dc in depreciation_categories %}
-                <option value="{{ dc.id }}">{{ dc.name }} ({{ dc.summary }})</option>
+            <input type="hidden" name="ownership_ids" value="">
+            <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
+                <option value="">— Benutzer wählen —</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}">{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
                 {% endfor %}
             </select>
         </td>
-        <td class="pi-docs-cell"><small class="text-muted">Erst speichern</small></td>
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="removePurchaseItemRow(this)">✕</button></td>
+        <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
+        <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-full" placeholder="leer = intern"></td>
+        ${_isRegularTax ? '<td><select name="ownership_ext_price_is_brutto" class="w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
+        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-full" placeholder="0.00"></td>
+        ${_isRegularTax ? '<td><select name="ownership_purchase_cost_is_brutto" class="w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
+        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeOwnershipRow(this)">✕</button></td>
     `;
     tbody.appendChild(tr);
-    updatePurchaseItemsSum(tr.querySelector('.pi-cost'));
-}
-
-function removePurchaseItemRow(btn) {
-    var card = btn.closest('.ownership-card');
-    btn.closest('tr').remove();
-    updatePurchaseItemsSum(card.querySelector('.pi-cost') || card);
-}
-
-function updatePurchaseItemsSum(el) {
-    var card = el.closest('.ownership-card');
-    if (!card) return;
-    var costs = card.querySelectorAll('.purchase-items-tbody .pi-cost');
-    var sum = 0;
-    costs.forEach(function(c) { sum += parseFloat(c.value) || 0; });
-    var hint = card.querySelector('.purchase-items-sum');
-    if (hint) {
-        hint.textContent = sum > 0 ? ('Summe: ' + sum.toFixed(2) + ' €') : '';
-    }
-}
-
-// ── Serialize purchase items JSON before form submit ──
-function serializePurchaseItems() {
-    document.querySelectorAll('.ownership-card').forEach(function(card) {
-        var toggle = card.querySelector('.purchase-mode-toggle');
-        var jsonInput = card.querySelector('.purchase-items-json');
-        if (toggle && toggle.checked) {
-            // Line-item mode: serialize from the sub-table
-            var rows = card.querySelectorAll('.purchase-items-tbody tr');
-            var items = [];
-            rows.forEach(function(tr) {
-                var name = tr.querySelector('.pi-name').value;
-                var cost = tr.querySelector('.pi-cost').value;
-                var brutto = tr.querySelector('.pi-brutto');
-                var date = tr.querySelector('.pi-date').value;
-                var depr = tr.querySelector('.pi-depr').value;
-                var piId = tr.getAttribute('data-pi-id') || '';
-                items.push({
-                    id: piId,
-                    name: name,
-                    cost: parseFloat(cost) || 0,
-                    cost_is_brutto: brutto ? brutto.value === '1' : true,
-                    purchase_date: date,
-                    depreciation_category_id: depr || ''
-                });
-            });
-            jsonInput.value = JSON.stringify(items);
-            // Clear simple fields so they don't interfere
-            var costInput = card.querySelector('input[name="ownership_purchase_costs"]');
-            if (costInput) costInput.value = '';
-            var dateInput = card.querySelector('input[name="ownership_purchase_dates"]');
-            if (dateInput) dateInput.value = '';
-        } else {
-            // Simple mode: clear JSON
-            jsonInput.value = '';
-        }
-    });
 }
 
 // ── External user handling ──
 function onOwnershipUserChange(selectEl) {
-    var card = selectEl.closest('.ownership-card');
+    var card = selectEl.closest('tr.ownership-card');
     var extPriceInput = card.querySelector('input[name="ownership_ext_prices"]');
     var selectedOption = selectEl.options[selectEl.selectedIndex];
     var isExternal = selectedOption && selectedOption.getAttribute('data-external') === '1';
@@ -578,23 +281,12 @@ function addComponentRow() {
 togglePackageFields();
 
 // Init existing ownership cards
-document.querySelectorAll('.ownership-card select[name="ownership_user_ids"]').forEach(function(sel) {
+document.querySelectorAll('tr.ownership-card select[name="ownership_user_ids"]').forEach(function(sel) {
     onOwnershipUserChange(sel);
 });
 
-// Init purchase item sums
-document.querySelectorAll('.ownership-card').forEach(function(card) {
-    var costEl = card.querySelector('.pi-cost');
-    if (costEl) updatePurchaseItemsSum(costEl);
-    // Add oninput to existing pi-cost fields
-    card.querySelectorAll('.pi-cost').forEach(function(c) {
-        c.addEventListener('input', function() { updatePurchaseItemsSum(c); });
-    });
-});
-
-// Serialize purchase items before form submit
+// Serialize form before submit
 document.querySelector('form').addEventListener('submit', function(e) {
-    serializePurchaseItems();
 
     // ── Rental price: netto→brutto conversion ──
     {% if site_settings and site_settings.tax_mode == 'regular' %}
@@ -608,115 +300,6 @@ document.querySelector('form').addEventListener('submit', function(e) {
     }
     {% endif %}
 });
-
-// ── Ownership Document Upload/Delete (AJAX) ──
-{% if item %}
-var _uploadUrlBase = '{{ url_for("admin.ownership_upload_document", ownership_id=0) }}';
-var _deleteUrlBase = '{{ url_for("admin.ownership_delete_document", doc_id=0) }}';
-var _piUploadUrlBase = '{{ url_for("admin.pi_upload_document", pi_id=0) }}';
-var _piDeleteUrlBase = '{{ url_for("admin.pi_delete_document", doc_id=0) }}';
-{% endif %}
-
-function uploadOwnershipDoc(ownershipId, input) {
-    if (!input.files.length) return;
-    var file = input.files[0];
-    var formData = new FormData();
-    formData.append('document', file);
-
-    fetch(_uploadUrlBase.replace('/0/', '/' + ownershipId + '/'), {
-        method: 'POST',
-        body: formData
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(data) {
-        if (data.error) {
-            alert(data.error);
-            return;
-        }
-        var cell = input.closest('.ownership-docs-cell');
-        var list = cell.querySelector('.ownership-docs-list');
-        var div = document.createElement('div');
-        div.className = 'ownership-doc-item';
-        div.setAttribute('data-doc-id', data.id);
-        div.innerHTML = '<a href="' + data.download_url + '" class="ownership-doc-link" title="' + data.original_name + '">📄 ' + (data.original_name.length > 20 ? data.original_name.substring(0, 20) + '…' : data.original_name) + '</a>' +
-            '<button type="button" class="btn-doc-delete" onclick="deleteOwnershipDoc(' + data.id + ', this)" title="Löschen">✕</button>';
-        list.appendChild(div);
-        input.value = '';
-    })
-    .catch(function(err) {
-        alert('Fehler beim Hochladen: ' + err);
-    });
-}
-
-function deleteOwnershipDoc(docId, btn) {
-    if (!confirm('Dokument wirklich löschen?')) return;
-    fetch(_deleteUrlBase.replace('/0/', '/' + docId + '/'), {
-        method: 'POST'
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(data) {
-        if (data.error) {
-            alert(data.error);
-            return;
-        }
-        var item = btn.closest('.ownership-doc-item');
-        item.remove();
-    })
-    .catch(function(err) {
-        alert('Fehler beim Löschen: ' + err);
-    });
-}
-
-// ── Purchase Item Document Upload/Delete (AJAX) ──
-function uploadPIDoc(piId, input) {
-    if (!input.files.length) return;
-    var file = input.files[0];
-    var formData = new FormData();
-    formData.append('document', file);
-
-    fetch(_piUploadUrlBase.replace('/0/', '/' + piId + '/'), {
-        method: 'POST',
-        body: formData
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(data) {
-        if (data.error) {
-            alert(data.error);
-            return;
-        }
-        var cell = input.closest('.pi-docs-cell');
-        var list = cell.querySelector('.pi-docs-list');
-        var div = document.createElement('div');
-        div.className = 'ownership-doc-item';
-        div.setAttribute('data-doc-id', data.id);
-        div.innerHTML = '<a href="' + data.download_url + '" class="ownership-doc-link" title="' + data.original_name + '">📄 ' + (data.original_name.length > 15 ? data.original_name.substring(0, 15) + '…' : data.original_name) + '</a>' +
-            '<button type="button" class="btn-doc-delete" onclick="deletePIDoc(' + data.id + ', this)" title="Löschen">✕</button>';
-        list.appendChild(div);
-        input.value = '';
-    })
-    .catch(function(err) {
-        alert('Fehler beim Hochladen: ' + err);
-    });
-}
-
-function deletePIDoc(docId, btn) {
-    if (!confirm('Dokument wirklich löschen?')) return;
-    fetch(_piDeleteUrlBase.replace('/0/', '/' + docId + '/'), {
-        method: 'POST'
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(data) {
-        if (data.error) {
-            alert(data.error);
-            return;
-        }
-        var item = btn.closest('.ownership-doc-item');
-        item.remove();
-    })
-    .catch(function(err) {
-        alert('Fehler beim Löschen: ' + err);
-    });
-}
 
 // ── Rental price hint (netto/brutto) ──
 {% if site_settings and site_settings.tax_mode == 'regular' %}

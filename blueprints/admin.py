@@ -1,9 +1,8 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, OwnershipDocument, OwnershipPurchaseItem, PurchaseItemDocument, QuoteItemExpense, QuoteItemExpenseDocument, DepreciationCategory
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, QuoteItemExpense, QuoteItemExpenseDocument
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
-import erpnext_client
 from datetime import datetime
 from functools import wraps
 from werkzeug.utils import secure_filename
@@ -155,7 +154,6 @@ def inventory_add():
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
     users = User.query.filter_by(active=True).order_by(User.username).all()
-    depr_categories = DepreciationCategory.query.order_by(DepreciationCategory.name).all()
 
     if request.method == 'POST':
         try:
@@ -216,9 +214,6 @@ def inventory_add():
                 ownership_ext_price_is_brutto = request.form.getlist('ownership_ext_price_is_brutto')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
                 ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
-                ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
-                ownership_depr_cat_ids = request.form.getlist('ownership_depreciation_category_ids')
-                ownership_purchase_items_json = request.form.getlist('ownership_purchase_items_json')
 
                 for i, uid in enumerate(ownership_user_ids):
                     if not uid:
@@ -226,37 +221,14 @@ def inventory_add():
                     qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
                     ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
                     purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
-                    purchase_date_str = ownership_purchase_dates[i] if i < len(ownership_purchase_dates) else ''
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
-                    purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
-                    depr_cat_str = ownership_depr_cat_ids[i] if i < len(ownership_depr_cat_ids) else ''
-                    depr_cat_id = int(depr_cat_str) if depr_cat_str.strip() else None
-
-                    # Parse purchase items JSON (line-item mode)
-                    import json as _json
-                    pi_json_str = ownership_purchase_items_json[i] if i < len(ownership_purchase_items_json) else ''
-                    purchase_items_data = _json.loads(pi_json_str) if pi_json_str.strip() else []
 
                     # Brutto/Netto flags (default to brutto=True)
                     ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
                     pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
                     ext_is_brutto = ext_is_brutto_str == '1'
                     pc_is_brutto = pc_is_brutto_str == '1'
-
-                    # Validation for simple mode (no line items)
-                    if not purchase_items_data:
-                        # Purchase date is required when purchase cost > 0
-                        if purchase_cost > 0 and not purchase_date:
-                            flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
-                            db.session.rollback()
-                            return render_template('admin/inventory_form.html',
-                                                   item=None,
-                                                   categories=categories,
-                                                   category_tree=category_tree,
-                                                   users=users,
-                                                   depreciation_categories=depr_categories,
-                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
                     owner_user = User.query.get(uid)
@@ -268,15 +240,7 @@ def inventory_add():
                                                categories=categories,
                                                category_tree=category_tree,
                                                users=users,
-                                               depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
-
-                    # When using line items, compute the sum for the top-level purchase_cost cache
-                    if purchase_items_data:
-                        purchase_cost = sum(float(pi.get('cost', 0) or 0) for pi in purchase_items_data)
-                        purchase_date = None
-                        pc_is_brutto = True
-                        depr_cat_id = None
 
                     ownership = ItemOwnership(
                         item_id=item.id,
@@ -286,44 +250,8 @@ def inventory_add():
                         external_price_is_brutto=ext_is_brutto,
                         purchase_cost=purchase_cost,
                         purchase_cost_is_brutto=pc_is_brutto,
-                        purchase_date=purchase_date,
-                        depreciation_category_id=depr_cat_id
                     )
                     db.session.add(ownership)
-                    db.session.flush()
-
-                    # Create purchase line items if provided
-                    for pi_data in purchase_items_data:
-                        pi_cost = float(pi_data.get('cost', 0) or 0)
-                        pi_date_str = pi_data.get('purchase_date', '')
-                        pi_date = datetime.strptime(pi_date_str, '%Y-%m-%d') if pi_date_str and pi_date_str.strip() else None
-                        pi_depr_str = str(pi_data.get('depreciation_category_id', '') or '')
-                        pi_depr_id = int(pi_depr_str) if pi_depr_str.strip() else None
-                        pi_name = (pi_data.get('name', '') or '').strip()
-                        pi_is_brutto = pi_data.get('cost_is_brutto', True)
-                        if isinstance(pi_is_brutto, str):
-                            pi_is_brutto = pi_is_brutto == '1' or pi_is_brutto.lower() == 'true'
-
-                        if pi_cost > 0 and not pi_date:
-                            flash(f'Kaufdatum ist erforderlich für Anschaffungsposten "{pi_name or "ohne Name"}".', 'error')
-                            db.session.rollback()
-                            return render_template('admin/inventory_form.html',
-                                                   item=None,
-                                                   categories=categories,
-                                                   category_tree=category_tree,
-                                                   users=users,
-                                                   depreciation_categories=depr_categories,
-                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
-
-                        pi_obj = OwnershipPurchaseItem(
-                            ownership_id=ownership.id,
-                            name=pi_name or 'Posten',
-                            cost=pi_cost,
-                            cost_is_brutto=pi_is_brutto,
-                            purchase_date=pi_date,
-                            depreciation_category_id=pi_depr_id
-                        )
-                        db.session.add(pi_obj)
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -338,7 +266,6 @@ def inventory_add():
                            categories=categories,
                            category_tree=category_tree,
                            users=users,
-                           depreciation_categories=depr_categories,
                            all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
 
@@ -350,7 +277,6 @@ def inventory_edit(item_id):
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
     users = User.query.filter_by(active=True).order_by(User.username).all()
-    depr_categories = DepreciationCategory.query.order_by(DepreciationCategory.name).all()
 
     if not current_user.can_edit_item(item):
         flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
@@ -368,12 +294,8 @@ def inventory_edit(item_id):
             item.show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
 
             if item.is_package:
-                # Clear ownerships for packages (and their document files)
+                # Clear ownerships for packages
                 for old_o in ItemOwnership.query.filter_by(item_id=item.id).all():
-                    for doc in old_o.documents:
-                        doc_path = os.path.join(get_upload_path(), doc.filename)
-                        if os.path.exists(doc_path):
-                            os.remove(doc_path)
                     db.session.delete(old_o)
 
                 # Update package components
@@ -389,8 +311,7 @@ def inventory_edit(item_id):
                         )
                         db.session.add(pc)
             else:
-                # Update ownership entries — preserve existing rows (and their documents)
-                import json as _json
+                # Update ownership entries
                 ownership_ids = request.form.getlist('ownership_ids')
                 ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
                 ownership_quantities = request.form.getlist('ownership_quantities', type=int)
@@ -398,11 +319,8 @@ def inventory_edit(item_id):
                 ownership_ext_price_is_brutto = request.form.getlist('ownership_ext_price_is_brutto')
                 ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
                 ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
-                ownership_purchase_dates = request.form.getlist('ownership_purchase_dates')
-                ownership_depr_cat_ids = request.form.getlist('ownership_depreciation_category_ids')
-                ownership_purchase_items_json = request.form.getlist('ownership_purchase_items_json')
 
-                # Collect existing ownership IDs BEFORE processing so new inserts don't interfere
+                # Collect existing ownership IDs BEFORE processing
                 existing_ownership_ids = {o.id for o in ItemOwnership.query.filter_by(item_id=item.id).all()}
                 submitted_ids = set()
                 for i, uid in enumerate(ownership_user_ids):
@@ -411,35 +329,14 @@ def inventory_edit(item_id):
                     qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
                     ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
                     purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
-                    purchase_date_str = ownership_purchase_dates[i] if i < len(ownership_purchase_dates) else ''
                     ext_price = float(ext_price_str) if ext_price_str.strip() else None
                     purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
-                    purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d') if purchase_date_str.strip() else None
-                    depr_cat_str = ownership_depr_cat_ids[i] if i < len(ownership_depr_cat_ids) else ''
-                    depr_cat_id = int(depr_cat_str) if depr_cat_str.strip() else None
-
-                    # Parse purchase items JSON (line-item mode)
-                    pi_json_str = ownership_purchase_items_json[i] if i < len(ownership_purchase_items_json) else ''
-                    purchase_items_data = _json.loads(pi_json_str) if pi_json_str.strip() else []
 
                     # Brutto/Netto flags (default to brutto=True)
                     ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
                     pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
                     ext_is_brutto = ext_is_brutto_str == '1'
                     pc_is_brutto = pc_is_brutto_str == '1'
-
-                    # Validation for simple mode (no line items)
-                    if not purchase_items_data:
-                        if purchase_cost > 0 and not purchase_date:
-                            flash('Kaufdatum ist erforderlich wenn Anschaffungskosten > 0.', 'error')
-                            db.session.rollback()
-                            return render_template('admin/inventory_form.html',
-                                                   item=item,
-                                                   categories=categories,
-                                                   category_tree=category_tree,
-                                                   users=users,
-                                                   depreciation_categories=depr_categories,
-                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
                     # External users must always have an external price
                     owner_user = User.query.get(uid)
@@ -451,15 +348,7 @@ def inventory_edit(item_id):
                                                categories=categories,
                                                category_tree=category_tree,
                                                users=users,
-                                               depreciation_categories=depr_categories,
                                                all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
-
-                    # When using line items, compute the sum for the top-level purchase_cost cache
-                    if purchase_items_data:
-                        purchase_cost = sum(float(pi.get('cost', 0) or 0) for pi in purchase_items_data)
-                        purchase_date = None
-                        pc_is_brutto = True
-                        depr_cat_id = None
 
                     oid_str = ownership_ids[i] if i < len(ownership_ids) else ''
                     oid = int(oid_str) if oid_str.strip() else None
@@ -474,8 +363,6 @@ def inventory_edit(item_id):
                             ownership.external_price_is_brutto = ext_is_brutto
                             ownership.purchase_cost = purchase_cost
                             ownership.purchase_cost_is_brutto = pc_is_brutto
-                            ownership.purchase_date = purchase_date
-                            ownership.depreciation_category_id = depr_cat_id
                             submitted_ids.add(oid)
                         else:
                             # ID invalid, create new
@@ -485,8 +372,6 @@ def inventory_edit(item_id):
                                 external_price_is_brutto=ext_is_brutto,
                                 purchase_cost=purchase_cost,
                                 purchase_cost_is_brutto=pc_is_brutto,
-                                purchase_date=purchase_date,
-                                depreciation_category_id=depr_cat_id
                             )
                             db.session.add(ownership)
                     else:
@@ -496,89 +381,15 @@ def inventory_edit(item_id):
                             external_price_is_brutto=ext_is_brutto,
                             purchase_cost=purchase_cost,
                             purchase_cost_is_brutto=pc_is_brutto,
-                            purchase_date=purchase_date,
-                            depreciation_category_id=depr_cat_id
                         )
                         db.session.add(ownership)
 
                     db.session.flush()
 
-                    # Update purchase line items — preserve existing rows (and their documents)
-                    existing_pi_ids = {pi.id for pi in OwnershipPurchaseItem.query.filter_by(ownership_id=ownership.id).all()}
-                    submitted_pi_ids = set()
-                    for pi_data in purchase_items_data:
-                        pi_cost = float(pi_data.get('cost', 0) or 0)
-                        pi_date_str = pi_data.get('purchase_date', '')
-                        pi_date = datetime.strptime(pi_date_str, '%Y-%m-%d') if pi_date_str and pi_date_str.strip() else None
-                        pi_depr_str = str(pi_data.get('depreciation_category_id', '') or '')
-                        pi_depr_id = int(pi_depr_str) if pi_depr_str.strip() else None
-                        pi_name = (pi_data.get('name', '') or '').strip()
-                        pi_is_brutto = pi_data.get('cost_is_brutto', True)
-                        if isinstance(pi_is_brutto, str):
-                            pi_is_brutto = pi_is_brutto == '1' or pi_is_brutto.lower() == 'true'
-
-                        if pi_cost > 0 and not pi_date:
-                            flash(f'Kaufdatum ist erforderlich für Anschaffungsposten "{pi_name or "ohne Name"}".', 'error')
-                            db.session.rollback()
-                            return render_template('admin/inventory_form.html',
-                                                   item=item,
-                                                   categories=categories,
-                                                   category_tree=category_tree,
-                                                   users=users,
-                                                   depreciation_categories=depr_categories,
-                                                   all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
-
-                        pi_id_str = str(pi_data.get('id', '') or '')
-                        pi_id = int(pi_id_str) if pi_id_str.strip() else None
-
-                        if pi_id and pi_id in existing_pi_ids:
-                            # Update existing purchase item
-                            pi_obj = OwnershipPurchaseItem.query.get(pi_id)
-                            pi_obj.name = pi_name or 'Posten'
-                            pi_obj.cost = pi_cost
-                            pi_obj.cost_is_brutto = pi_is_brutto
-                            pi_obj.purchase_date = pi_date
-                            pi_obj.depreciation_category_id = pi_depr_id
-                            submitted_pi_ids.add(pi_id)
-                        else:
-                            # Create new purchase item
-                            pi_obj = OwnershipPurchaseItem(
-                                ownership_id=ownership.id,
-                                name=pi_name or 'Posten',
-                                cost=pi_cost,
-                                cost_is_brutto=pi_is_brutto,
-                                purchase_date=pi_date,
-                                depreciation_category_id=pi_depr_id
-                            )
-                            db.session.add(pi_obj)
-
-                    # Delete removed purchase items (and their document files)
-                    for removed_pi_id in existing_pi_ids - submitted_pi_ids:
-                        old_pi = OwnershipPurchaseItem.query.get(removed_pi_id)
-                        if old_pi:
-                            for doc in old_pi.documents:
-                                doc_path = os.path.join(get_upload_path(), doc.filename)
-                                if os.path.exists(doc_path):
-                                    os.remove(doc_path)
-                            db.session.delete(old_pi)
-
-                    # If no purchase items remain (switched to simple mode), delete any leftover
-                    if not purchase_items_data:
-                        for old_pi in OwnershipPurchaseItem.query.filter_by(ownership_id=ownership.id).all():
-                            for doc in old_pi.documents:
-                                doc_path = os.path.join(get_upload_path(), doc.filename)
-                                if os.path.exists(doc_path):
-                                    os.remove(doc_path)
-                            db.session.delete(old_pi)
-
-                # Delete removed ownership rows (and their document files)
+                # Delete removed ownership rows
                 for removed_id in existing_ownership_ids - submitted_ids:
                     old_o = ItemOwnership.query.get(removed_id)
                     if old_o:
-                        for doc in old_o.documents:
-                            doc_path = os.path.join(get_upload_path(), doc.filename)
-                            if os.path.exists(doc_path):
-                                os.remove(doc_path)
                         db.session.delete(old_o)
 
             # Handle image upload
@@ -618,7 +429,6 @@ def inventory_edit(item_id):
                            categories=categories,
                            category_tree=category_tree,
                            users=users,
-                           depreciation_categories=depr_categories,
                            all_items=Item.query.filter(Item.is_package == False, Item.id != item.id).order_by(Item.name).all())
 
 
@@ -638,12 +448,6 @@ def inventory_delete(item_id):
             old_path = os.path.join(get_upload_path(), item.image_filename)
             if os.path.exists(old_path):
                 os.remove(old_path)
-        # Delete ownership document files
-        for ownership in item.ownerships:
-            for doc in ownership.documents:
-                doc_path = os.path.join(get_upload_path(), doc.filename)
-                if os.path.exists(doc_path):
-                    os.remove(doc_path)
         # Remove this item from any packages it's a component of
         PackageComponent.query.filter_by(component_item_id=item.id).delete()
         name = item.name
@@ -655,154 +459,6 @@ def inventory_delete(item_id):
         flash(f'Fehler beim Löschen des Artikels: {str(e)}', 'error')
 
     return redirect(url_for('admin.inventory_list'))
-
-
-# ============= OWNERSHIP DOCUMENTS =============
-
-@admin_bp.route('/ownership/<int:ownership_id>/upload-document', methods=['POST'])
-@login_required
-def ownership_upload_document(ownership_id):
-    """Upload a document to an ownership entry (AJAX)"""
-    ownership = ItemOwnership.query.get_or_404(ownership_id)
-    item = Item.query.get_or_404(ownership.item_id)
-
-    if not current_user.can_edit_item(item):
-        return jsonify({'error': 'Keine Berechtigung'}), 403
-
-    if 'document' not in request.files:
-        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
-
-    file = request.files['document']
-    if not file or not file.filename:
-        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
-
-    if not allowed_document_file(file.filename):
-        return jsonify({'error': 'Dateityp nicht erlaubt. Erlaubt: PDF, Bilder, Office-Dokumente, TXT, CSV'}), 400
-
-    original_name = secure_filename(file.filename)
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    stored_name = f"{uuid.uuid4().hex}.{ext}"
-    file.save(os.path.join(get_upload_path(), stored_name))
-
-    doc = OwnershipDocument(
-        ownership_id=ownership.id,
-        filename=stored_name,
-        original_name=original_name
-    )
-    db.session.add(doc)
-    db.session.commit()
-
-    return jsonify({
-        'id': doc.id,
-        'original_name': doc.original_name,
-        'download_url': url_for('admin.ownership_download_document', doc_id=doc.id),
-        'delete_url': url_for('admin.ownership_delete_document', doc_id=doc.id)
-    })
-
-
-@admin_bp.route('/ownership/document/<int:doc_id>/download')
-@login_required
-def ownership_download_document(doc_id):
-    """Download an ownership document"""
-    doc = OwnershipDocument.query.get_or_404(doc_id)
-    from flask import send_from_directory
-    return send_from_directory(get_upload_path(), doc.filename,
-                               download_name=doc.original_name, as_attachment=True)
-
-
-@admin_bp.route('/ownership/document/<int:doc_id>/delete', methods=['POST'])
-@login_required
-def ownership_delete_document(doc_id):
-    """Delete an ownership document (AJAX)"""
-    doc = OwnershipDocument.query.get_or_404(doc_id)
-    ownership = ItemOwnership.query.get_or_404(doc.ownership_id)
-    item = Item.query.get_or_404(ownership.item_id)
-
-    if not current_user.can_edit_item(item):
-        return jsonify({'error': 'Keine Berechtigung'}), 403
-
-    file_path = os.path.join(get_upload_path(), doc.filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-    db.session.delete(doc)
-    db.session.commit()
-    return jsonify({'success': True})
-
-
-# ============= PURCHASE ITEM DOCUMENTS =============
-
-@admin_bp.route('/purchase-item/<int:pi_id>/upload-document', methods=['POST'])
-@login_required
-def pi_upload_document(pi_id):
-    """Upload a document to an individual purchase item (AJAX)"""
-    pi = OwnershipPurchaseItem.query.get_or_404(pi_id)
-    ownership = ItemOwnership.query.get_or_404(pi.ownership_id)
-    item = Item.query.get_or_404(ownership.item_id)
-
-    if not current_user.can_edit_item(item):
-        return jsonify({'error': 'Keine Berechtigung'}), 403
-
-    if 'document' not in request.files:
-        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
-
-    file = request.files['document']
-    if not file or not file.filename:
-        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
-
-    if not allowed_document_file(file.filename):
-        return jsonify({'error': 'Dateityp nicht erlaubt. Erlaubt: PDF, Bilder, Office-Dokumente, TXT, CSV'}), 400
-
-    original_name = secure_filename(file.filename)
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    stored_name = f"{uuid.uuid4().hex}.{ext}"
-    file.save(os.path.join(get_upload_path(), stored_name))
-
-    doc = PurchaseItemDocument(
-        purchase_item_id=pi.id,
-        filename=stored_name,
-        original_name=original_name
-    )
-    db.session.add(doc)
-    db.session.commit()
-
-    return jsonify({
-        'id': doc.id,
-        'original_name': doc.original_name,
-        'download_url': url_for('admin.pi_download_document', doc_id=doc.id),
-        'delete_url': url_for('admin.pi_delete_document', doc_id=doc.id)
-    })
-
-
-@admin_bp.route('/purchase-item/document/<int:doc_id>/download')
-@login_required
-def pi_download_document(doc_id):
-    """Download a purchase item document"""
-    doc = PurchaseItemDocument.query.get_or_404(doc_id)
-    from flask import send_from_directory
-    return send_from_directory(get_upload_path(), doc.filename,
-                               download_name=doc.original_name, as_attachment=True)
-
-
-@admin_bp.route('/purchase-item/document/<int:doc_id>/delete', methods=['POST'])
-@login_required
-def pi_delete_document(doc_id):
-    """Delete a purchase item document (AJAX)"""
-    doc = PurchaseItemDocument.query.get_or_404(doc_id)
-    pi = OwnershipPurchaseItem.query.get_or_404(doc.purchase_item_id)
-    ownership = ItemOwnership.query.get_or_404(pi.ownership_id)
-    item = Item.query.get_or_404(ownership.item_id)
-
-    if not current_user.can_edit_item(item):
-        return jsonify({'error': 'Keine Berechtigung'}), 403
-
-    file_path = os.path.join(get_upload_path(), doc.filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-    db.session.delete(doc)
-    db.session.commit()
-    return jsonify({'success': True})
 
 
 # ============= QUOTE ITEM EXPENSES =============
@@ -1193,17 +849,6 @@ def quote_edit(quote_id):
                     item_availability = {item.id: item.total_quantity for item in items}
                     return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
 
-                # Check customer exists in ERPNext if enabled
-                if erpnext_client.is_erpnext_enabled():
-                    try:
-                        erp_customer = erpnext_client.get_customer(quote.customer_name)
-                        if not erp_customer:
-                            flash(f'Kann nicht finalisiert werden: Kunde „{quote.customer_name}" existiert nicht in ERPNext. Bitte erst dort anlegen oder den Kundennamen anpassen.', 'error')
-                            item_availability = {item.id: item.total_quantity for item in items}
-                            return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
-                    except Exception as erp_err:
-                        flash(f'ERPNext-Kundenprüfung fehlgeschlagen: {erp_err}. Finalisierung wird trotzdem fortgesetzt.', 'warning')
-
                 validation_warnings = []
                 for quote_item in quote.quote_items:
                     if not quote_item.is_custom and quote_item.item:
@@ -1296,7 +941,7 @@ def quote_unfinalize(quote_id):
 @admin_bp.route('/quotes/<int:quote_id>/mark_performed', methods=['POST'])
 @login_required
 def quote_mark_performed(quote_id):
-    """Mark quote as performed (Durchgeführt) and create receivable Journal Entry in ERPNext."""
+    """Mark quote as performed (Durchgeführt)."""
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'finalized':
@@ -1307,13 +952,6 @@ def quote_mark_performed(quote_id):
                 quote.performed_at = datetime.utcnow()
 
             quote.status = 'performed'
-
-            # Create receivable Journal Entry in ERPNext if enabled
-            if erpnext_client.is_erpnext_enabled():
-                settings = SiteSettings.query.first()
-                je_name = erpnext_client.book_receivable(quote, settings)
-                if je_name:
-                    quote.erpnext_je_receivable = je_name
 
             db.session.commit()
             flash('Angebot als durchgeführt markiert!', 'success')
@@ -1332,11 +970,6 @@ def quote_unperform(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'performed':
-            # Cancel receivable Journal Entry in ERPNext
-            if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_receivable:
-                erpnext_client.cancel_receivable(quote)
-                quote.erpnext_je_receivable = None
-
             quote.status = 'finalized'
             # Keep performed_at for re-performing
             db.session.commit()
@@ -1369,16 +1002,6 @@ def quote_mark_paid(quote_id):
                 payment_method = 'bank'
             quote.payment_method = payment_method
 
-            # If status was 'finalized' (skipping 'performed'), create receivable booking first
-            if quote.status == 'finalized' and erpnext_client.is_erpnext_enabled():
-                if not quote.performed_at:
-                    quote.performed_at = quote.paid_at
-                settings = SiteSettings.query.first()
-                if not quote.erpnext_je_receivable:
-                    je_name = erpnext_client.book_receivable(quote, settings)
-                    if je_name:
-                        quote.erpnext_je_receivable = je_name
-
             quote.status = 'paid'
 
             discount_multiplier = (100 - quote.discount_percent) / 100
@@ -1391,13 +1014,6 @@ def quote_mark_paid(quote_id):
                     if quote_item.rental_cost_per_day:
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost + item_cost, 2)
-
-            # Create payment Journal Entry in ERPNext if enabled
-            if erpnext_client.is_erpnext_enabled():
-                settings = SiteSettings.query.first()
-                je_name = erpnext_client.book_payment(quote, settings, payment_method=payment_method)
-                if je_name:
-                    quote.erpnext_je_payment = je_name
 
             db.session.commit()
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
@@ -1419,24 +1035,8 @@ def quote_update_paid_date(quote_id):
             paid_date_str = request.form.get('paid_at', '').strip()
             if paid_date_str:
                 quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
-
-                # Re-book payment JE with new date if one exists
-                if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_payment:
-                    try:
-                        erpnext_client.cancel_payment(quote)
-                        quote.erpnext_je_payment = None
-                        settings = SiteSettings.query.first()
-                        payment_method = quote.payment_method or 'bank'
-                        je_name = erpnext_client.book_payment(quote, settings, payment_method=payment_method)
-                        if je_name:
-                            quote.erpnext_je_payment = je_name
-                        flash('Bezahldatum aktualisiert und ERPNext-Buchung angepasst!', 'success')
-                    except Exception as erp_err:
-                        flash(f'Datum aktualisiert, aber ERPNext-Buchung konnte nicht angepasst werden: {erp_err}', 'warning')
-                else:
-                    flash('Bezahldatum aktualisiert!', 'success')
-
                 db.session.commit()
+                flash('Bezahldatum aktualisiert!', 'success')
             else:
                 flash('Kein Datum angegeben.', 'error')
         else:
@@ -1479,23 +1079,8 @@ def quote_update_performed_date(quote_id):
             performed_date_str = request.form.get('performed_at', '').strip()
             if performed_date_str:
                 quote.performed_at = datetime.strptime(performed_date_str, '%Y-%m-%d')
-
-                # Re-book receivable JE with new date if one exists
-                if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_receivable:
-                    try:
-                        erpnext_client.cancel_receivable(quote)
-                        quote.erpnext_je_receivable = None
-                        settings = SiteSettings.query.first()
-                        je_name = erpnext_client.book_receivable(quote, settings)
-                        if je_name:
-                            quote.erpnext_je_receivable = je_name
-                        flash('Durchführungsdatum aktualisiert und ERPNext-Buchung angepasst!', 'success')
-                    except Exception as erp_err:
-                        flash(f'Datum aktualisiert, aber ERPNext-Buchung konnte nicht angepasst werden: {erp_err}', 'warning')
-                else:
-                    flash('Durchführungsdatum aktualisiert!', 'success')
-
                 db.session.commit()
+                flash('Durchführungsdatum aktualisiert!', 'success')
             else:
                 flash('Kein Datum angegeben.', 'error')
         else:
@@ -1513,11 +1098,6 @@ def quote_unpay(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'paid':
-            # Cancel payment Journal Entry in ERPNext
-            if erpnext_client.is_erpnext_enabled() and quote.erpnext_je_payment:
-                erpnext_client.cancel_payment(quote)
-                quote.erpnext_je_payment = None
-
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
@@ -1551,19 +1131,6 @@ def quote_delete(quote_id):
     """Delete quote and revert revenue if paid"""
     quote = Quote.query.get_or_404(quote_id)
     try:
-        # Cancel ERPNext Journal Entries if they exist
-        if erpnext_client.is_erpnext_enabled():
-            if quote.erpnext_je_payment:
-                try:
-                    erpnext_client.cancel_payment(quote)
-                except Exception as e:
-                    flash(f'⚠ ERPNext Zahlungsbuchung konnte nicht storniert werden: {e}', 'warning')
-            if quote.erpnext_je_receivable:
-                try:
-                    erpnext_client.cancel_receivable(quote)
-                except Exception as e:
-                    flash(f'⚠ ERPNext Forderungsbuchung konnte nicht storniert werden: {e}', 'warning')
-
         if quote.status == 'paid':
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
@@ -1850,15 +1417,6 @@ def settings():
             settings_record.notification_email = request.form.get('notification_email', '').strip()
             settings_record.updated_at = datetime.utcnow()
 
-            # ERPNext settings
-            if erpnext_client.is_erpnext_enabled():
-                settings_record.erpnext_company = request.form.get('erpnext_company', '').strip() or None
-                settings_record.erpnext_account_receivable = request.form.get('erpnext_account_receivable', '').strip() or None
-                settings_record.erpnext_account_revenue = request.form.get('erpnext_account_revenue', '').strip() or None
-                settings_record.erpnext_account_vat = request.form.get('erpnext_account_vat', '').strip() or None
-                settings_record.erpnext_account_bank = request.form.get('erpnext_account_bank', '').strip() or None
-                settings_record.erpnext_account_cash = request.form.get('erpnext_account_cash', '').strip() or None
-
             # Handle logo upload
             if request.form.get('remove_logo'):
                 if settings_record.logo_filename:
@@ -1903,896 +1461,6 @@ def serve_logo():
         abort(404)
     return send_file(logo_path)
 
-
-# ============= FINANCE EXPORT =============
-
-def _get_filtered_quotes(date_from, date_to, user_ids):
-    """Get quotes filtered by date range and owner user IDs.
-    Only includes paid quotes whose paid_at date falls within the range.
-    For EÜR: Zufluss-/Abflussprinzip — revenue counts when payment is received.
-    Returns quotes where at least one quote item belongs to an item
-    owned by one of the selected users.
-    If user_ids is empty/None, return all quotes.
-    """
-    query = Quote.query.filter(
-        Quote.status == 'paid',
-        Quote.paid_at.isnot(None),
-        Quote.paid_at >= date_from,
-        Quote.paid_at <= date_to,
-    )
-
-    if user_ids:
-        # Filter: quote must contain at least one item owned by selected users
-        owned_item_ids = db.session.query(ItemOwnership.item_id).filter(
-            ItemOwnership.user_id.in_(user_ids)
-        ).subquery()
-        quote_ids_with_items = db.session.query(QuoteItem.quote_id).filter(
-            QuoteItem.item_id.in_(db.session.query(owned_item_ids.c.item_id))
-        ).distinct().subquery()
-        query = query.filter(Quote.id.in_(db.session.query(quote_ids_with_items.c.quote_id)))
-
-    return query.order_by(Quote.created_at).all()
-
-
-def _parse_owner_config(user_ids):
-    """Parse per-owner config from request args.
-    
-    Returns dict: {uid: {'include_purchases': bool, 'revenue_pct': float}}
-    """
-    config = {}
-    for uid in user_ids:
-        include_purchases = request.args.get(f'include_purchases_{uid}') == '1'
-        try:
-            revenue_pct = float(request.args.get(f'revenue_pct_{uid}', '100'))
-        except (ValueError, TypeError):
-            revenue_pct = 100.0
-        revenue_pct = max(0.0, min(100.0, revenue_pct))
-        config[uid] = {
-            'include_purchases': include_purchases,
-            'revenue_pct': revenue_pct,
-        }
-    return config
-
-
-def _compute_owner_summaries(user_ids, quotes, owner_config=None, date_from=None, date_to=None):
-    """Compute per-owner financial summaries.
-    
-    owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
-    date_from/date_to: If set, only count external expenses paid within this range.
-    For ownerships with a depreciation category, show depreciation for the period
-    instead of total purchase cost.
-    """
-    from helpers import calculate_depreciation_for_period
-    if not user_ids:
-        user_ids = [u.id for u in User.query.filter_by(active=True).all()]
-    if owner_config is None:
-        owner_config = {}
-
-    summaries = []
-    for uid in user_ids:
-        user = User.query.get(uid)
-        if not user:
-            continue
-        cfg = owner_config.get(uid, {'include_purchases': True, 'revenue_pct': 100.0})
-        include_purchases = cfg.get('include_purchases', True)
-        revenue_pct = cfg.get('revenue_pct', 100.0) / 100.0
-
-        ownerships = ItemOwnership.query.filter_by(user_id=uid).all()
-
-        # Calculate investment: for entries with depreciation category, use period depreciation
-        # For entries without, use full purchase cost (as before)
-        investment = 0.0
-        depreciation_total = 0.0
-        raw_purchase_total = 0.0
-        if include_purchases:
-            for o in ownerships:
-                if o.is_external:
-                    continue
-                for pe in o.purchase_entries:
-                    cost = pe['cost']
-                    if cost <= 0:
-                        continue
-                    if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
-                        depr = calculate_depreciation_for_period(
-                            cost, pe['purchase_date'], pe['depreciation_category'],
-                            date_from, date_to
-                        )
-                        depreciation_total += depr
-                        investment += depr
-                    else:
-                        if date_from and date_to and pe['purchase_date']:
-                            if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
-                                continue
-                        raw_purchase_total += cost
-                        investment += cost
-
-        ext_cost = 0
-        revenue_share = 0
-
-        owned_item_ids = {o.item_id for o in ownerships}
-        for q in quotes:
-            for qi in q.quote_items:
-                if qi.item_id and qi.item_id in owned_item_ids:
-                    revenue_share += qi.total_price
-                    if qi.rental_cost_per_day and qi.expense:
-                        if qi.expense.paid:
-                            # Check if paid_at is within date range
-                            if date_from and date_to and qi.expense.paid_at:
-                                if qi.expense.paid_at >= date_from and qi.expense.paid_at <= date_to:
-                                    ext_cost += qi.expense.amount
-                            else:
-                                ext_cost += qi.expense.amount
-
-        revenue_share = revenue_share * revenue_pct
-
-        # Collect purchase details
-        purchases = []
-        if include_purchases:
-            for o in ownerships:
-                item_obj = Item.query.get(o.item_id)
-                item_name = item_obj.name if item_obj else f'Item #{o.item_id}'
-                for pe in o.purchase_entries:
-                    cost = pe['cost']
-                    if cost <= 0:
-                        continue
-                    if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
-                        depr_amount = calculate_depreciation_for_period(
-                            cost, pe['purchase_date'], pe['depreciation_category'],
-                            date_from, date_to
-                        )
-                        depr_info = {
-                            'category_name': pe['depreciation_category'].name,
-                            'summary': pe['depreciation_category'].summary,
-                            'method': pe['depreciation_category'].method_label,
-                            'period_amount': round(depr_amount, 2),
-                        }
-                    else:
-                        depr_info = None
-                        if date_from and date_to and pe['purchase_date']:
-                            if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
-                                continue
-                    label = item_name
-                    if pe.get('label'):
-                        label = f"{item_name} — {pe['label']}"
-                    purchases.append({
-                        'item_name': label,
-                        'cost': round(cost, 2),
-                        'date': pe['purchase_date'].strftime('%d.%m.%Y') if pe['purchase_date'] else '–',
-                        'depreciation': depr_info,
-                    })
-
-        summaries.append({
-            'name': user.display_name or user.username,
-            'item_count': len(ownerships),
-            'investment': round(investment, 2),
-            'depreciation_total': round(depreciation_total, 2),
-            'raw_purchase_total': round(raw_purchase_total, 2),
-            'revenue_share': round(revenue_share, 2),
-            'ext_cost': round(ext_cost, 2),
-            'purchases': purchases,
-            'include_purchases': include_purchases,
-            'revenue_pct': cfg.get('revenue_pct', 100.0),
-        })
-    return summaries
-
-
-def _compute_totals(quotes, user_ids=None, owner_config=None, date_from=None, date_to=None):
-    """Compute aggregate totals from a list of quotes, including EÜR data.
-    
-    total_cost includes ALL purchased items from the given owners,
-    not just those appearing in the filtered quotes.
-    For ownerships with a depreciation category, use period depreciation instead
-    of full purchase cost.
-    owner_config: {uid: {'include_purchases': bool, 'revenue_pct': float}}
-    date_from/date_to: If set, only count external expenses paid within this range.
-    """
-    from helpers import calculate_depreciation_for_period
-
-    site_settings = SiteSettings.query.first()
-    tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
-    tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
-    tax_factor = 1 + tax_rate / 100
-    if owner_config is None:
-        owner_config = {}
-
-    # Build item_id → owner_id mapping for revenue_pct calculation
-    item_owner_map = {}
-    for uid in (user_ids or []):
-        for o in ItemOwnership.query.filter_by(user_id=uid).all():
-            item_owner_map[o.item_id] = uid
-
-    # Compute adjusted revenue (applying per-owner revenue_pct)
-    total_revenue_raw = sum(q.total for q in quotes)
-    adjusted_revenue = 0.0
-    for q in quotes:
-        subtotal = q.subtotal
-        discount_ratio = (q.total / subtotal) if subtotal > 0 else 1.0
-        for qi in q.quote_items:
-            item_revenue = qi.total_price * discount_ratio
-            if qi.item_id and qi.item_id in item_owner_map:
-                owner_uid = item_owner_map[qi.item_id]
-                pct = owner_config.get(owner_uid, {'revenue_pct': 100.0}).get('revenue_pct', 100.0) / 100.0
-                adjusted_revenue += item_revenue * pct
-            else:
-                adjusted_revenue += item_revenue
-    adjusted_revenue = round(adjusted_revenue, 2)
-
-    total_revenue = adjusted_revenue
-    # Only count external costs for expenses that are marked as paid (and within date range)
-    external_cost = 0.0
-    for q in quotes:
-        for qi in q.quote_items:
-            if qi.rental_cost_per_day and qi.expense and qi.expense.paid:
-                if date_from and date_to and qi.expense.paid_at:
-                    if qi.expense.paid_at >= date_from and qi.expense.paid_at <= date_to:
-                        external_cost += qi.expense.amount
-                else:
-                    external_cost += qi.expense.amount
-    external_cost = round(external_cost, 2)
-
-    # Get purchase costs / depreciation of ALL items from the relevant owners
-    # Only include purchases for owners where include_purchases is True
-    # For ownerships with depreciation category: use period depreciation
-    # For ownerships without: use full purchase cost
-    if user_ids is None:
-        user_ids = [u.id for u in User.query.filter_by(active=True).all()]
-    purchase_user_ids = [
-        uid for uid in user_ids
-        if owner_config.get(uid, {'include_purchases': True}).get('include_purchases', True)
-    ]
-    all_ownerships_for_cost = ItemOwnership.query.filter(
-        ItemOwnership.user_id.in_(purchase_user_ids),
-        ItemOwnership.external_price_per_day.is_(None)
-    ).all() if purchase_user_ids else []
-
-    total_cost = 0.0
-    total_depreciation = 0.0
-    total_raw_purchases = 0.0
-    for o in all_ownerships_for_cost:
-        for pe in o.purchase_entries:
-            cost = pe['cost']
-            if cost <= 0:
-                continue
-            if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
-                depr = calculate_depreciation_for_period(
-                    cost, pe['purchase_date'], pe['depreciation_category'],
-                    date_from, date_to
-                )
-                total_cost += depr
-                total_depreciation += depr
-            else:
-                if date_from and date_to and pe['purchase_date']:
-                    if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
-                        continue
-                total_cost += cost
-                total_raw_purchases += cost
-
-    # Also collect all item_ids from quotes (still needed for EÜR Vorsteuer)
-    item_ids = set()
-    for q in quotes:
-        for qi in q.quote_items:
-            if qi.item_id:
-                item_ids.add(qi.item_id)
-
-    # ── EÜR calculations (only meaningful for 'regular' tax mode) ──
-    if tax_mode == 'regular':
-        # Revenue: all prices stored as brutto
-        revenue_netto = round(total_revenue / tax_factor, 2)
-        ust_collected = round(total_revenue - revenue_netto, 2)
-
-        # Vorsteuer from purchase costs (all items from relevant owners)
-        # For depreciation items: Vorsteuer is proportional to the depreciation amount
-        vorsteuer_purchases = 0.0
-        purchases_netto = 0.0
-        for o in all_ownerships_for_cost:
-            for pe in o.purchase_entries:
-                cost = pe['cost']
-                if cost <= 0:
-                    continue
-
-                # Determine the effective cost for this period
-                if pe['depreciation_category'] and pe['purchase_date'] and date_from and date_to:
-                    effective_cost = calculate_depreciation_for_period(
-                        cost, pe['purchase_date'], pe['depreciation_category'],
-                        date_from, date_to
-                    )
-                else:
-                    # No AfA: only include if purchase date is within selected period
-                    if date_from and date_to and pe['purchase_date']:
-                        if pe['purchase_date'] < date_from or pe['purchase_date'] > date_to:
-                            continue
-                    effective_cost = cost
-
-                if effective_cost <= 0:
-                    continue
-
-                if pe['cost_is_brutto']:
-                    # Brutto → extract Vorsteuer proportionally
-                    netto_cost = round(effective_cost / tax_factor, 2)
-                    vorsteuer_purchases += round(effective_cost - netto_cost, 2)
-                    purchases_netto += netto_cost
-                else:
-                    # Already netto, no Vorsteuer
-                    purchases_netto += effective_cost
-
-        # Vorsteuer from external rental costs (only paid expenses)
-        vorsteuer_external = 0.0
-        external_netto = 0.0
-        for q in quotes:
-            for qi in q.quote_items:
-                # Only count if expense exists, is paid, and within date range
-                if not (qi.rental_cost_per_day and qi.expense and qi.expense.paid):
-                    continue
-                if date_from and date_to and qi.expense.paid_at:
-                    if not (qi.expense.paid_at >= date_from and qi.expense.paid_at <= date_to):
-                        continue
-                ext_total = qi.expense.amount
-                if ext_total <= 0:
-                    continue
-                # Find the ownership to check its external_price_is_brutto flag
-                ownership = None
-                if qi.item_id:
-                    ownership = ItemOwnership.query.filter(
-                        ItemOwnership.item_id == qi.item_id,
-                        ItemOwnership.external_price_per_day.isnot(None)
-                    ).first()
-                if ownership and ownership.external_price_is_brutto:
-                    netto_ext = round(ext_total / tax_factor, 2)
-                    vorsteuer_external += round(ext_total - netto_ext, 2)
-                    external_netto += netto_ext
-                else:
-                    external_netto += ext_total
-
-        vorsteuer_total = round(vorsteuer_purchases + vorsteuer_external, 2)
-        expenses_netto = round(purchases_netto + external_netto, 2)
-        ust_zahllast = round(ust_collected - vorsteuer_total, 2)
-        gewinn_euer = round(revenue_netto - expenses_netto, 2)
-    else:
-        # Kleinunternehmer: no tax breakdown needed
-        revenue_netto = total_revenue
-        ust_collected = 0.0
-        vorsteuer_total = 0.0
-        vorsteuer_purchases = 0.0
-        vorsteuer_external = 0.0
-        expenses_netto = round(total_cost + external_cost, 2)
-        ust_zahllast = 0.0
-        gewinn_euer = round(total_revenue - total_cost - external_cost, 2)
-
-    return {
-        'quote_count': len(quotes),
-        'total_revenue': round(total_revenue, 2),
-        'total_cost': round(total_cost, 2),
-        'total_depreciation': round(total_depreciation, 2),
-        'total_raw_purchases': round(total_raw_purchases, 2),
-        'external_cost': round(external_cost, 2),
-        'profit': round(total_revenue - total_cost - external_cost, 2),
-        # EÜR fields
-        'tax_mode': tax_mode,
-        'tax_rate': tax_rate,
-        'revenue_netto': revenue_netto,
-        'ust_collected': ust_collected,
-        'vorsteuer_total': vorsteuer_total,
-        'vorsteuer_purchases': vorsteuer_purchases,
-        'vorsteuer_external': vorsteuer_external,
-        'expenses_netto': expenses_netto,
-        'ust_zahllast': ust_zahllast,
-        'gewinn_euer': gewinn_euer,
-    }
-
-
-# ============= DEPRECIATION CATEGORIES (AfA) =============
-
-@admin_bp.route('/depreciation-categories', methods=['GET', 'POST'])
-@admin_required
-def depreciation_categories():
-    """Manage depreciation categories (AfA-Kategorien)"""
-    if request.method == 'POST':
-        action = request.form.get('action')
-        try:
-            if action == 'add':
-                name = request.form.get('name', '').strip()
-                method = request.form.get('method', 'linear').strip()
-                duration_months = int(request.form.get('duration_months', 12) or 12)
-                interval_months = int(request.form.get('interval_months', 12) or 12)
-                degressive_rate = None
-                if method == 'degressive':
-                    degressive_rate = float(request.form.get('degressive_rate', 25) or 25)
-                if method == 'sofort':
-                    duration_months = 1
-                    interval_months = 1
-                if name:
-                    cat = DepreciationCategory(
-                        name=name, method=method,
-                        duration_months=duration_months,
-                        interval_months=interval_months,
-                        degressive_rate=degressive_rate,
-                    )
-                    db.session.add(cat)
-                    db.session.commit()
-                    flash(f'AfA-Kategorie "{name}" erstellt.', 'success')
-                else:
-                    flash('Name ist erforderlich.', 'error')
-
-            elif action == 'edit':
-                cat_id = request.form.get('category_id', type=int)
-                cat = DepreciationCategory.query.get_or_404(cat_id)
-                cat.name = request.form.get('name', '').strip()
-                cat.method = request.form.get('method', 'linear').strip()
-                cat.duration_months = int(request.form.get('duration_months', 12) or 12)
-                cat.interval_months = int(request.form.get('interval_months', 12) or 12)
-                if cat.method == 'degressive':
-                    cat.degressive_rate = float(request.form.get('degressive_rate', 25) or 25)
-                else:
-                    cat.degressive_rate = None
-                if cat.method == 'sofort':
-                    cat.duration_months = 1
-                    cat.interval_months = 1
-                db.session.commit()
-                flash(f'AfA-Kategorie "{cat.name}" aktualisiert.', 'success')
-
-            elif action == 'delete':
-                cat_id = request.form.get('category_id', type=int)
-                cat = DepreciationCategory.query.get_or_404(cat_id)
-                # Clear references in ownerships
-                ItemOwnership.query.filter_by(depreciation_category_id=cat_id).update(
-                    {'depreciation_category_id': None}
-                )
-                name = cat.name
-                db.session.delete(cat)
-                db.session.commit()
-                flash(f'AfA-Kategorie "{name}" gelöscht.', 'success')
-
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Fehler: {str(e)}', 'error')
-
-        return redirect(url_for('admin.depreciation_categories'))
-
-    categories = DepreciationCategory.query.order_by(DepreciationCategory.name).all()
-    # Count how many ownerships use each category
-    usage_counts = {}
-    for cat in categories:
-        usage_counts[cat.id] = ItemOwnership.query.filter_by(depreciation_category_id=cat.id).count()
-
-    return render_template('admin/depreciation_categories.html',
-                           categories=categories,
-                           usage_counts=usage_counts,
-                           methods=DepreciationCategory.METHODS)
-
-
-@admin_bp.route('/finance-export')
-@login_required
-def finance_export():
-    """Finance export page with preview"""
-    from datetime import date as date_cls
-
-    users = User.query.filter_by(active=True).order_by(User.username).all()
-
-    # Ownership counts per user
-    ownerships_by_user = {}
-    for u in users:
-        ownerships_by_user[u.id] = ItemOwnership.query.filter_by(user_id=u.id).all()
-
-    # Default date range: current year
-    date_from = request.args.get('date_from', date_cls(date_cls.today().year, 1, 1).isoformat())
-    date_to = request.args.get('date_to', date_cls.today().isoformat())
-    selected_users = request.args.getlist('user_ids')
-    action = request.args.get('action', '')
-
-    preview = None
-    if action == 'preview' or selected_users:
-        try:
-            df = datetime.strptime(date_from, '%Y-%m-%d')
-            dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-        except ValueError:
-            df = datetime(date_cls.today().year, 1, 1)
-            dt = datetime.now()
-
-        user_ids = [int(uid) for uid in selected_users] if selected_users else None
-        quotes = _get_filtered_quotes(df, dt, user_ids)
-        resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
-        owner_config = _parse_owner_config(resolved_user_ids)
-        totals = _compute_totals(quotes, resolved_user_ids, owner_config, date_from=df, date_to=dt)
-
-        preview = {
-            'quotes': quotes,
-            'quote_count': totals['quote_count'],
-            'total_revenue': totals['total_revenue'],
-            'total_cost': totals['total_cost'],
-            'total_depreciation': totals['total_depreciation'],
-            'total_raw_purchases': totals['total_raw_purchases'],
-            'external_cost': totals['external_cost'],
-            'profit': totals['profit'],
-            # EÜR fields
-            'tax_mode': totals['tax_mode'],
-            'tax_rate': totals['tax_rate'],
-            'revenue_netto': totals['revenue_netto'],
-            'ust_collected': totals['ust_collected'],
-            'vorsteuer_total': totals['vorsteuer_total'],
-            'vorsteuer_purchases': totals['vorsteuer_purchases'],
-            'vorsteuer_external': totals['vorsteuer_external'],
-            'expenses_netto': totals['expenses_netto'],
-            'ust_zahllast': totals['ust_zahllast'],
-            'gewinn_euer': totals['gewinn_euer'],
-        }
-
-    return render_template('admin/finance_export.html',
-                           users=users,
-                           ownerships_by_user=ownerships_by_user,
-                           date_from=date_from,
-                           date_to=date_to,
-                           selected_users=selected_users,
-                           owner_config=owner_config if preview else {},
-                           preview=preview)
-
-
-@admin_bp.route('/finance-export/csv')
-@login_required
-def finance_export_csv():
-    """Export finances as CSV (ZIP with multiple files)"""
-    import csv
-    import zipfile
-    from datetime import date as date_cls
-
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    selected_users = request.args.getlist('user_ids')
-
-    try:
-        df = datetime.strptime(date_from, '%Y-%m-%d')
-        dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-    except ValueError:
-        flash('Ungültiger Zeitraum.', 'error')
-        return redirect(url_for('admin.finance_export'))
-
-    user_ids = [int(uid) for uid in selected_users] if selected_users else None
-    quotes = _get_filtered_quotes(df, dt, user_ids)
-    resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
-    owner_config = _parse_owner_config(resolved_user_ids)
-    totals = _compute_totals(quotes, resolved_user_ids, owner_config, date_from=df, date_to=dt)
-    owner_summaries = _compute_owner_summaries(
-        resolved_user_ids,
-        quotes,
-        owner_config,
-        date_from=df,
-        date_to=dt
-    )
-
-    zip_buf = BytesIO()
-    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 1. Rechnungsliste
-        csv_buf = BytesIO()
-        import io
-        text_buf = io.StringIO()
-        writer = csv.writer(text_buf, delimiter=';', quoting=csv.QUOTE_ALL)
-        writer.writerow([
-            'Ref-Nr.', 'Kunde', 'Leistungsbeginn', 'Leistungsende',
-            'Miettage', 'Erstellt am', 'Finalisiert am', 'Bezahlt am',
-            'Status', 'Zwischensumme (€)', 'Rabatt (€)', 'Rabatt (%)',
-            'Gesamtbetrag (€)', 'Ext. Kosten (€)', 'Bemerkungen', 'Interne Notizen'
-        ])
-        for q in quotes:
-            ext_cost = sum(
-                qi.expense.amount for qi in q.quote_items
-                if qi.expense and qi.expense.paid
-                and (not df or not dt or not qi.expense.paid_at or (qi.expense.paid_at >= df and qi.expense.paid_at <= dt))
-            )
-            writer.writerow([
-                q.reference_number or f'RE{q.id:04d}',
-                q.customer_name,
-                q.start_date.strftime('%d.%m.%Y') if q.start_date else '',
-                q.end_date.strftime('%d.%m.%Y') if q.end_date else '',
-                q.calculate_rental_days(),
-                q.created_at.strftime('%d.%m.%Y') if q.created_at else '',
-                q.finalized_at.strftime('%d.%m.%Y') if q.finalized_at else '',
-                q.paid_at.strftime('%d.%m.%Y') if q.paid_at else '',
-                q.status,
-                f'{q.subtotal:.2f}'.replace('.', ','),
-                f'{q.discount_amount:.2f}'.replace('.', ','),
-                f'{q.discount_percent:.2f}'.replace('.', ','),
-                f'{q.total:.2f}'.replace('.', ','),
-                f'{ext_cost:.2f}'.replace('.', ','),
-                (q.public_notes or '').replace('\n', ' '),
-                (q.notes or '').replace('\n', ' '),
-            ])
-        zf.writestr('rechnungsliste.csv', text_buf.getvalue().encode('utf-8-sig'))
-
-        # 2. Positionen-Detail
-        text_buf2 = io.StringIO()
-        writer2 = csv.writer(text_buf2, delimiter=';', quoting=csv.QUOTE_ALL)
-        writer2.writerow([
-            'Rechnung Ref-Nr.', 'Kunde', 'Position', 'Artikelname',
-            'Menge', 'Preis/Tag (€)', 'Miettage', 'Gesamtpreis (€)',
-            'Ext. Kosten/Tag (€)', 'Ext. Kosten Gesamt (€)',
-            'Paket', 'Rabattbefreit'
-        ])
-        for q in quotes:
-            for pos_nr, qi in enumerate(q.quote_items, 1):
-                writer2.writerow([
-                    q.reference_number or f'RE{q.id:04d}',
-                    q.customer_name,
-                    pos_nr,
-                    qi.display_name,
-                    qi.quantity,
-                    f'{qi.rental_price_per_day:.2f}'.replace('.', ','),
-                    q.calculate_rental_days(),
-                    f'{qi.total_price:.2f}'.replace('.', ','),
-                    f'{(qi.rental_cost_per_day or 0):.2f}'.replace('.', ','),
-                    f'{qi.total_external_cost:.2f}'.replace('.', ','),
-                    qi.package.name if qi.package else '',
-                    'Ja' if qi.discount_exempt else 'Nein',
-                ])
-        zf.writestr('positionen_detail.csv', text_buf2.getvalue().encode('utf-8-sig'))
-
-        # 3. Zusammenfassung
-        text_buf3 = io.StringIO()
-        writer3 = csv.writer(text_buf3, delimiter=';', quoting=csv.QUOTE_ALL)
-        writer3.writerow(['Kategorie', 'Wert (€)'])
-        writer3.writerow(['Zeitraum', f'{date_from} bis {date_to}'])
-        writer3.writerow(['Anzahl Rechnungen', str(totals['quote_count'])])
-        writer3.writerow(['Gesamtumsatz', f'{totals["total_revenue"]:.2f}'.replace('.', ',')])
-        if totals.get('total_depreciation', 0) > 0:
-            writer3.writerow(['Kosten (Ansch./AfA)', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['  davon AfA im Zeitraum', f'{totals["total_depreciation"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['  davon Direkt (ohne AfA)', f'{totals["total_raw_purchases"]:.2f}'.replace('.', ',')])
-        else:
-            writer3.writerow(['Anschaffungskosten', f'{totals["total_cost"]:.2f}'.replace('.', ',')])
-        writer3.writerow(['Ext. Mietkosten', f'{totals["external_cost"]:.2f}'.replace('.', ',')])
-        writer3.writerow(['Gewinn/Verlust', f'{totals["profit"]:.2f}'.replace('.', ',')])
-        # EÜR rows (only meaningful for regular tax mode)
-        if totals.get('tax_mode') == 'regular':
-            writer3.writerow([])
-            writer3.writerow(['--- EÜR ---', ''])
-            writer3.writerow([f'Steuersatz', f'{totals["tax_rate"]}%'])
-            writer3.writerow(['Einnahmen netto', f'{totals["revenue_netto"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['Vereinnahmte USt', f'{totals["ust_collected"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['Ausgaben netto', f'{totals["expenses_netto"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['Vorsteuer (Anschaffungen)', f'{totals["vorsteuer_purchases"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['Vorsteuer (Ext. Mietkosten)', f'{totals["vorsteuer_external"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['Vorsteuer gesamt', f'{totals["vorsteuer_total"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['USt-Zahllast', f'{totals["ust_zahllast"]:.2f}'.replace('.', ',')])
-            writer3.writerow(['Gewinn (EÜR)', f'{totals["gewinn_euer"]:.2f}'.replace('.', ',')])
-        writer3.writerow([])
-        has_any_depr = any(os_item.get('depreciation_total', 0) > 0 for os_item in owner_summaries)
-        if has_any_depr:
-            writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'AfA Zeitraum (€)', 'Direkt (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
-        else:
-            writer3.writerow(['Eigentümer', 'Artikel', 'Investition (€)', 'Umsatzanteil (€)', 'Ext. Kosten (€)'])
-        for os_item in owner_summaries:
-            if has_any_depr:
-                writer3.writerow([
-                    os_item['name'],
-                    str(os_item['item_count']),
-                    f'{os_item["investment"]:.2f}'.replace('.', ','),
-                    f'{os_item.get("depreciation_total", 0):.2f}'.replace('.', ','),
-                    f'{os_item.get("raw_purchase_total", 0):.2f}'.replace('.', ','),
-                    f'{os_item["revenue_share"]:.2f}'.replace('.', ','),
-                    f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
-                ])
-            else:
-                writer3.writerow([
-                    os_item['name'],
-                    str(os_item['item_count']),
-                    f'{os_item["investment"]:.2f}'.replace('.', ','),
-                    f'{os_item["revenue_share"]:.2f}'.replace('.', ','),
-                    f'{os_item["ext_cost"]:.2f}'.replace('.', ','),
-                ])
-        zf.writestr('zusammenfassung.csv', text_buf3.getvalue().encode('utf-8-sig'))
-
-        # 4. Anschaffungen (purchases with dates)
-        text_buf4 = io.StringIO()
-        writer4 = csv.writer(text_buf4, delimiter=';', quoting=csv.QUOTE_ALL)
-        writer4.writerow([
-            'Artikel', 'Eigentümer', 'Menge', 'Anschaffungskosten (€)',
-            'Kosten brutto/netto', 'Kaufdatum', 'AfA-Kategorie',
-            'AfA-Methode', 'Ext. Preis/Tag (€)',
-            'Ext. Preis brutto/netto', 'Typ'
-        ])
-        # Gather all ownerships for relevant items or selected users
-        ownership_query = ItemOwnership.query
-        if user_ids:
-            ownership_query = ownership_query.filter(ItemOwnership.user_id.in_(user_ids))
-        for o in ownership_query.order_by(ItemOwnership.item_id).all():
-            item_obj = Item.query.get(o.item_id)
-            owner_obj = User.query.get(o.user_id)
-            item_name = item_obj.name if item_obj else f'Item #{o.item_id}'
-            owner_name = (owner_obj.display_name or owner_obj.username) if owner_obj else f'User #{o.user_id}'
-            entries = o.purchase_entries
-            if entries:
-                for pe in entries:
-                    depr_cat = pe.get('depreciation_category')
-                    label = item_name
-                    if pe.get('label'):
-                        label = f"{item_name} — {pe['label']}"
-                    writer4.writerow([
-                        label,
-                        owner_name,
-                        o.quantity,
-                        f'{(pe["cost"] or 0):.2f}'.replace('.', ','),
-                        'brutto' if pe.get('cost_is_brutto', True) else 'netto',
-                        pe['purchase_date'].strftime('%d.%m.%Y') if pe.get('purchase_date') else '',
-                        depr_cat.name if depr_cat else '',
-                        depr_cat.method_label if depr_cat else '',
-                        f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
-                        'brutto' if o.external_price_is_brutto else 'netto',
-                        'Extern' if o.is_external else 'Intern',
-                    ])
-            else:
-                # No purchase entries (no cost) — still write a row for external ownerships
-                writer4.writerow([
-                    item_name,
-                    owner_name,
-                    o.quantity,
-                    '0,00',
-                    '',
-                    '',
-                    '',
-                    '',
-                    f'{o.external_price_per_day:.2f}'.replace('.', ',') if o.external_price_per_day else '',
-                    'brutto' if o.external_price_is_brutto else 'netto',
-                    'Extern' if o.is_external else 'Intern',
-                ])
-        zf.writestr('anschaffungen.csv', text_buf4.getvalue().encode('utf-8-sig'))
-
-    zip_buf.seek(0)
-    filename = f"finanz_export_{date_from}_bis_{date_to}.zip"
-    return send_file(
-        zip_buf,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name=filename,
-    )
-
-
-@admin_bp.route('/finance-export/pdf')
-@login_required
-def finance_export_pdf():
-    """Export finance summary as PDF report"""
-    from generators.finanzbericht import build_finance_report_pdf
-    from datetime import date as date_cls
-
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    selected_users = request.args.getlist('user_ids')
-
-    try:
-        df = datetime.strptime(date_from, '%Y-%m-%d')
-        dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-    except ValueError:
-        flash('Ungültiger Zeitraum.', 'error')
-        return redirect(url_for('admin.finance_export'))
-
-    user_ids = [int(uid) for uid in selected_users] if selected_users else None
-    quotes = _get_filtered_quotes(df, dt, user_ids)
-    resolved_user_ids = user_ids or [u.id for u in User.query.filter_by(active=True).all()]
-    owner_config = _parse_owner_config(resolved_user_ids)
-    totals = _compute_totals(quotes, resolved_user_ids, owner_config, date_from=df, date_to=dt)
-    owner_summaries = _compute_owner_summaries(
-        resolved_user_ids,
-        quotes,
-        owner_config,
-        date_from=df,
-        date_to=dt
-    )
-
-    site_settings = SiteSettings.query.first()
-    issuer_name = site_settings.business_name if site_settings and site_settings.business_name else "Ihr Unternehmen"
-    tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
-
-    quote_dicts = []
-    for q in quotes:
-        ext_cost = sum(
-            qi.expense.amount for qi in q.quote_items
-            if qi.expense and qi.expense.paid
-            and (not df or not dt or not qi.expense.paid_at or (qi.expense.paid_at >= df and qi.expense.paid_at <= dt))
-        )
-        quote_dicts.append({
-            'ref': q.reference_number or f'RE{q.id:04d}',
-            'customer': q.customer_name,
-            'start': q.start_date.strftime('%d.%m.%Y') if q.start_date else None,
-            'end': q.end_date.strftime('%d.%m.%Y') if q.end_date else None,
-            'created': q.created_at.strftime('%d.%m.%Y') if q.created_at else '–',
-            'finalized': q.finalized_at.strftime('%d.%m.%Y') if q.finalized_at else '–',
-            'paid': q.paid_at.strftime('%d.%m.%Y') if q.paid_at else '–',
-            'status': q.status.capitalize(),
-            'subtotal': q.subtotal,
-            'discount': q.discount_amount,
-            'total': q.total,
-            'ext_cost': ext_cost,
-        })
-
-    date_from_str = df.strftime('%d.%m.%Y')
-    date_to_str = dt.strftime('%d.%m.%Y')
-
-    pdf_bytes = build_finance_report_pdf(
-        issuer_name=issuer_name,
-        date_from=date_from_str,
-        date_to=date_to_str,
-        quotes=quote_dicts,
-        owner_summaries=owner_summaries,
-        totals=totals,
-        tax_mode=tax_mode,
-    )
-
-    filename = f"finanzbericht_{date_from}_bis_{date_to}.pdf"
-    return _send_pdf_response(pdf_bytes, filename)
-
-
-@admin_bp.route('/finance-export/invoices-pdf')
-@login_required
-def finance_export_invoices_pdf():
-    """Export all invoices in date range as a bundled PDF"""
-    from generators.rechnung import build_rechnung_pdf
-    from PyPDF2 import PdfMerger
-
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    selected_users = request.args.getlist('user_ids')
-
-    try:
-        df = datetime.strptime(date_from, '%Y-%m-%d')
-        dt = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-    except ValueError:
-        flash('Ungültiger Zeitraum.', 'error')
-        return redirect(url_for('admin.finance_export'))
-
-    user_ids = [int(uid) for uid in selected_users] if selected_users else None
-    quotes = _get_filtered_quotes(df, dt, user_ids)
-
-    if not quotes:
-        flash('Keine Rechnungen im gewählten Zeitraum gefunden.', 'warning')
-        return redirect(url_for('admin.finance_export', date_from=date_from, date_to=date_to))
-
-    site_settings = SiteSettings.query.first()
-    merger = PdfMerger()
-
-    for quote in quotes:
-        data = _extract_common_pdf_data(quote, site_settings)
-        positions = _extract_positions(quote)
-        rechnungs_datum = quote.finalized_at.strftime("%d.%m.%Y") if quote.finalized_at else (
-            quote.created_at.strftime("%d.%m.%Y") if quote.created_at else datetime.now().strftime("%d.%m.%Y")
-        )
-
-        pdf_bytes = build_rechnung_pdf(
-            issuer_name=data['issuer_name'],
-            issuer_address=data['issuer_address'],
-            contact_lines=data['contact_lines'],
-            bank_lines=data['bank_lines'],
-            tax_number=data['tax_number'],
-            tax_mode=data['tax_mode'],
-            tax_rate=data['tax_rate'],
-            logo_path=data['logo_path'],
-            recipient_lines=data['recipient_lines'],
-            reference_number=quote.reference_number or f"RE-{quote.id:04d}",
-            rechnungs_datum=rechnungs_datum,
-            start_date_str=data['start_date_str'],
-            end_date_str=data['end_date_str'],
-            rental_days=data['rental_days'],
-            positions=positions,
-            discount_percent=quote.discount_percent or 0,
-            discount_label=quote.discount_label,
-            discount_amount=quote.discount_amount,
-            subtotal=quote.subtotal,
-            total=quote.total,
-            payment_terms_days=data['payment_terms_days'],
-            notes=quote.public_notes,
-        )
-        merger.append(BytesIO(pdf_bytes))
-
-    output = BytesIO()
-    merger.write(output)
-    merger.close()
-    output.seek(0)
-
-    filename = f"rechnungen_{date_from}_bis_{date_to}.pdf"
-    response = send_file(
-        output,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=filename,
-    )
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    return response
 
 
 # ============= REPORTS =============
@@ -3184,33 +1852,19 @@ def lieferschein_pdf(quote_id):
 @admin_bp.route('/api/customers/search')
 @login_required
 def customer_search():
-    """Search saved customers by name (for autocomplete).
-    If ERPNext is enabled, searches ERPNext instead of local DB.
-    """
+    """Search saved customers by name (for autocomplete)."""
     q = request.args.get('q', '').strip()
     if len(q) < 1:
         return jsonify([])
 
-    if erpnext_client.is_erpnext_enabled():
-        try:
-            results = erpnext_client.search_customers(q)
-            return jsonify([{'name': c['name'], 'recipient_lines': c.get('recipient_lines', '')} for c in results])
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
-    else:
-        customers = Customer.query.filter(Customer.name.ilike(f'%{q}%')).order_by(Customer.name).limit(10).all()
-        return jsonify([{'name': c.name, 'recipient_lines': c.recipient_lines or ''} for c in customers])
+    customers = Customer.query.filter(Customer.name.ilike(f'%{q}%')).order_by(Customer.name).limit(10).all()
+    return jsonify([{'name': c.name, 'recipient_lines': c.recipient_lines or ''} for c in customers])
 
 
 @admin_bp.route('/api/customers/save', methods=['POST'])
 @login_required
 def customer_save():
-    """Save or update a customer entry (identified by name).
-    Disabled when ERPNext is enabled (customers are managed in ERPNext).
-    """
-    if erpnext_client.is_erpnext_enabled():
-        return jsonify({'error': 'Kunden werden in ERPNext verwaltet.'}), 400
-
+    """Save or update a customer entry (identified by name)."""
     data = request.get_json()
     name = (data.get('name') or '').strip()
     recipient_lines = (data.get('recipient_lines') or '').strip()
@@ -3235,12 +1889,7 @@ def customer_save():
 @admin_bp.route('/api/customers/delete', methods=['POST'])
 @login_required
 def customer_delete():
-    """Delete a saved customer by name.
-    Disabled when ERPNext is enabled.
-    """
-    if erpnext_client.is_erpnext_enabled():
-        return jsonify({'error': 'Kunden werden in ERPNext verwaltet.'}), 400
-
+    """Delete a saved customer by name."""
     data = request.get_json()
     name = (data.get('name') or '').strip()
     if not name:
@@ -3251,55 +1900,3 @@ def customer_delete():
     db.session.delete(customer)
     db.session.commit()
     return jsonify({'status': 'ok', 'name': name})
-
-
-# ============= ERPNEXT API ENDPOINTS =============
-
-@admin_bp.route('/api/erpnext/test')
-@admin_required
-def erpnext_test_connection():
-    """Test ERPNext connection."""
-    success, message = erpnext_client.test_connection()
-    return jsonify({'success': success, 'message': message})
-
-
-@admin_bp.route('/api/erpnext/companies')
-@admin_required
-def erpnext_companies():
-    """Get list of companies from ERPNext."""
-    if not erpnext_client.is_erpnext_enabled():
-        return jsonify([])
-    try:
-        companies = erpnext_client.get_companies()
-        return jsonify(companies)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@admin_bp.route('/api/erpnext/accounts')
-@admin_required
-def erpnext_accounts():
-    """Get accounts from ERPNext for a given company and type."""
-    if not erpnext_client.is_erpnext_enabled():
-        return jsonify([])
-    company = request.args.get('company', '').strip()
-    account_kind = request.args.get('kind', '').strip()
-    if not company:
-        return jsonify([])
-
-    try:
-        if account_kind == 'receivable':
-            accounts = erpnext_client.get_receivable_accounts(company)
-        elif account_kind == 'revenue':
-            accounts = erpnext_client.get_revenue_accounts(company)
-        elif account_kind == 'tax':
-            accounts = erpnext_client.get_tax_accounts(company)
-        elif account_kind == 'bank':
-            accounts = erpnext_client.get_bank_accounts(company)
-        elif account_kind == 'cash':
-            accounts = erpnext_client.get_cash_accounts(company)
-        else:
-            accounts = erpnext_client.get_accounts(company)
-        return jsonify(accounts)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500

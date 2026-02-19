@@ -1,6 +1,6 @@
 from flask import Flask, send_file, request
 from flask_login import LoginManager
-from models import db, User, SiteSettings, PackageComponent, ItemOwnership, OwnershipDocument, DepreciationCategory
+from models import db, User, SiteSettings, PackageComponent, ItemOwnership
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import os
@@ -84,7 +84,6 @@ def load_user(user_id):
 # Context processor to inject settings into all templates
 @app.context_processor
 def inject_site_settings():
-    from erpnext_client import is_erpnext_enabled
     settings = SiteSettings.query.first()
     show_netto = request.cookies.get('price_mode') == 'netto'
     tax_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
@@ -92,7 +91,6 @@ def inject_site_settings():
         site_settings=settings,
         has_favicon=_favicon_data is not None,
         favicon_mimetype=_favicon_mimetype,
-        erpnext_enabled=is_erpnext_enabled(),
         show_netto=show_netto,
         tax_rate=tax_rate,
     )
@@ -251,16 +249,6 @@ with app.app_context():
                     """, (item_id, owner_id, total_qty or 0, ext_price, p_cost))
                 print("Migrated existing items to ItemOwnership table")
 
-        # ItemOwnership: add purchase_date column
-        if table_exists('item_ownership') and not column_exists('item_ownership', 'purchase_date'):
-            cursor.execute("ALTER TABLE item_ownership ADD COLUMN purchase_date DATETIME")
-            # Set current date for existing rows with purchase_cost > 0
-            cursor.execute("""
-                UPDATE item_ownership SET purchase_date = datetime('now')
-                WHERE purchase_cost > 0 AND purchase_date IS NULL
-            """)
-            print("Added purchase_date column to item_ownership table")
-
         # Drop UNIQUE(item_id, user_id) constraint to allow multiple ownership rows per user/item.
         # SQLite doesn't support DROP CONSTRAINT, so we recreate the table.
         # Detect by checking if the unique index still exists.
@@ -291,19 +279,7 @@ with app.app_context():
             cursor.execute("ALTER TABLE item_ownership_new RENAME TO item_ownership")
             print("Dropped UNIQUE(item_id, user_id) constraint from item_ownership table")
 
-        # OwnershipDocument table
-        if not table_exists('ownership_document'):
-            cursor.execute("""
-                CREATE TABLE ownership_document (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ownership_id INTEGER NOT NULL,
-                    filename VARCHAR(300) NOT NULL,
-                    original_name VARCHAR(300) NOT NULL,
-                    uploaded_at DATETIME,
-                    FOREIGN KEY (ownership_id) REFERENCES item_ownership(id)
-                )
-            """)
-            print("Created ownership_document table")
+        # OwnershipDocument table — no longer used, skip creation
 
         # Drop legacy columns from item table that moved to item_ownership.
         # SQLite doesn't support DROP COLUMN on older versions, so we recreate.
@@ -372,27 +348,9 @@ with app.app_context():
         if not column_exists2('site_settings', 'terms_and_conditions_text'):
             cursor.execute("ALTER TABLE site_settings ADD COLUMN terms_and_conditions_text TEXT")
 
-        # ERPNext integration columns on SiteSettings
-        if not column_exists2('site_settings', 'erpnext_company'):
-            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_company VARCHAR(200)")
-        if not column_exists2('site_settings', 'erpnext_account_receivable'):
-            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_receivable VARCHAR(200)")
-        if not column_exists2('site_settings', 'erpnext_account_revenue'):
-            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_revenue VARCHAR(200)")
-        if not column_exists2('site_settings', 'erpnext_account_vat'):
-            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_vat VARCHAR(200)")
-        if not column_exists2('site_settings', 'erpnext_account_bank'):
-            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_bank VARCHAR(200)")
-        if not column_exists2('site_settings', 'erpnext_account_cash'):
-            cursor.execute("ALTER TABLE site_settings ADD COLUMN erpnext_account_cash VARCHAR(200)")
-
-        # Quote: add performed_at and ERPNext JE reference columns
+        # Quote: add performed_at column
         if not column_exists2('quote', 'performed_at'):
             cursor.execute("ALTER TABLE quote ADD COLUMN performed_at DATETIME")
-        if not column_exists2('quote', 'erpnext_je_receivable'):
-            cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_receivable VARCHAR(100)")
-        if not column_exists2('quote', 'erpnext_je_payment'):
-            cursor.execute("ALTER TABLE quote ADD COLUMN erpnext_je_payment VARCHAR(100)")
         if not column_exists2('quote', 'payment_method'):
             cursor.execute("ALTER TABLE quote ADD COLUMN payment_method VARCHAR(20)")
 
@@ -440,57 +398,6 @@ with app.app_context():
                 )
             """)
             print("Created quote_item_expense_document table")
-
-        # DepreciationCategory table migration
-        if not table_exists2('depreciation_category'):
-            cursor.execute("""
-                CREATE TABLE depreciation_category (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name VARCHAR(200) NOT NULL UNIQUE,
-                    method VARCHAR(20) NOT NULL DEFAULT 'linear',
-                    duration_months INTEGER NOT NULL DEFAULT 12,
-                    interval_months INTEGER NOT NULL DEFAULT 12,
-                    degressive_rate FLOAT,
-                    created_at DATETIME
-                )
-            """)
-            print("Created depreciation_category table")
-
-        # ItemOwnership: add depreciation_category_id column
-        if table_exists2('item_ownership') and not column_exists2('item_ownership', 'depreciation_category_id'):
-            cursor.execute("ALTER TABLE item_ownership ADD COLUMN depreciation_category_id INTEGER REFERENCES depreciation_category(id)")
-            print("Added depreciation_category_id column to item_ownership table")
-
-        # OwnershipPurchaseItem table migration (per-line-item purchase costs)
-        if not table_exists2('ownership_purchase_item'):
-            cursor.execute("""
-                CREATE TABLE ownership_purchase_item (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ownership_id INTEGER NOT NULL,
-                    name VARCHAR(300) NOT NULL,
-                    cost FLOAT NOT NULL DEFAULT 0.0,
-                    cost_is_brutto BOOLEAN DEFAULT 1,
-                    purchase_date DATETIME,
-                    depreciation_category_id INTEGER,
-                    FOREIGN KEY (ownership_id) REFERENCES item_ownership(id),
-                    FOREIGN KEY (depreciation_category_id) REFERENCES depreciation_category(id)
-                )
-            """)
-            print("Created ownership_purchase_item table")
-
-        # PurchaseItemDocument table migration
-        if not table_exists2('purchase_item_document'):
-            cursor.execute("""
-                CREATE TABLE purchase_item_document (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    purchase_item_id INTEGER NOT NULL,
-                    filename VARCHAR(300) NOT NULL,
-                    original_name VARCHAR(300) NOT NULL,
-                    uploaded_at DATETIME,
-                    FOREIGN KEY (purchase_item_id) REFERENCES ownership_purchase_item(id)
-                )
-            """)
-            print("Created purchase_item_document table")
 
         conn.commit()
         conn.close()

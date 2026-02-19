@@ -117,53 +117,9 @@ class Category(db.Model):
         return result
 
 
-class DepreciationCategory(db.Model):
-    """Depreciation category for German tax depreciation (AfA).
-
-    Methods:
-    - linear:    Lineare AfA (§7 Abs. 1 EStG), equal monthly amounts
-    - degressive: Degressive AfA (§7 Abs. 2 EStG), fixed % of remaining book value per year
-    - sofort:    Sofortabschreibung / GWG (§6 Abs. 2 EStG), immediate 100% write-off
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False, unique=True)
-    method = db.Column(db.String(20), nullable=False, default='linear')  # linear, degressive, sofort
-    duration_months = db.Column(db.Integer, nullable=False, default=12)  # Total depreciation period
-    interval_months = db.Column(db.Integer, nullable=False, default=12)  # Booking interval
-    degressive_rate = db.Column(db.Float, nullable=True)  # Annual % for degressive method
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    METHODS = {
-        'linear': 'Lineare AfA',
-        'degressive': 'Degressive AfA',
-        'sofort': 'Sofortabschreibung (GWG)',
-    }
-
-    @property
-    def method_label(self):
-        return self.METHODS.get(self.method, self.method)
-
-    @property
-    def summary(self):
-        if self.method == 'sofort':
-            return 'Sofort 100%'
-        elif self.method == 'degressive':
-            years = self.duration_months / 12
-            return f'{self.degressive_rate:.0f}% p.a. / {years:.0f}J'
-        else:
-            years = self.duration_months / 12
-            return f'{years:.0f} Jahre linear'
-
-
 class ItemOwnership(db.Model):
     """Per-user ownership/supply of an item.
     If external_price_per_day is set, this user is an external provider for this item.
-
-    Purchase costs can be tracked in two modes:
-    - Simple mode: a single purchase_cost / purchase_date / depreciation_category on this row
-    - Line-item mode: multiple OwnershipPurchaseItem children (purchase_items relationship)
-    When purchase_items exist, they are authoritative and the top-level purchase_cost field
-    is kept as a cached sum for backward-compatible reads.
     """
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
@@ -171,24 +127,11 @@ class ItemOwnership(db.Model):
     quantity = db.Column(db.Integer, nullable=False, default=0)  # -1 for unlimited
     external_price_per_day = db.Column(db.Float, nullable=True)  # If set, this user is external provider
     external_price_is_brutto = db.Column(db.Boolean, default=True)  # True = ext price includes VAT
-    purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost (sum) for this owner's stock
-    purchase_cost_is_brutto = db.Column(db.Boolean, default=True)  # True = purchase cost includes VAT (Vorsteuer paid)
-    purchase_date = db.Column(db.DateTime, nullable=True)  # Date of purchase (required if purchase_cost > 0)
-    depreciation_category_id = db.Column(db.Integer, db.ForeignKey('depreciation_category.id'), nullable=True)
+    purchase_cost = db.Column(db.Float, default=0.0)  # Total purchase cost for this owner's stock
+    purchase_cost_is_brutto = db.Column(db.Boolean, default=True)  # True = purchase cost includes VAT
 
     item = db.relationship('Item', back_populates='ownerships')
     user = db.relationship('User')
-    depreciation_category = db.relationship('DepreciationCategory', lazy='selectin')
-    documents = db.relationship('OwnershipDocument', back_populates='ownership',
-                                cascade='all, delete-orphan', lazy='selectin')
-    purchase_items = db.relationship('OwnershipPurchaseItem', back_populates='ownership',
-                                     cascade='all, delete-orphan', lazy='selectin',
-                                     order_by='OwnershipPurchaseItem.id')
-
-    @property
-    def has_purchase_items(self):
-        """True when individual acquisition line items are used instead of the single purchase_cost."""
-        return bool(self.purchase_items)
 
     @property
     def is_external(self):
@@ -198,90 +141,7 @@ class ItemOwnership(db.Model):
     def total_purchase_cost(self):
         if self.is_external:
             return 0
-        if self.has_purchase_items:
-            return round(sum(pi.cost or 0 for pi in self.purchase_items), 2)
         return round(self.purchase_cost or 0, 2)
-
-    @property
-    def purchase_entries(self):
-        """Return a unified list of purchase entry dicts used by depreciation/finance code.
-        Each entry has: cost, cost_is_brutto, purchase_date, depreciation_category, label.
-        When line items exist, one entry per line item; otherwise one entry from the top-level fields.
-        """
-        if self.has_purchase_items:
-            entries = []
-            for pi in self.purchase_items:
-                entries.append({
-                    'cost': pi.cost or 0,
-                    'cost_is_brutto': pi.cost_is_brutto,
-                    'purchase_date': pi.purchase_date,
-                    'depreciation_category': pi.depreciation_category,
-                    'label': pi.name or '',
-                })
-            return entries
-        # Single-value mode – return one entry (if there is a cost)
-        if (self.purchase_cost or 0) > 0:
-            return [{
-                'cost': self.purchase_cost,
-                'cost_is_brutto': self.purchase_cost_is_brutto,
-                'purchase_date': self.purchase_date,
-                'depreciation_category': self.depreciation_category,
-                'label': '',
-            }]
-        return []
-
-
-class OwnershipDocument(db.Model):
-    """Document (PDF, image, etc.) attached to an ownership entry."""
-    id = db.Column(db.Integer, primary_key=True)
-    ownership_id = db.Column(db.Integer, db.ForeignKey('item_ownership.id'), nullable=False)
-    filename = db.Column(db.String(300), nullable=False)  # stored filename (UUID-based)
-    original_name = db.Column(db.String(300), nullable=False)  # original upload name
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    ownership = db.relationship('ItemOwnership', back_populates='documents')
-
-
-class OwnershipPurchaseItem(db.Model):
-    """Individual acquisition line item within an ownership entry.
-    Allows splitting the purchase cost into named components (e.g. lamp vs case)
-    each with its own cost, date, and depreciation category.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    ownership_id = db.Column(db.Integer, db.ForeignKey('item_ownership.id'), nullable=False)
-    name = db.Column(db.String(300), nullable=False)  # e.g. "Lampe", "Case"
-    cost = db.Column(db.Float, nullable=False, default=0.0)
-    cost_is_brutto = db.Column(db.Boolean, default=True)
-    purchase_date = db.Column(db.DateTime, nullable=True)
-    depreciation_category_id = db.Column(db.Integer, db.ForeignKey('depreciation_category.id'), nullable=True)
-
-    ownership = db.relationship('ItemOwnership', back_populates='purchase_items')
-    depreciation_category = db.relationship('DepreciationCategory', lazy='selectin')
-    documents = db.relationship('PurchaseItemDocument', back_populates='purchase_item',
-                                cascade='all, delete-orphan', lazy='selectin')
-
-    @property
-    def to_dict(self):
-        """Serialize for JSON (used in template hidden field via Jinja map filter)."""
-        return {
-            'id': self.id,
-            'name': self.name,
-            'cost': self.cost,
-            'cost_is_brutto': self.cost_is_brutto,
-            'purchase_date': self.purchase_date.strftime('%Y-%m-%d') if self.purchase_date else '',
-            'depreciation_category_id': self.depreciation_category_id or '',
-        }
-
-
-class PurchaseItemDocument(db.Model):
-    """Document (invoice, receipt, etc.) attached to an individual purchase item."""
-    id = db.Column(db.Integer, primary_key=True)
-    purchase_item_id = db.Column(db.Integer, db.ForeignKey('ownership_purchase_item.id'), nullable=False)
-    filename = db.Column(db.String(300), nullable=False)  # stored filename (UUID-based)
-    original_name = db.Column(db.String(300), nullable=False)  # original upload name
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    purchase_item = db.relationship('OwnershipPurchaseItem', back_populates='documents')
 
 
 class Item(db.Model):
@@ -454,9 +314,6 @@ class Quote(db.Model):
     notes = db.Column(db.Text, nullable=True)  # Internal notes (not on PDF)
     public_notes = db.Column(db.Text, nullable=True)  # Shown on Angebot/Rechnung/Lieferschein
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)
-    # ERPNext Journal Entry references (stored for cancellation)
-    erpnext_je_receivable = db.Column(db.String(100), nullable=True)  # JE name for Forderung booking
-    erpnext_je_payment = db.Column(db.String(100), nullable=True)     # JE name for payment booking
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')
@@ -628,11 +485,4 @@ class SiteSettings(db.Model):
     terms_and_conditions_text = db.Column(db.Text, nullable=True)
     # Notification
     notification_email = db.Column(db.String(200), nullable=True)
-    # ERPNext integration settings (account names selected via UI)
-    erpnext_company = db.Column(db.String(200), nullable=True)
-    erpnext_account_receivable = db.Column(db.String(200), nullable=True)  # e.g. 1400 Forderungen
-    erpnext_account_revenue = db.Column(db.String(200), nullable=True)     # e.g. 4400 Erlöse
-    erpnext_account_vat = db.Column(db.String(200), nullable=True)         # e.g. 1776 Umsatzsteuer
-    erpnext_account_bank = db.Column(db.String(200), nullable=True)        # e.g. 1200 Bank
-    erpnext_account_cash = db.Column(db.String(200), nullable=True)        # e.g. 1000 Kasse
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

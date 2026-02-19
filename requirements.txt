@@ -7,4 +7,3 @@ requests
 reportlab
 svglib<1.6
 Pillow
-PyPDF2

@@ -51,13 +51,10 @@
             </p>
             {% if quote.status in ['performed', 'paid'] %}
             <div id="edit-performed-date" style="display:none;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
-                <form method="POST" action="{{ url_for('admin.quote_update_performed_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"{% if erpnext_enabled and quote.erpnext_je_receivable %} onsubmit="return confirm('Durchführungsdatum ändern? Die ERPNext-Forderungsbuchung wird storniert und mit dem neuen Datum neu erstellt.');"{% endif %}>
+                <form method="POST" action="{{ url_for('admin.quote_update_performed_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <input type="date" name="performed_at" value="{{ quote.performed_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
                     <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
                     <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-performed-date').style.display='none';document.getElementById('edit-performed-date-btn').style.display='';">Abbrechen</button>
-                    {% if erpnext_enabled and quote.erpnext_je_receivable %}
-                    <small class="text-muted" style="font-size:0.8em;">⚠ ERPNext-Buchung wird angepasst</small>
-                    {% endif %}
                 </form>
             </div>
             {% endif %}
@@ -71,13 +68,10 @@
             </p>
             {% if quote.status == 'paid' %}
             <div id="edit-paid-date" style="display:none;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
-                <form method="POST" action="{{ url_for('admin.quote_update_paid_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"{% if erpnext_enabled and quote.erpnext_je_payment %} onsubmit="return confirm('Bezahldatum ändern? Die ERPNext-Zahlungsbuchung wird storniert und mit dem neuen Datum neu erstellt.');"{% endif %}>
+                <form method="POST" action="{{ url_for('admin.quote_update_paid_date', quote_id=quote.id) }}" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <input type="date" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" required style="padding:4px 8px;font-size:0.85em;">
                     <button type="submit" class="btn btn-sm btn-success" style="padding:3px 10px;">Speichern</button>
                     <button type="button" class="btn btn-sm btn-outline" style="padding:3px 10px;" onclick="document.getElementById('edit-paid-date').style.display='none';document.getElementById('edit-paid-date-btn').style.display='';">Abbrechen</button>
-                    {% if erpnext_enabled and quote.erpnext_je_payment %}
-                    <small class="text-muted" style="font-size:0.8em;">⚠ ERPNext-Buchung wird angepasst</small>
-                    {% endif %}
                 </form>
             </div>
             {% endif %}
@@ -376,19 +370,6 @@ function deleteExpenseDoc(docId) {
 </div>
 {% endif %}
 
-<!-- ERPNext Journal Entries -->
-{% if erpnext_enabled and (quote.erpnext_je_receivable or quote.erpnext_je_payment) %}
-<div class="card">
-    <h2>ERPNext Buchungen</h2>
-    {% if quote.erpnext_je_receivable %}
-    <p><strong>Forderungsbuchung:</strong> {{ quote.erpnext_je_receivable }}</p>
-    {% endif %}
-    {% if quote.erpnext_je_payment %}
-    <p><strong>Zahlungsbuchung:</strong> {{ quote.erpnext_je_payment }}</p>
-    {% endif %}
-</div>
-{% endif %}
-
 <!-- Actions -->
 <div class="card no-print">
     <h2>Aktionen</h2>
@@ -399,7 +380,7 @@ function deleteExpenseDoc(docId) {
             <button type="button" class="btn btn-info" onclick="showPerformDialog()">Als durchgeführt markieren</button>
             {% else %}
             <form method="POST" action="{{ url_for('admin.quote_mark_performed', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-info" onclick="return confirm('Als durchgeführt markieren?{% if erpnext_enabled %} Forderungsbuchung wird in ERPNext erstellt.{% endif %}');">Als durchgeführt markieren</button>
+                <button type="submit" class="btn btn-info" onclick="return confirm('Als durchgeführt markieren?');">Als durchgeführt markieren</button>
             </form>
             {% endif %}
 
@@ -415,12 +396,12 @@ function deleteExpenseDoc(docId) {
             <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
 
             <form method="POST" action="{{ url_for('admin.quote_unperform', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-warning" onclick="return confirm('Durchführung aufheben?{% if erpnext_enabled %} Forderungsbuchung wird in ERPNext storniert.{% endif %}');">Durchführung aufheben</button>
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Durchführung aufheben?');">Durchführung aufheben</button>
             </form>
 
         {% elif quote.status == 'paid' %}
             <form method="POST" action="{{ url_for('admin.quote_unpay', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-warning" onclick="return confirm('Zahlung zurücknehmen?{% if erpnext_enabled %} Zahlungsbuchung wird in ERPNext storniert.{% endif %}');">Zahlung aufheben</button>
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Zahlung zurücknehmen?');">Zahlung aufheben</button>
             </form>
         {% endif %}
 
@@ -440,7 +421,7 @@ function deleteExpenseDoc(docId) {
             <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Bearbeiten</a>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?{% if erpnext_enabled and (quote.erpnext_je_receivable or quote.erpnext_je_payment) %} Alle ERPNext-Buchungen werden storniert.{% endif %}');">
+        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
         </form>
     </div>
@@ -486,7 +467,7 @@ function deleteExpenseDoc(docId) {
             </div>
             {% else %}
             <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
-                <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?{% if erpnext_enabled %} Zahlungsbuchung wird in ERPNext erstellt.{% endif %}');">Heutiges Datum</button>
+                <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?');">Heutiges Datum</button>
                 <span style="color:var(--color-text-muted);font-size:0.9em;">oder:</span>
                 <input type="date" id="custom-pay-date" style="padding:6px 10px;font-size:0.9em;">
                 <button type="button" class="btn btn-outline" onclick="submitCustomPayDate()">Eigenes Datum</button>

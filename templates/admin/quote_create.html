@@ -17,12 +17,8 @@
             <textarea name="recipient_lines" id="recipient_lines" rows="3"></textarea>
         </div>
         <div class="mb-16">
-            {% if not erpnext_enabled %}
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
             <span class="customer-save-feedback" id="save-feedback"></span>
-            {% else %}
-            <small class="text-muted">Kunden werden in ERPNext verwaltet.</small>
-            {% endif %}
         </div>
         <div class="form-row">
             <div class="form-group">
