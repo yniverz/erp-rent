@@ -13,7 +13,7 @@ import uuid
 admin_bp = Blueprint('admin', __name__)
 
 
-def _book_quote_income(quote, site_settings=None):
+def _book_quote_income(quote, site_settings=None, account_id=None):
     """Book a quote payment as income in the external accounting service.
     Returns (ok, message).  Silently succeeds when accounting is not configured.
     """
@@ -24,6 +24,9 @@ def _book_quote_income(quote, site_settings=None):
     # Determine tax treatment
     tax_treatment = quote.accounting_tax_treatment or accounting.get_default_tax_treatment(site_settings)
     category_id = site_settings.accounting_income_category_id if site_settings else None
+    # Determine account: explicit override > site default
+    if not account_id and site_settings:
+        account_id = site_settings.accounting_income_account_id
     paid_date = quote.paid_at.strftime('%Y-%m-%d') if quote.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
     description = f'{quote.customer_name} – {quote.reference_number or ("RE" + str(quote.id))}'
     ok, result = accounting.create_transaction(
@@ -31,6 +34,7 @@ def _book_quote_income(quote, site_settings=None):
         txn_type='income',
         description=description,
         amount=quote.total,
+        account_id=account_id,
         category_id=category_id,
         tax_treatment=tax_treatment,
         notes=f'Angebot {quote.reference_number}, Zahlung: {quote.payment_method or "bank"}',
@@ -50,7 +54,7 @@ def _delete_quote_accounting(quote):
     return ok, result
 
 
-def _book_expense_transaction(expense, quote_item, site_settings=None):
+def _book_expense_transaction(expense, quote_item, site_settings=None, account_id=None):
     """Book an external cost expense in the accounting service."""
     if not accounting.is_configured():
         return True, None
@@ -58,6 +62,9 @@ def _book_expense_transaction(expense, quote_item, site_settings=None):
         site_settings = SiteSettings.query.first()
     tax_treatment = accounting.get_default_tax_treatment(site_settings)
     category_id = site_settings.accounting_expense_category_id if site_settings else None
+    # Determine account: explicit override > site default
+    if not account_id and site_settings:
+        account_id = site_settings.accounting_expense_account_id
     paid_date = expense.paid_at.strftime('%Y-%m-%d') if expense.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
     quote = quote_item.quote
     item_name = quote_item.display_name
@@ -67,6 +74,7 @@ def _book_expense_transaction(expense, quote_item, site_settings=None):
         txn_type='expense',
         description=description,
         amount=expense.amount,
+        account_id=account_id,
         category_id=category_id,
         tax_treatment=tax_treatment,
         notes=expense.notes or None,
@@ -555,7 +563,9 @@ def expense_mark_paid(expense_id):
         db.session.commit()
 
         # Book expense in accounting service
-        ok, acct_msg = _book_expense_transaction(expense, expense.quote_item)
+        acct_account_id_str = request.form.get('accounting_account_id', '').strip()
+        acct_account_id = int(acct_account_id_str) if acct_account_id_str else None
+        ok, acct_msg = _book_expense_transaction(expense, expense.quote_item, account_id=acct_account_id)
         if not ok:
             flash(f'Buchhaltung: {acct_msg}', 'warning')
         else:
@@ -1095,6 +1105,10 @@ def quote_mark_paid(quote_id):
             if acct_tax:
                 quote.accounting_tax_treatment = acct_tax
 
+            # Accounting account override (from pay dialog)
+            acct_account_id_str = request.form.get('accounting_account_id', '').strip()
+            acct_account_id = int(acct_account_id_str) if acct_account_id_str else None
+
             quote.status = 'paid'
 
             discount_multiplier = (100 - quote.discount_percent) / 100
@@ -1111,7 +1125,7 @@ def quote_mark_paid(quote_id):
             db.session.commit()
 
             # Book income in accounting service
-            ok, acct_msg = _book_quote_income(quote)
+            ok, acct_msg = _book_quote_income(quote, account_id=acct_account_id)
             if not ok:
                 flash(f'Buchhaltung: {acct_msg}', 'warning')
             else:
@@ -1542,6 +1556,12 @@ def settings():
             acct_expense_cat = request.form.get('accounting_expense_category_id', '').strip()
             settings_record.accounting_expense_category_id = int(acct_expense_cat) if acct_expense_cat else None
 
+            # Accounting API account IDs
+            acct_income_acc = request.form.get('accounting_income_account_id', '').strip()
+            settings_record.accounting_income_account_id = int(acct_income_acc) if acct_income_acc else None
+            acct_expense_acc = request.form.get('accounting_expense_account_id', '').strip()
+            settings_record.accounting_expense_account_id = int(acct_expense_acc) if acct_expense_acc else None
+
             settings_record.updated_at = datetime.utcnow()
 
             # Handle logo upload
@@ -1586,6 +1606,16 @@ def accounting_categories():
     type_filter = request.args.get('type')
     cats = accounting.get_categories(type_filter=type_filter)
     return jsonify({'categories': cats})
+
+
+@admin_bp.route('/api/accounting/accounts')
+@login_required
+def accounting_accounts():
+    """Proxy: fetch accounts from the accounting service."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'Accounting API not configured'}), 503
+    accounts = accounting.get_accounts()
+    return jsonify({'accounts': accounts})
 
 
 @admin_bp.route('/api/accounting/tax-treatments')

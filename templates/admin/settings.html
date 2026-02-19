@@ -125,7 +125,7 @@
 
         <h2>Buchhaltungs-API</h2>
         {% if accounting_configured %}
-        <p class="text-muted mb-16">Verbindung konfiguriert über Umgebungsvariablen (ACCOUNTING_API_URL, ACCOUNTING_API_KEY). Wählen Sie die Kategorien für Einnahmen und Ausgaben.</p>
+        <p class="text-muted mb-16">Verbindung konfiguriert über Umgebungsvariablen (ACCOUNTING_API_URL, ACCOUNTING_API_KEY). Wählen Sie die Kategorien und Konten für Einnahmen und Ausgaben.</p>
 
         <div class="form-row">
             <div class="form-group">
@@ -141,6 +141,22 @@
                     <option value="">— Keine —</option>
                 </select>
                 <small class="help-text">Kategorie für externe Mietkosten.</small>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Einnahmen-Konto</label>
+                <select name="accounting_income_account_id" id="acct_income_acc">
+                    <option value="">— Keins —</option>
+                </select>
+                <small class="help-text">Standard-Konto für Zahlungseingänge (z.B. Bank, Bargeld).</small>
+            </div>
+            <div class="form-group">
+                <label>Ausgaben-Konto</label>
+                <select name="accounting_expense_account_id" id="acct_expense_acc">
+                    <option value="">— Keins —</option>
+                </select>
+                <small class="help-text">Standard-Konto für externe Mietkosten.</small>
             </div>
         </div>
         {% else %}
@@ -161,6 +177,8 @@ function toggleTaxRate() {
 (function() {
     var savedIncomeCat = {{ settings.accounting_income_category_id|default('null', true) }};
     var savedExpenseCat = {{ settings.accounting_expense_category_id|default('null', true) }};
+    var savedIncomeAcc = {{ settings.accounting_income_account_id|default('null', true) }};
+    var savedExpenseAcc = {{ settings.accounting_expense_account_id|default('null', true) }};
 
     function loadCategories(type, selectId, savedVal) {
         fetch('{{ url_for("admin.accounting_categories") }}?type=' + type)
@@ -179,8 +197,27 @@ function toggleTaxRate() {
             .catch(function(err) { console.error('Fehler beim Laden der Kategorien:', err); });
     }
 
+    function loadAccounts(selectId, savedVal) {
+        fetch('{{ url_for("admin.accounting_accounts") }}')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var sel = document.getElementById(selectId);
+                if (!data.accounts) return;
+                data.accounts.forEach(function(a) {
+                    var opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = a.name + (a.description ? ' – ' + a.description : '');
+                    if (savedVal !== null && a.id === savedVal) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            })
+            .catch(function(err) { console.error('Fehler beim Laden der Konten:', err); });
+    }
+
     loadCategories('income', 'acct_income_cat', savedIncomeCat);
     loadCategories('expense', 'acct_expense_cat', savedExpenseCat);
+    loadAccounts('acct_income_acc', savedIncomeAcc);
+    loadAccounts('acct_expense_acc', savedExpenseAcc);
 })();
 {% endif %}
 </script>

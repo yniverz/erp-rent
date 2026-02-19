@@ -493,4 +493,6 @@ class SiteSettings(db.Model):
     # Accounting API integration
     accounting_income_category_id = db.Column(db.Integer, nullable=True)  # Category ID in accounting service for income
     accounting_expense_category_id = db.Column(db.Integer, nullable=True)  # Category ID in accounting service for expenses
+    accounting_income_account_id = db.Column(db.Integer, nullable=True)  # Account ID in accounting service for income
+    accounting_expense_account_id = db.Column(db.Integer, nullable=True)  # Account ID in accounting service for expenses
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -257,7 +257,7 @@
         <!-- Actions -->
         <div class="expense-actions">
             {% if not exp.paid %}
-            <button type="button" class="btn btn-sm btn-success" onclick="document.getElementById('pay-expense-{{ exp.id }}').classList.remove('d-none')">Als bezahlt markieren</button>
+            <button type="button" class="btn btn-sm btn-success" onclick="showExpensePayDialog({{ exp.id }})">Als bezahlt markieren</button>
             {% else %}
             <form method="POST" action="{{ url_for('admin.expense_mark_unpaid', expense_id=exp.id) }}" class="d-inline">
                 <button type="submit" class="btn btn-sm btn-warning">Zahlung aufheben</button>
@@ -278,6 +278,14 @@
                 <label class="expense-pay-label">Bezahldatum:</label>
                 <input type="date" name="paid_at" value="{{ exp.paid_at.strftime('%Y-%m-%d') if exp.paid_at else today }}" class="dialog-input-sm">
                 <input type="text" name="notes" placeholder="Notiz (optional)" class="dialog-input-notes">
+                {% if accounting_configured %}
+                <div class="form-group mt-6 mb-6" style="width: 100%;">
+                    <label class="text-sm">Konto</label>
+                    <select name="accounting_account_id" id="acct-expense-account-{{ exp.id }}" class="w-full">
+                        <option value="">Standard (aus Einstellungen)</option>
+                    </select>
+                </div>
+                {% endif %}
                 <button type="submit" class="btn btn-sm btn-success">Bestätigen</button>
                 <button type="button" class="btn btn-sm btn-outline" onclick="this.closest('[id^=pay-expense]').classList.add('d-none')">Abbrechen</button>
             </form>
@@ -462,6 +470,13 @@ function deleteExpenseDoc(docId) {
                 </select>
                 <small class="help-text">Wird für die Buchung in der Buchhaltungs-API verwendet.</small>
             </div>
+            <div class="form-group mb-10">
+                <label class="text-sm"><strong>Buchhaltung – Konto</strong></label>
+                <select name="accounting_account_id" id="acct-account" class="w-full">
+                    <option value="">Standard (aus Einstellungen)</option>
+                </select>
+                <small class="help-text">Konto, auf das die Zahlung gebucht wird.</small>
+            </div>
             {% endif %}
             {% if quote.paid_at %}
             <p class="text-muted dialog-text">Dieses Angebot war zuvor als bezahlt markiert ({{ quote.paid_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Bezahldatum verwenden oder das heutige Datum?</p>
@@ -527,6 +542,7 @@ function showPayDialog() {
     document.getElementById('pay-dialog').classList.remove('d-none');
     {% if accounting_configured %}
     loadTaxTreatments();
+    loadAccounts('acct-account');
     {% endif %}
 }
 
@@ -551,10 +567,47 @@ function loadTaxTreatments() {
         })
         .catch(function(err) { console.error('Tax treatments load error:', err); });
 }
+
+var _accountsCache = null;
+function loadAccounts(selectId) {
+    var sel = document.getElementById(selectId);
+    if (!sel) return;
+    if (sel.options.length > 1) return; // already loaded
+
+    function populate(accounts) {
+        accounts.forEach(function(a) {
+            var opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = a.name + (a.description ? ' – ' + a.description : '');
+            sel.appendChild(opt);
+        });
+    }
+
+    if (_accountsCache) {
+        populate(_accountsCache);
+        return;
+    }
+
+    fetch('{{ url_for("admin.accounting_accounts") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.accounts) return;
+            _accountsCache = data.accounts;
+            populate(data.accounts);
+        })
+        .catch(function(err) { console.error('Accounts load error:', err); });
+}
 {% endif %}
 
 function showPerformDialog() {
     document.getElementById('perform-dialog').classList.remove('d-none');
+}
+
+function showExpensePayDialog(expenseId) {
+    document.getElementById('pay-expense-' + expenseId).classList.remove('d-none');
+    {% if accounting_configured %}
+    loadAccounts('acct-expense-account-' + expenseId);
+    {% endif %}
 }
 
 function submitCustomPayDate() {

@@ -88,6 +88,18 @@ def get_tax_treatments():
 
 
 # ---------------------------------------------------------------------------
+# Accounts
+# ---------------------------------------------------------------------------
+
+def get_accounts():
+    """GET /accounts – returns list of account dicts with current balances."""
+    ok, data = _request('GET', '/accounts')
+    if ok and isinstance(data, dict):
+        return data.get('accounts', [])
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Tax treatment mapping
 # ---------------------------------------------------------------------------
 
@@ -110,7 +122,8 @@ def get_default_tax_treatment(site_settings):
 # ---------------------------------------------------------------------------
 
 def create_transaction(*, date, txn_type, description, amount,
-                       category_id=None, tax_treatment=None, notes=None):
+                       account_id=None, category_id=None,
+                       tax_treatment=None, notes=None):
     """POST /transactions – create a single transaction.
 
     Parameters
@@ -119,6 +132,7 @@ def create_transaction(*, date, txn_type, description, amount,
     txn_type : str – 'income' or 'expense'
     description : str
     amount : float – gross (brutto) amount, must be > 0
+    account_id : int | None – account to book to (required by API)
     category_id : int | None
     tax_treatment : str | None – e.g. 'none', 'standard', …
     notes : str | None
@@ -133,6 +147,8 @@ def create_transaction(*, date, txn_type, description, amount,
         'description': description,
         'amount': round(amount, 2),
     }
+    if account_id is not None:
+        payload['account_id'] = int(account_id)
     if category_id is not None:
         payload['category_id'] = int(category_id)
     if tax_treatment:
@@ -159,7 +175,7 @@ def update_transaction(transaction_id, **fields):
         return False, 'No transaction_id'
     payload = {}
     for key in ('date', 'amount', 'description', 'tax_treatment',
-                'category_id', 'notes', 'type'):
+                'category_id', 'account_id', 'notes', 'type'):
         if key in fields and fields[key] is not None:
             payload[key] = fields[key]
     if not payload:
