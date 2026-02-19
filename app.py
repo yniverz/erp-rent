@@ -1,15 +1,69 @@
-from flask import Flask, send_file, request
+from flask import Flask, send_file, request, Response, abort
 from flask_login import LoginManager
 from models import db, User, SiteSettings
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import os
 import io
+import hashlib
+import mimetypes
 import requests as http_requests
+import cssmin
+import rjsmin
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
+
+# ── Minifying static file server ──────────────────────────────────────
+_static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+_static_cache = {}  # (filepath, mtime) -> (data, etag, mimetype)
+
+@app.route('/static/<path:filename>', endpoint='static')
+def serve_static(filename):
+    filepath = os.path.realpath(os.path.join(_static_dir, filename))
+    # Prevent path traversal
+    if not filepath.startswith(os.path.realpath(_static_dir)):
+        abort(404)
+    if not os.path.isfile(filepath):
+        abort(404)
+
+    mtime = os.path.getmtime(filepath)
+    cache_key = (filepath, mtime)
+
+    if cache_key not in _static_cache:
+        # Evict stale entries for the same file
+        _static_cache.pop(
+            next((k for k in _static_cache if k[0] == filepath), None), None
+        )
+        mime = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+        with open(filepath, 'rb') as f:
+            data = f.read()
+
+        if mime == 'text/css':
+            try:
+                data = cssmin.cssmin(data.decode('utf-8')).encode('utf-8')
+            except Exception:
+                pass  # serve original on error
+        elif mime in ('application/javascript', 'text/javascript'):
+            try:
+                data = rjsmin.jsmin(data.decode('utf-8')).encode('utf-8')
+            except Exception:
+                pass
+
+        etag = hashlib.md5(data).hexdigest()
+        _static_cache[cache_key] = (data, etag, mime)
+
+    data, etag, mime = _static_cache[cache_key]
+
+    # Handle conditional requests (304 Not Modified)
+    if request.headers.get('If-None-Match') == etag:
+        return Response(status=304)
+
+    resp = Response(data, mimetype=mime)
+    resp.headers['ETag'] = etag
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
 
 @app.template_filter('nl2br')
 def nl2br_filter(value):
