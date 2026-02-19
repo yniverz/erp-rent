@@ -182,6 +182,23 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 with app.app_context():
     db.create_all()
 
+    # ── Auto-migrate: add missing columns to existing tables ──────────
+    def _add_column_if_missing(table, column, col_type='TEXT'):
+        """Add a column to an existing SQLite table if it doesn't exist yet."""
+        from sqlalchemy import text, inspect as sa_inspect
+        insp = sa_inspect(db.engine)
+        existing = {c['name'] for c in insp.get_columns(table)}
+        if column not in existing:
+            db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}'))
+            db.session.commit()
+            print(f"  migrated: {table}.{column} ({col_type})")
+
+    _add_column_if_missing('site_settings', 'accounting_income_category_id', 'INTEGER')
+    _add_column_if_missing('site_settings', 'accounting_expense_category_id', 'INTEGER')
+    _add_column_if_missing('quote', 'accounting_transaction_id', 'INTEGER')
+    _add_column_if_missing('quote', 'accounting_tax_treatment', 'VARCHAR(30)')
+    _add_column_if_missing('quote_item_expense', 'accounting_transaction_id', 'INTEGER')
+
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
     os.makedirs(uploads_dir, exist_ok=True)
