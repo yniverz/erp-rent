@@ -121,6 +121,32 @@
             <small class="help-text">E-Mail-Adresse, die Benachrichtigungen erhält, wenn Kunden Anfragen absenden. SMTP muss über Umgebungsvariablen konfiguriert sein (SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).</small>
         </div>
 
+        <hr class="section-divider">
+
+        <h2>Buchhaltungs-API</h2>
+        {% if accounting_configured %}
+        <p class="text-muted mb-16">Verbindung konfiguriert über Umgebungsvariablen (ACCOUNTING_API_URL, ACCOUNTING_API_KEY). Wählen Sie die Kategorien für Einnahmen und Ausgaben.</p>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Einnahmen-Kategorie</label>
+                <select name="accounting_income_category_id" id="acct_income_cat">
+                    <option value="">— Keine —</option>
+                </select>
+                <small class="help-text">Kategorie für Zahlungseingänge aus Angeboten.</small>
+            </div>
+            <div class="form-group">
+                <label>Ausgaben-Kategorie</label>
+                <select name="accounting_expense_category_id" id="acct_expense_cat">
+                    <option value="">— Keine —</option>
+                </select>
+                <small class="help-text">Kategorie für externe Mietkosten.</small>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-16">Nicht konfiguriert. Setzen Sie die Umgebungsvariablen <code>ACCOUNTING_API_URL</code> und <code>ACCOUNTING_API_KEY</code>, um die Buchhaltungs-Integration zu aktivieren.</p>
+        {% endif %}
+
         <button type="submit" class="btn btn-primary mt-10">Einstellungen speichern</button>
     </form>
 </div>
@@ -130,6 +156,33 @@ function toggleTaxRate() {
     var mode = document.getElementById('tax_mode_select').value;
     document.getElementById('tax_rate_group').classList.toggle('d-none', mode !== 'regular');
 }
+
+{% if accounting_configured %}
+(function() {
+    var savedIncomeCat = {{ settings.accounting_income_category_id|default('null', true) }};
+    var savedExpenseCat = {{ settings.accounting_expense_category_id|default('null', true) }};
+
+    function loadCategories(type, selectId, savedVal) {
+        fetch('{{ url_for("admin.accounting_categories") }}?type=' + type)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var sel = document.getElementById(selectId);
+                if (!data.categories) return;
+                data.categories.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name + (c.description ? ' – ' + c.description : '');
+                    if (savedVal !== null && c.id === savedVal) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            })
+            .catch(function(err) { console.error('Fehler beim Laden der Kategorien:', err); });
+    }
+
+    loadCategories('income', 'acct_income_cat', savedIncomeCat);
+    loadCategories('expense', 'acct_expense_cat', savedExpenseCat);
+})();
+{% endif %}
 </script>
 
 {% endblock %}

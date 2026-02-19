@@ -3,6 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, QuoteItemExpense, QuoteItemExpenseDocument
 from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
+import accounting
 from datetime import datetime
 from functools import wraps
 from werkzeug.utils import secure_filename
@@ -10,6 +11,79 @@ import os
 import uuid
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def _book_quote_income(quote, site_settings=None):
+    """Book a quote payment as income in the external accounting service.
+    Returns (ok, message).  Silently succeeds when accounting is not configured.
+    """
+    if not accounting.is_configured():
+        return True, None
+    if not site_settings:
+        site_settings = SiteSettings.query.first()
+    # Determine tax treatment
+    tax_treatment = quote.accounting_tax_treatment or accounting.get_default_tax_treatment(site_settings)
+    category_id = site_settings.accounting_income_category_id if site_settings else None
+    paid_date = quote.paid_at.strftime('%Y-%m-%d') if quote.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
+    description = f'{quote.customer_name} – {quote.reference_number or ("RE" + str(quote.id))}'
+    ok, result = accounting.create_transaction(
+        date=paid_date,
+        txn_type='income',
+        description=description,
+        amount=quote.total,
+        category_id=category_id,
+        tax_treatment=tax_treatment,
+        notes=f'Angebot {quote.reference_number}, Zahlung: {quote.payment_method or "bank"}',
+    )
+    if ok:
+        quote.accounting_transaction_id = result  # store the returned ID
+    return ok, result
+
+
+def _delete_quote_accounting(quote):
+    """Delete the accounting transaction linked to a quote. Returns (ok, msg)."""
+    if not accounting.is_configured() or not quote.accounting_transaction_id:
+        return True, None
+    ok, result = accounting.delete_transaction(quote.accounting_transaction_id)
+    if ok:
+        quote.accounting_transaction_id = None
+    return ok, result
+
+
+def _book_expense_transaction(expense, quote_item, site_settings=None):
+    """Book an external cost expense in the accounting service."""
+    if not accounting.is_configured():
+        return True, None
+    if not site_settings:
+        site_settings = SiteSettings.query.first()
+    tax_treatment = accounting.get_default_tax_treatment(site_settings)
+    category_id = site_settings.accounting_expense_category_id if site_settings else None
+    paid_date = expense.paid_at.strftime('%Y-%m-%d') if expense.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
+    quote = quote_item.quote
+    item_name = quote_item.display_name
+    description = f'Extern: {item_name} – {quote.customer_name} ({quote.reference_number or quote.id})'
+    ok, result = accounting.create_transaction(
+        date=paid_date,
+        txn_type='expense',
+        description=description,
+        amount=expense.amount,
+        category_id=category_id,
+        tax_treatment=tax_treatment,
+        notes=expense.notes or None,
+    )
+    if ok:
+        expense.accounting_transaction_id = result
+    return ok, result
+
+
+def _delete_expense_accounting(expense):
+    """Delete the accounting transaction linked to an expense."""
+    if not accounting.is_configured() or not expense.accounting_transaction_id:
+        return True, None
+    ok, result = accounting.delete_transaction(expense.accounting_transaction_id)
+    if ok:
+        expense.accounting_transaction_id = None
+    return ok, result
 
 
 def admin_required(f):
@@ -479,6 +553,14 @@ def expense_mark_paid(expense_id):
         if notes:
             expense.notes = notes
         db.session.commit()
+
+        # Book expense in accounting service
+        ok, acct_msg = _book_expense_transaction(expense, expense.quote_item)
+        if not ok:
+            flash(f'Buchhaltung: {acct_msg}', 'warning')
+        else:
+            db.session.commit()  # persist accounting_transaction_id
+
         flash('Ausgabe als bezahlt markiert.', 'success')
     except Exception as e:
         db.session.rollback()
@@ -492,6 +574,11 @@ def expense_mark_unpaid(expense_id):
     """Mark an external cost expense as unpaid"""
     expense = QuoteItemExpense.query.get_or_404(expense_id)
     try:
+        # Delete accounting transaction for this expense
+        ok, acct_msg = _delete_expense_accounting(expense)
+        if not ok:
+            flash(f'Buchhaltung: {acct_msg}', 'warning')
+
         expense.paid = False
         # Keep paid_at so it can be prefilled when re-marking as paid
         db.session.commit()
@@ -915,7 +1002,8 @@ def quote_view(quote_id):
     """View quote details"""
     quote = Quote.query.get_or_404(quote_id)
     from datetime import date as date_cls
-    return render_template('admin/quote_view.html', quote=quote, today=date_cls.today().isoformat())
+    return render_template('admin/quote_view.html', quote=quote, today=date_cls.today().isoformat(),
+                           accounting_configured=accounting.is_configured())
 
 
 @admin_bp.route('/quotes/<int:quote_id>/unfinalize', methods=['POST'])
@@ -1002,6 +1090,11 @@ def quote_mark_paid(quote_id):
                 payment_method = 'bank'
             quote.payment_method = payment_method
 
+            # Accounting tax treatment override (from pay dialog)
+            acct_tax = request.form.get('accounting_tax_treatment', '').strip()
+            if acct_tax:
+                quote.accounting_tax_treatment = acct_tax
+
             quote.status = 'paid'
 
             discount_multiplier = (100 - quote.discount_percent) / 100
@@ -1016,6 +1109,14 @@ def quote_mark_paid(quote_id):
                         quote_item.item.total_cost = round(quote_item.item.total_cost + item_cost, 2)
 
             db.session.commit()
+
+            # Book income in accounting service
+            ok, acct_msg = _book_quote_income(quote)
+            if not ok:
+                flash(f'Buchhaltung: {acct_msg}', 'warning')
+            else:
+                db.session.commit()  # persist accounting_transaction_id
+
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
         else:
             flash('Angebot ist bereits als bezahlt markiert.', 'info')
@@ -1035,6 +1136,12 @@ def quote_update_paid_date(quote_id):
             paid_date_str = request.form.get('paid_at', '').strip()
             if paid_date_str:
                 quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
+                # Update date in accounting service
+                if accounting.is_configured() and quote.accounting_transaction_id:
+                    ok, msg = accounting.update_transaction(
+                        quote.accounting_transaction_id, date=paid_date_str)
+                    if not ok:
+                        flash(f'Buchhaltung: {msg}', 'warning')
                 db.session.commit()
                 flash('Bezahldatum aktualisiert!', 'success')
             else:
@@ -1109,6 +1216,11 @@ def quote_unpay(quote_id):
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
+            # Delete accounting transaction
+            ok, acct_msg = _delete_quote_accounting(quote)
+            if not ok:
+                flash(f'Buchhaltung: {acct_msg}', 'warning')
+
             # Revert to performed if it was performed, otherwise to finalized
             if quote.performed_at:
                 quote.status = 'performed'
@@ -1132,6 +1244,9 @@ def quote_delete(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'paid':
+            # Delete accounting transaction for the quote payment
+            _delete_quote_accounting(quote)
+
             discount_multiplier = (100 - quote.discount_percent) / 100
             for quote_item in quote.quote_items:
                 if not quote_item.is_custom and quote_item.item:
@@ -1142,6 +1257,11 @@ def quote_delete(quote_id):
                     if quote_item.rental_cost_per_day:
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
+
+        # Delete accounting transactions for any paid expenses
+        for qi in quote.quote_items:
+            if qi.expense and qi.expense.accounting_transaction_id:
+                _delete_expense_accounting(qi.expense)
 
         db.session.delete(quote)
         db.session.commit()
@@ -1415,6 +1535,13 @@ def settings():
             settings_record.privacy_url = request.form.get('privacy_url', '').strip()
             settings_record.terms_and_conditions_text = request.form.get('terms_and_conditions_text', '').strip() or None
             settings_record.notification_email = request.form.get('notification_email', '').strip()
+
+            # Accounting API category IDs
+            acct_income_cat = request.form.get('accounting_income_category_id', '').strip()
+            settings_record.accounting_income_category_id = int(acct_income_cat) if acct_income_cat else None
+            acct_expense_cat = request.form.get('accounting_expense_category_id', '').strip()
+            settings_record.accounting_expense_category_id = int(acct_expense_cat) if acct_expense_cat else None
+
             settings_record.updated_at = datetime.utcnow()
 
             # Handle logo upload
@@ -1446,7 +1573,29 @@ def settings():
             db.session.rollback()
             flash(f'Fehler: {str(e)}', 'error')
 
-    return render_template('admin/settings.html', settings=settings_record)
+    return render_template('admin/settings.html', settings=settings_record,
+                           accounting_configured=accounting.is_configured())
+
+
+@admin_bp.route('/api/accounting/categories')
+@login_required
+def accounting_categories():
+    """Proxy: fetch categories from the accounting service (for settings UI)."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'Accounting API not configured'}), 503
+    type_filter = request.args.get('type')
+    cats = accounting.get_categories(type_filter=type_filter)
+    return jsonify({'categories': cats})
+
+
+@admin_bp.route('/api/accounting/tax-treatments')
+@login_required
+def accounting_tax_treatments():
+    """Proxy: fetch tax treatments from the accounting service."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'Accounting API not configured'}), 503
+    treatments = accounting.get_tax_treatments()
+    return jsonify({'tax_treatments': treatments})
 
 
 @admin_bp.route('/logo')

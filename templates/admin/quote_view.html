@@ -454,6 +454,15 @@ function deleteExpenseDoc(docId) {
                     <input type="radio" name="payment_method" value="cash"> Bar
                 </label>
             </div>
+            {% if accounting_configured %}
+            <div class="form-group mt-10 mb-10">
+                <label class="text-sm"><strong>Buchhaltung – Steuerbehandlung</strong></label>
+                <select name="accounting_tax_treatment" id="acct-tax-treatment" class="w-full">
+                    <option value="">Standard (aus Einstellungen)</option>
+                </select>
+                <small class="help-text">Wird für die Buchung in der Buchhaltungs-API verwendet.</small>
+            </div>
+            {% endif %}
             {% if quote.paid_at %}
             <p class="text-muted dialog-text">Dieses Angebot war zuvor als bezahlt markiert ({{ quote.paid_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Bezahldatum verwenden oder das heutige Datum?</p>
             <div class="d-flex gap-10 flex-wrap align-center">
@@ -516,7 +525,33 @@ document.getElementById('kaution-dialog').addEventListener('click', function(e) 
 
 function showPayDialog() {
     document.getElementById('pay-dialog').classList.remove('d-none');
+    {% if accounting_configured %}
+    loadTaxTreatments();
+    {% endif %}
 }
+
+{% if accounting_configured %}
+var _taxTreatmentsLoaded = false;
+function loadTaxTreatments() {
+    if (_taxTreatmentsLoaded) return;
+    _taxTreatmentsLoaded = true;
+    var saved = '{{ quote.accounting_tax_treatment or "" }}';
+    fetch('{{ url_for("admin.accounting_tax_treatments") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var sel = document.getElementById('acct-tax-treatment');
+            if (!data.tax_treatments) return;
+            data.tax_treatments.forEach(function(t) {
+                var opt = document.createElement('option');
+                opt.value = t.value;
+                opt.textContent = t.label;
+                if (saved && t.value === saved) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        })
+        .catch(function(err) { console.error('Tax treatments load error:', err); });
+}
+{% endif %}
 
 function showPerformDialog() {
     document.getElementById('perform-dialog').classList.remove('d-none');
