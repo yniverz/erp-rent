@@ -6,6 +6,7 @@
 
 .venv/
 *.db
+instance/uploads/*
 
 # User-specific files
 *.rsuser
