@@ -60,6 +60,9 @@ input, select, textarea {
     background: var(--color-gray-50);
     color: var(--color-text);
 }
+input[type="radio"] {
+    width: auto;
+}
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--color-accent);
