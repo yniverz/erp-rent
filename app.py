@@ -399,6 +399,38 @@ with app.app_context():
             """)
             print("Created quote_item_expense_document table")
 
+        # ============= POST-SIMPLIFICATION CLEANUP =============
+        # Migrate purchase item costs into simplified purchase_cost field,
+        # then drop removed tables (depreciation, ownership documents, purchase items).
+
+        if table_exists2('ownership_purchase_item'):
+            # Sum costs from individual purchase items into item_ownership.purchase_cost
+            cursor.execute("""
+                SELECT ownership_id, SUM(cost), MAX(cost_is_brutto)
+                FROM ownership_purchase_item
+                GROUP BY ownership_id
+            """)
+            for ownership_id, total_cost, is_brutto in cursor.fetchall():
+                cursor.execute("""
+                    UPDATE item_ownership
+                    SET purchase_cost = ?,
+                        purchase_cost_is_brutto = ?
+                    WHERE id = ?
+                """, (total_cost or 0, 1 if is_brutto else 0, ownership_id))
+
+            # Drop purchase-related tables (order: documents first due to FK)
+            cursor.execute("DROP TABLE IF EXISTS purchase_item_document")
+            cursor.execute("DROP TABLE IF EXISTS ownership_purchase_item")
+            print("Migrated purchase item costs and dropped ownership_purchase_item tables")
+
+        if table_exists2('ownership_document'):
+            cursor.execute("DROP TABLE IF EXISTS ownership_document")
+            print("Dropped ownership_document table")
+
+        if table_exists2('depreciation_category'):
+            cursor.execute("DROP TABLE IF EXISTS depreciation_category")
+            print("Dropped depreciation_category table")
+
         conn.commit()
         conn.close()
 
