@@ -92,8 +92,8 @@ document.querySelectorAll('[data-ajax-cart]').forEach(form => {
         const btn = this.querySelector('button');
         const origText = btn.textContent;
         btn.textContent = 'Hinzugefügt!';
-        btn.style.background = '#059669';
-        setTimeout(() => { btn.textContent = origText; btn.style.background = ''; }, 1200);
+        btn.classList.add('btn-added');
+        setTimeout(() => { btn.textContent = origText; btn.classList.remove('btn-added'); }, 1200);
 
         fetch(this.action, {
             method: 'POST',
@@ -105,7 +105,7 @@ document.querySelectorAll('[data-ajax-cart]').forEach(form => {
             if (data.cart_count !== undefined) {
                 document.getElementById('cart-badge').textContent = data.cart_count;
                 const cartLink = document.getElementById('cart-link');
-                if (cartLink) cartLink.style.display = data.cart_count > 0 ? '' : 'none';
+                if (cartLink) cartLink.classList.toggle('d-none', data.cart_count <= 0);
             }
         })
         .catch(() => {});

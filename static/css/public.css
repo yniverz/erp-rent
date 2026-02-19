@@ -84,6 +84,9 @@ footer a:hover { color: white; text-decoration: underline; }
 .btn-price-toggle { background: transparent; border: 1px solid rgba(255,255,255,0.35); color: rgba(255,255,255,0.7); padding: 2px 10px; border-radius: var(--radius); font-size: 0.9em; cursor: pointer; transition: var(--transition); }
 .btn-price-toggle:hover { background: rgba(255,255,255,0.1); color: white; border-color: rgba(255,255,255,0.6); }
 
+/* ── Cart button flash ── */
+.btn-added { background: var(--color-success) !important; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .header-inner { flex-direction: column; gap: 10px; }

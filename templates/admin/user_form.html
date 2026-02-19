@@ -76,7 +76,7 @@
 <script>
 function toggleExternalUser() {
     var isExternal = document.getElementById('is_external_user').checked;
-    document.getElementById('internal-user-options').style.display = isExternal ? 'none' : '';
+    document.getElementById('internal-user-options').classList.toggle('d-none', isExternal);
     if (isExternal) {
         document.getElementById('is_admin').checked = false;
         document.getElementById('can_edit_all').checked = false;

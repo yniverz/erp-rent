@@ -394,7 +394,7 @@
         </div>
         {% if site_settings and site_settings.tax_mode == 'regular' %}
         {% set mwst_amount = (quote.total - (quote.total / (1 + tax_rate / 100)))|round(2) %}
-        <div class="price-row" style="font-size:0.9em;color:var(--color-text-muted);">
+        <div class="price-row price-row-muted">
             <span>darin enthaltene {{ "%g"|format(tax_rate) }}% MwSt.</span>
             <span>&euro;{{ "%.2f"|format(mwst_amount) }}</span>
         </div>
@@ -418,15 +418,15 @@
     </div>
 
     {% if quote.finalized_at %}
-    <div id="finalize-dialog" style="display:none;margin-top:12px;">
+    <div id="finalize-dialog" class="action-dialog d-none">
         <form method="POST" id="finalize-form">
             <input type="hidden" name="action" value="finalize">
-            <p style="margin-bottom:10px;"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
-            <p class="text-muted" style="font-size:0.9em;margin-bottom:12px;">Dieses Angebot war zuvor finalisiert ({{ quote.finalized_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
-            <div class="d-flex gap-10 flex-wrap" style="align-items:center;">
+            <p class="mb-10"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
+            <p class="text-muted text-09 mb-12">Dieses Angebot war zuvor finalisiert ({{ quote.finalized_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
+            <div class="d-flex gap-10 flex-wrap align-center">
                 <button type="submit" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-success">Bisheriges Datum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
                 <button type="submit" class="btn btn-outline">Heutiges Datum</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('finalize-dialog').style.display='none'">Abbrechen</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('finalize-dialog').classList.add('d-none')">Abbrechen</button>
             </div>
         </form>
     </div>
@@ -484,7 +484,7 @@
             d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
             sugBox.appendChild(d);
         });
-        sugBox.style.display = 'block';
+        sugBox.classList.remove('d-none');
     }
 
     function selectSuggestion(idx) {
@@ -498,12 +498,18 @@
         items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
     }
 
-    function hideSuggestions() { sugBox.style.display = 'none'; activeIdx = -1; }
+    function hideSuggestions() { sugBox.classList.add('d-none'); activeIdx = -1; }
+
+    function setFeedback(msg, isError) {
+        feedback.textContent = msg;
+        feedback.classList.toggle('text-danger', isError);
+        feedback.classList.toggle('text-success', !isError);
+    }
 
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
             const name = nameInput.value.trim();
-            if (!name) { feedback.textContent = 'Bitte Kundenname eingeben.'; feedback.style.color = '#dc2626'; return; }
+            if (!name) { setFeedback('Bitte Kundenname eingeben.', true); return; }
             fetch('{{ url_for("admin.customer_save") }}', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -511,10 +517,9 @@
             })
             .then(r => r.json())
             .then(data => {
-                if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+                if (data.error) { setFeedback(data.error, true); }
                 else {
-                    feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
-                    feedback.style.color = '#3ecf8e';
+                    setFeedback(data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!', false);
                     deleteBtn.classList.remove('d-none');
                     setTimeout(() => feedback.textContent = '', 3000);
                     // Also save the quote details
@@ -522,7 +527,7 @@
                     if (quoteForm) quoteForm.submit();
                 }
             })
-            .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
+            .catch(() => { setFeedback('Fehler beim Speichern.', true); });
         });
     }
 
@@ -538,15 +543,14 @@
             })
             .then(r => r.json())
             .then(data => {
-                if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+                if (data.error) { setFeedback(data.error, true); }
                 else {
-                    feedback.textContent = 'Kunde gelöscht.';
-                    feedback.style.color = '#3ecf8e';
+                    setFeedback('Kunde gelöscht.', false);
                     deleteBtn.classList.add('d-none');
                     setTimeout(() => feedback.textContent = '', 3000);
                 }
             })
-            .catch(() => { feedback.textContent = 'Fehler beim Löschen.'; feedback.style.color = '#dc2626'; });
+            .catch(() => { setFeedback('Fehler beim Löschen.', true); });
         });
     }
 
@@ -572,7 +576,7 @@
 function removeQuoteItem(quoteItemId) {
     const f = document.createElement('form');
     f.method = 'POST';
-    f.style.display = 'none';
+    f.className = 'd-none';
     f.innerHTML = '<input name="action" value="remove_item"><input name="quote_item_id" value="' + quoteItemId + '">';
     document.body.appendChild(f);
     f.submit();
@@ -582,14 +586,14 @@ function removePackage(packageId) {
     if (!confirm('Alle Komponenten dieses Pakets entfernen?')) return;
     const f = document.createElement('form');
     f.method = 'POST';
-    f.style.display = 'none';
+    f.className = 'd-none';
     f.innerHTML = '<input name="action" value="remove_package"><input name="package_id" value="' + packageId + '">';
     document.body.appendChild(f);
     f.submit();
 }
 
 function showFinalizeDialog() {
-    document.getElementById('finalize-dialog').style.display = '';
+    document.getElementById('finalize-dialog').classList.remove('d-none');
 }
 </script>
 {% endblock %}

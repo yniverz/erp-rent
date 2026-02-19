@@ -9,11 +9,11 @@
     <h3>Kategorie hinzufügen</h3>
     <form method="POST" enctype="multipart/form-data" class="d-flex gap-12 align-end flex-wrap">
         <input type="hidden" name="action" value="add">
-        <div class="form-group m-0 flex-1" style="min-width:160px">
+        <div class="form-group m-0 flex-1 min-w-160">
             <label>Name</label>
             <input type="text" name="name" required placeholder="z.B. Beleuchtung">
         </div>
-        <div class="form-group m-0" style="min-width:180px">
+        <div class="form-group m-0 min-w-180">
             <label>Übergeordnete Kategorie</label>
             <select name="parent_id">
                 <option value="">— Keine (Hauptkategorie) —</option>
@@ -52,13 +52,13 @@
                 <form method="POST" enctype="multipart/form-data" class="d-flex gap-8 align-center" id="edit-form-{{ cat.id }}">
                     <input type="hidden" name="action" value="edit">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
-                    <span style="display:inline-block;width:{{ depth * 20 }}px"></span>
+                    <span class="cat-indent" style="width:{{ depth * 20 }}px"></span>
                     {% if depth > 0 %}↳{% endif %}
                     <input type="text" name="name" value="{{ cat.name }}" class="w-200">
                 </form>
             </td>
             <td>
-                <select name="parent_id" form="edit-form-{{ cat.id }}" style="min-width:150px">
+                <select name="parent_id" form="edit-form-{{ cat.id }}" class="min-w-150">
                     <option value="">— Keine —</option>
                     {% for pcat, pdepth in category_tree %}
                         {% if pcat.id != cat.id %}
@@ -72,15 +72,15 @@
             </td>
             <td>
                 {% if cat.image_filename %}
-                    <img src="{{ url_for('public.uploaded_file', filename=cat.image_filename) }}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;vertical-align:middle">
-                    <div class="checkbox-group mt-4" style="font-size:0.8em">
+                    <img src="{{ url_for('public.uploaded_file', filename=cat.image_filename) }}" class="cat-thumb">
+                    <div class="checkbox-group mt-4 text-08">
                         <input type="checkbox" name="remove_image" id="rm-img-{{ cat.id }}" form="edit-form-{{ cat.id }}">
                         <label for="rm-img-{{ cat.id }}" class="m-0 font-normal text-danger">Entfernen</label>
                     </div>
                 {% else %}
                     <span class="text-muted">—</span>
                 {% endif %}
-                <input type="file" name="image" accept="image/*" form="edit-form-{{ cat.id }}" style="font-size:0.8em;margin-top:4px;max-width:140px">
+                <input type="file" name="image" accept="image/*" form="edit-form-{{ cat.id }}" class="cat-file-input">
             </td>
             <td>{{ cat.items.count() }}</td>
             <td>

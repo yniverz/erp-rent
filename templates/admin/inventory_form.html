@@ -47,10 +47,10 @@
 
         <div class="form-group">
             <label>Standard-Mietpreis pro Tag (&euro;)</label>
-            <div class="d-flex gap-10" style="align-items:center;">
-                <input type="number" name="default_rental_price" id="rental_price_input" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required style="flex:1;">
+            <div class="d-flex gap-10 align-center">
+                <input type="number" name="default_rental_price" id="rental_price_input" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required class="flex-1">
                 {% if site_settings and site_settings.tax_mode == 'regular' %}
-                <select name="rental_price_mode" id="rental_price_mode" style="width:auto;min-width:100px;" onchange="updateRentalPriceHint()">
+                <select name="rental_price_mode" id="rental_price_mode" class="rental-price-mode" onchange="updateRentalPriceHint()">
                     <option value="brutto" selected>Brutto</option>
                     <option value="netto">Netto</option>
                 </select>
@@ -61,7 +61,7 @@
             {% endif %}
         </div>
 
-        <div class="form-group" id="bundle-discount-option" style="display:none;">
+        <div class="form-group d-none" id="bundle-discount-option">
             <div class="checkbox-group">
                 <input type="checkbox" name="show_bundle_discount" id="show_bundle_discount" {{ 'checked' if not item or item.show_bundle_discount }}>
                 <label for="show_bundle_discount" class="m-0 font-normal">Paketrabatt im Shop anzeigen</label>
@@ -104,16 +104,16 @@
         <div id="ownership-section">
             <h3>Eigentümer / Anbieter</h3>
             <p class="help-text mb-10">Pro Benutzer: Menge und optional einen externen Mietpreis (= externer Anbieter). Gesamtmenge ergibt sich aus der Summe.</p>
-            <table id="ownership-table" style="width:100%;font-size:0.9em;">
+            <table id="ownership-table" class="ownership-table">
                 <thead>
                     <tr>
                         <th>Benutzer</th>
-                        <th style="width:90px;">Menge</th>
-                        <th style="width:130px;">Ext. Preis/Tag (&euro;)</th>
-                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:80px;">Ext. B/N</th>{% endif %}
-                        <th style="width:130px;">Ansch.kosten (&euro;)</th>
-                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th style="width:80px;">B/N</th>{% endif %}
-                        <th style="width:30px;"></th>
+                        <th class="col-w-90">Menge</th>
+                        <th class="col-w-130">Ext. Preis/Tag (&euro;)</th>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th class="col-w-80">Ext. B/N</th>{% endif %}
+                        <th class="col-w-130">Ansch.kosten (&euro;)</th>
+                        {% if site_settings and site_settings.tax_mode == 'regular' %}<th class="col-w-80">B/N</th>{% endif %}
+                        <th class="col-w-30"></th>
                     </tr>
                 </thead>
                 <tbody id="ownership-container">
@@ -204,7 +204,7 @@ function togglePackageFields() {
     var isPackage = document.getElementById('is_package').checked;
     document.getElementById('package-components-section').classList.toggle('d-none', !isPackage);
     document.getElementById('ownership-section').classList.toggle('d-none', isPackage);
-    document.getElementById('bundle-discount-option').style.display = isPackage ? '' : 'none';
+    document.getElementById('bundle-discount-option').classList.toggle('d-none', !isPackage);
     if (isPackage) {
         if (document.getElementById('components-tbody').children.length === 0) {
             addComponentRow();
@@ -250,11 +250,11 @@ function onOwnershipUserChange(selectEl) {
     if (isExternal) {
         extPriceInput.required = true;
         extPriceInput.placeholder = 'Pflichtfeld';
-        extPriceInput.style.borderColor = extPriceInput.value ? '' : 'var(--danger)';
+        extPriceInput.classList.toggle('border-danger', !extPriceInput.value);
     } else {
         extPriceInput.required = false;
         extPriceInput.placeholder = 'leer = intern';
-        extPriceInput.style.borderColor = '';
+        extPriceInput.classList.remove('border-danger');
     }
 }
 

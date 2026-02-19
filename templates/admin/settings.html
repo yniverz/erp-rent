@@ -43,7 +43,7 @@
             </select>
         </div>
 
-        <div class="form-group" id="tax_rate_group" style="{{ '' if settings.tax_mode == 'regular' else 'display:none;' }}">
+        <div class="form-group{{ '' if settings.tax_mode == 'regular' else ' d-none' }}" id="tax_rate_group">
             <label>MwSt-Satz (%)</label>
             <input type="number" name="tax_rate" step="0.1" min="0" max="100" value="{{ settings.tax_rate if settings.tax_rate is not none else 19.0 }}">
             <small class="help-text">&Uuml;blicher Satz: 19% (oder 7% f&uuml;r erm&auml;&szlig;igte G&uuml;ter)</small>
@@ -64,7 +64,7 @@
             <label>Firmenlogo</label>
             {% if settings.logo_filename %}
                 <div class="mb-8">
-                    <img src="{{ url_for('admin.serve_logo') }}" alt="Logo" style="max-height: 80px; max-width: 300px;">
+                    <img src="{{ url_for('admin.serve_logo') }}" alt="Logo" class="logo-preview">
                     <br>
                     <small class="text-muted">Aktuell: {{ settings.logo_filename }}</small>
                 </div>
@@ -72,7 +72,7 @@
             <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif">
             <small class="help-text">PNG, JPEG, SVG, WebP oder GIF. Wird auf PDFs oben rechts angezeigt.</small>
             {% if settings.logo_filename %}
-                <label class="mt-4" style="font-weight:normal;"><input type="checkbox" name="remove_logo" value="1"> Logo entfernen</label>
+                <label class="mt-4 font-normal"><input type="checkbox" name="remove_logo" value="1"> Logo entfernen</label>
             {% endif %}
         </div>
 
@@ -128,7 +128,7 @@
 <script>
 function toggleTaxRate() {
     var mode = document.getElementById('tax_mode_select').value;
-    document.getElementById('tax_rate_group').style.display = mode === 'regular' ? '' : 'none';
+    document.getElementById('tax_rate_group').classList.toggle('d-none', mode !== 'regular');
 }
 </script>
 

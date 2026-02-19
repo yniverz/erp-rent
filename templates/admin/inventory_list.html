@@ -5,14 +5,14 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Inventar</h1>
-    <input type="text" id="inventory-search" placeholder="Suche nach Name, Kategorie, Eigentümer…" style="max-width:350px;margin:0">
+    <input type="text" id="inventory-search" placeholder="Suche nach Name, Kategorie, Eigentümer…" class="search-input-inline">
     <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">+ Artikel hinzufügen</a>
 </div>
 
 <table id="inventory-table">
     <thead>
         <tr>
-            <th style="width:50px"></th>
+            <th class="col-w-50"></th>
             <th>Name</th>
             <th>Kategorie</th>
             <th>Eigentümer</th>
@@ -47,9 +47,9 @@
             </tr>
         {% endif %}
         <tr>
-            <td style="width:50px;padding:4px">
+            <td class="thumb-cell">
                 {% if item.image_filename %}
-                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;display:block;background:#fff">
+                    <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" class="thumb-img">
                 {% endif %}
             </td>
             <td>
@@ -137,7 +137,7 @@
         const terms = this.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
 
         if (terms.length === 0) {
-            rows.forEach(r => r.style.display = '');
+            rows.forEach(r => r.classList.remove('d-none'));
             return;
         }
 
@@ -146,7 +146,7 @@
             if (row.dataset.rowType !== 'item') return;
             const text = row.textContent.toLowerCase();
             const match = terms.every(t => text.includes(t));
-            row.style.display = match ? '' : 'none';
+            row.classList.toggle('d-none', !match);
         });
 
         // second pass: show category headers only if at least one following item is visible
@@ -154,9 +154,9 @@
         for (let i = rows.length - 1; i >= 0; i--) {
             const row = rows[i];
             if (row.dataset.rowType === 'item') {
-                hasVisibleItem = row.style.display !== 'none' || hasVisibleItem;
+                hasVisibleItem = !row.classList.contains('d-none') || hasVisibleItem;
             } else if (row.dataset.rowType === 'category') {
-                row.style.display = hasVisibleItem ? '' : 'none';
+                row.classList.toggle('d-none', !hasVisibleItem);
                 hasVisibleItem = false;
             }
         }

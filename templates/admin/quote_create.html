@@ -87,7 +87,7 @@
             d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
             sugBox.appendChild(d);
         });
-        sugBox.style.display = 'block';
+        sugBox.classList.remove('d-none');
     }
 
     function selectSuggestion(idx) {
@@ -101,12 +101,18 @@
         items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
     }
 
-    function hideSuggestions() { sugBox.style.display = 'none'; activeIdx = -1; }
+    function hideSuggestions() { sugBox.classList.add('d-none'); activeIdx = -1; }
+
+    function setFeedback(msg, isError) {
+        feedback.textContent = msg;
+        feedback.classList.toggle('text-danger', isError);
+        feedback.classList.toggle('text-success', !isError);
+    }
 
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
             const name = nameInput.value.trim();
-            if (!name) { feedback.textContent = 'Bitte Kundenname eingeben.'; feedback.style.color = '#dc2626'; return; }
+            if (!name) { setFeedback('Bitte Kundenname eingeben.', true); return; }
             fetch('{{ url_for("admin.customer_save") }}', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -114,14 +120,13 @@
             })
             .then(r => r.json())
             .then(data => {
-                if (data.error) { feedback.textContent = data.error; feedback.style.color = '#dc2626'; }
+                if (data.error) { setFeedback(data.error, true); }
                 else {
-                    feedback.textContent = data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!';
-                    feedback.style.color = '#3ecf8e';
+                    setFeedback(data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!', false);
                     setTimeout(() => feedback.textContent = '', 3000);
                 }
             })
-            .catch(() => { feedback.textContent = 'Fehler beim Speichern.'; feedback.style.color = '#dc2626'; });
+            .catch(() => { setFeedback('Fehler beim Speichern.', true); });
         });
     }
 })();
