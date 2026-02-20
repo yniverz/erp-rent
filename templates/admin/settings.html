@@ -18,16 +18,19 @@
         <div class="form-group">
             <label>Adresszeilen</label>
             <textarea name="address_lines" rows="3" placeholder="Straße&#10;PLZ Stadt&#10;Land">{{ settings.address_lines or '' }}</textarea>
+            <small class="help-text">Maximal 4 Zeilen (eine Zeile pro Eingabezeile).</small>
         </div>
 
         <div class="form-group">
             <label>Kontaktdaten</label>
             <textarea name="contact_lines" rows="3" placeholder="Tel: +49 ...&#10;Email: info@...">{{ settings.contact_lines or '' }}</textarea>
+            <small class="help-text">3–5 Zeilen im PDF-Footer, je nachdem ob Steuernummer und/oder USt-IdNr gesetzt sind.</small>
         </div>
 
         <div class="form-group">
             <label>Bankverbindung</label>
             <textarea name="bank_lines" rows="3" placeholder="Bank: ...&#10;IBAN: ...&#10;BIC: ...">{{ settings.bank_lines or '' }}</textarea>
+            <small class="help-text">Maximal 5 Zeilen.</small>
         </div>
 
         <div class="form-group">

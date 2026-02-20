@@ -206,7 +206,7 @@ def _draw_footer(canvas, doc, *,
         mid_lines.append(f"St.-Nr.: {tax_number}")
     if vat_id:
         mid_lines.append(f"USt-IdNr: {vat_id}")
-    right_lines = bank_lines[:4]
+    right_lines = bank_lines[:5]
 
     dy = 8.5
     y_start = y_line - 10
