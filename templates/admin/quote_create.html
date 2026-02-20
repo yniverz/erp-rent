@@ -124,7 +124,7 @@
             d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
             sugBox.appendChild(d);
         });
-        sugBox.classList.remove('d-none');
+        sugBox.style.display = 'block';
     }
 
     function selectSuggestion(idx) {
@@ -144,7 +144,7 @@
         items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
     }
 
-    function hideSuggestions() { sugBox.classList.add('d-none'); activeIdx = -1; }
+    function hideSuggestions() { sugBox.style.display = ''; activeIdx = -1; }
 
     function setFeedback(msg, isError) {
         feedback.textContent = msg;
