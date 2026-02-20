@@ -422,8 +422,10 @@ function deleteExpenseDoc(docId) {
         {% endif %}
 
         {% if quote.status in ['finalized', 'performed', 'paid'] %}
+            {% if not accounting_configured %}
             <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF</a>
             <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
+            {% endif %}
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
             <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
             {% if accounting_configured %}
@@ -435,8 +437,10 @@ function deleteExpenseDoc(docId) {
                 {% endif %}
             {% endif %}
         {% elif quote.status == 'draft' %}
+            {% if not accounting_configured %}
             <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF (Entwurf)</a>
             <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
+            {% endif %}
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
             <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
         {% endif %}
