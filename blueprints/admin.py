@@ -597,48 +597,38 @@ def expense_mark_paid(expense_id):
         notes = request.form.get('notes', '').strip()
         if notes:
             expense.notes = notes
-        db.session.commit()
 
-        # Book expense in accounting service
+        # Book expense in accounting service BEFORE committing
         acct_account_id_str = request.form.get('accounting_account_id', '').strip()
         acct_account_id = int(acct_account_id_str) if acct_account_id_str else None
-        ok, acct_msg = _book_expense_transaction(expense, expense.quote_item, account_id=acct_account_id)
-        if not ok:
-            flash(f'Buchhaltung: {acct_msg}', 'warning')
-        else:
-            db.session.commit()  # persist accounting_transaction_id
-            # Upload all attached expense documents to the accounting transaction
-            if expense.accounting_transaction_id and expense.documents:
-                import mimetypes
-                doc_files = []
-                for doc in expense.documents:
-                    doc_path = os.path.join(get_upload_path(), doc.filename)
-                    if os.path.exists(doc_path):
-                        with open(doc_path, 'rb') as f:
-                            file_bytes = f.read()
-                        ct = mimetypes.guess_type(doc.original_name)[0] or 'application/octet-stream'
-                        doc_files.append((doc.original_name, file_bytes, ct))
-                if doc_files:
-                    try:
-                        dok_ok, dok_msg = accounting.upload_transaction_documents(
-                            expense.accounting_transaction_id, doc_files)
-                        if not dok_ok:
-                            flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
-                    except Exception as doc_err:
-                        flash(f'Dokument-Upload fehlgeschlagen: {doc_err}', 'warning')
+        if accounting.is_configured():
+            ok, acct_msg = _book_expense_transaction(expense, expense.quote_item, account_id=acct_account_id)
+            if not ok:
+                db.session.rollback()
+                flash(f'Buchhaltung fehlgeschlagen: {acct_msg}', 'error')
+                return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
 
-        flash('Ausgabe als bezahlt markiert.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
+        db.session.commit()
 
-
-@admin_bp.route('/expense/<int:expense_id>/mark_unpaid', methods=['POST'])
-@login_required
-def expense_mark_unpaid(expense_id):
-    """Mark an external cost expense as unpaid"""
-    expense = QuoteItemExpense.query.get_or_404(expense_id)
+        # Upload all attached expense documents to the accounting transaction
+        if accounting.is_configured() and expense.accounting_transaction_id and expense.documents:
+            import mimetypes
+            doc_files = []
+            for doc in expense.documents:
+                doc_path = os.path.join(get_upload_path(), doc.filename)
+                if os.path.exists(doc_path):
+                    with open(doc_path, 'rb') as f:
+                        file_bytes = f.read()
+                    ct = mimetypes.guess_type(doc.original_name)[0] or 'application/octet-stream'
+                    doc_files.append((doc.original_name, file_bytes, ct))
+            if doc_files:
+                try:
+                    dok_ok, dok_msg = accounting.upload_transaction_documents(
+                        expense.accounting_transaction_id, doc_files)
+                    if not dok_ok:
+                        flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
+                except Exception as doc_err:
+                    flash(f'Dokument-Upload fehlgeschlagen: {doc_err}', 'warning')
     try:
         # Delete accounting transaction for this expense
         ok, acct_msg = _delete_expense_accounting(expense)
@@ -1165,6 +1155,14 @@ def quote_mark_paid(quote_id):
             acct_account_id_str = request.form.get('accounting_account_id', '').strip()
             acct_account_id = int(acct_account_id_str) if acct_account_id_str else None
 
+            # Book income in accounting service BEFORE committing
+            if accounting.is_configured():
+                ok, acct_msg = _book_quote_income(quote, account_id=acct_account_id)
+                if not ok:
+                    db.session.rollback()
+                    flash(f'Buchhaltung fehlgeschlagen: {acct_msg}', 'error')
+                    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
             quote.status = 'paid'
 
             discount_multiplier = (100 - quote.discount_percent) / 100
@@ -1180,23 +1178,17 @@ def quote_mark_paid(quote_id):
 
             db.session.commit()
 
-            # Book income in accounting service
-            ok, acct_msg = _book_quote_income(quote, account_id=acct_account_id)
-            if not ok:
-                flash(f'Buchhaltung: {acct_msg}', 'warning')
-            else:
-                db.session.commit()  # persist accounting_transaction_id
-                # Upload Rechnung PDF as document to the accounting transaction
-                if quote.accounting_transaction_id:
-                    try:
-                        pdf_bytes = _generate_rechnung_pdf_bytes(quote)
-                        filename = f'rechnung_{quote.reference_number or quote.id}.pdf'
-                        dok_ok, dok_msg = accounting.upload_transaction_document(
-                            quote.accounting_transaction_id, pdf_bytes, filename)
-                        if not dok_ok:
-                            flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
-                    except Exception as doc_err:
-                        flash(f'Rechnung-Upload fehlgeschlagen: {doc_err}', 'warning')
+            # Upload Rechnung PDF as document to the accounting transaction
+            if accounting.is_configured() and quote.accounting_transaction_id:
+                try:
+                    pdf_bytes = _generate_rechnung_pdf_bytes(quote)
+                    filename = f'rechnung_{quote.reference_number or quote.id}.pdf'
+                    dok_ok, dok_msg = accounting.upload_transaction_document(
+                        quote.accounting_transaction_id, pdf_bytes, filename)
+                    if not dok_ok:
+                        flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
+                except Exception as doc_err:
+                    flash(f'Rechnung-Upload fehlgeschlagen: {doc_err}', 'warning')
 
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
         else:
