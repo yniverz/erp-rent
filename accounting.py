@@ -195,3 +195,55 @@ def delete_transaction(transaction_id):
         return False, 'No transaction_id'
     ok, data = _request('DELETE', f'/transactions/{transaction_id}')
     return ok, data
+
+
+# ---------------------------------------------------------------------------
+# Transaction documents
+# ---------------------------------------------------------------------------
+
+def upload_transaction_documents(transaction_id, files):
+    """POST /transactions/:id/documents – upload one or more document attachments.
+
+    Parameters
+    ----------
+    transaction_id : int
+    files : list of (filename, file_bytes, content_type) tuples
+        e.g. [('rechnung.pdf', b'...', 'application/pdf')]
+
+    Returns
+    -------
+    (True, response_dict) on success, (False, error_message) on failure.
+    """
+    if not transaction_id:
+        return False, 'No transaction_id'
+    if not files:
+        return True, {}  # nothing to upload
+    base = _base_url()
+    if not base:
+        return False, 'ACCOUNTING_API_URL not configured'
+    url = f'{base}/transactions/{transaction_id}/documents'
+    headers = {'Authorization': f'Bearer {_api_key()}'}
+    multipart = [('documents', (fn, data, ct)) for fn, data, ct in files]
+    try:
+        resp = requests.post(
+            url, headers=headers, timeout=30,
+            files=multipart,
+        )
+        if resp.status_code in (200, 201):
+            return True, resp.json()
+        else:
+            try:
+                body = resp.json()
+            except Exception:
+                body = resp.text
+            return False, f'HTTP {resp.status_code}: {body}'
+    except requests.RequestException as exc:
+        return False, f'Request failed: {exc}'
+
+
+# Convenience wrapper for single-file uploads
+def upload_transaction_document(transaction_id, file_bytes, filename,
+                                content_type='application/pdf'):
+    """Upload a single document to a transaction (convenience wrapper)."""
+    return upload_transaction_documents(
+        transaction_id, [(filename, file_bytes, content_type)])

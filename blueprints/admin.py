@@ -13,6 +13,39 @@ import uuid
 admin_bp = Blueprint('admin', __name__)
 
 
+def _generate_rechnung_pdf_bytes(quote):
+    """Generate the Rechnung PDF bytes for a quote (no HTTP response, just raw bytes)."""
+    from generators.rechnung import build_rechnung_pdf
+    site_settings = SiteSettings.query.first()
+    data = _extract_common_pdf_data(quote, site_settings)
+    positions = _extract_positions(quote)
+    rechnungs_datum = quote.finalized_at.strftime('%d.%m.%Y') if quote.finalized_at else datetime.now().strftime('%d.%m.%Y')
+    return build_rechnung_pdf(
+        issuer_name=data['issuer_name'],
+        issuer_address=data['issuer_address'],
+        contact_lines=data['contact_lines'],
+        bank_lines=data['bank_lines'],
+        tax_number=data['tax_number'],
+        tax_mode=data['tax_mode'],
+        tax_rate=data['tax_rate'],
+        logo_path=data['logo_path'],
+        recipient_lines=data['recipient_lines'],
+        reference_number=quote.reference_number or f'RE-{quote.id:04d}',
+        rechnungs_datum=rechnungs_datum,
+        start_date_str=data['start_date_str'],
+        end_date_str=data['end_date_str'],
+        rental_days=data['rental_days'],
+        positions=positions,
+        discount_percent=quote.discount_percent or 0,
+        discount_label=quote.discount_label,
+        discount_amount=quote.discount_amount,
+        subtotal=quote.subtotal,
+        total=quote.total,
+        payment_terms_days=data['payment_terms_days'],
+        notes=quote.public_notes,
+    )
+
+
 def _book_quote_income(quote, site_settings=None, account_id=None):
     """Book a quote payment as income in the external accounting service.
     Returns (ok, message).  Silently succeeds when accounting is not configured.
@@ -570,6 +603,25 @@ def expense_mark_paid(expense_id):
             flash(f'Buchhaltung: {acct_msg}', 'warning')
         else:
             db.session.commit()  # persist accounting_transaction_id
+            # Upload all attached expense documents to the accounting transaction
+            if expense.accounting_transaction_id and expense.documents:
+                import mimetypes
+                doc_files = []
+                for doc in expense.documents:
+                    doc_path = os.path.join(get_upload_path(), doc.filename)
+                    if os.path.exists(doc_path):
+                        with open(doc_path, 'rb') as f:
+                            file_bytes = f.read()
+                        ct = mimetypes.guess_type(doc.original_name)[0] or 'application/octet-stream'
+                        doc_files.append((doc.original_name, file_bytes, ct))
+                if doc_files:
+                    try:
+                        dok_ok, dok_msg = accounting.upload_transaction_documents(
+                            expense.accounting_transaction_id, doc_files)
+                        if not dok_ok:
+                            flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
+                    except Exception as doc_err:
+                        flash(f'Dokument-Upload fehlgeschlagen: {doc_err}', 'warning')
 
         flash('Ausgabe als bezahlt markiert.', 'success')
     except Exception as e:
@@ -1130,6 +1182,17 @@ def quote_mark_paid(quote_id):
                 flash(f'Buchhaltung: {acct_msg}', 'warning')
             else:
                 db.session.commit()  # persist accounting_transaction_id
+                # Upload Rechnung PDF as document to the accounting transaction
+                if quote.accounting_transaction_id:
+                    try:
+                        pdf_bytes = _generate_rechnung_pdf_bytes(quote)
+                        filename = f'rechnung_{quote.reference_number or quote.id}.pdf'
+                        dok_ok, dok_msg = accounting.upload_transaction_document(
+                            quote.accounting_transaction_id, pdf_bytes, filename)
+                        if not dok_ok:
+                            flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
+                    except Exception as doc_err:
+                        flash(f'Rechnung-Upload fehlgeschlagen: {doc_err}', 'warning')
 
             flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
         else:
