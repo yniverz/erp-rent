@@ -7,6 +7,7 @@
 
 <div class="card">
     <form method="POST">
+        <input type="hidden" name="api_customer_id" id="api_customer_id" value="">
         <div class="form-group autocomplete-wrapper">
             <label>Kundenname *</label>
             <input type="text" name="customer_name" id="customer_name" required autocomplete="off">
@@ -16,10 +17,38 @@
             <label>Empfängeradresse</label>
             <textarea name="recipient_lines" id="recipient_lines" rows="3"></textarea>
         </div>
+        {% if accounting_configured %}
+        <div id="api-customer-info" class="d-none mb-16">
+            <small class="text-muted">API-Kunde: <span id="api-customer-label">—</span></small>
+            <button type="button" class="btn btn-sm btn-outline" onclick="clearApiCustomer()">Zuordnung aufheben</button>
+        </div>
+        <div class="mb-16">
+            <button type="button" class="btn btn-outline btn-sm" id="create-api-customer-btn">Neuen API-Kunden anlegen</button>
+            <span class="customer-save-feedback" id="save-feedback"></span>
+        </div>
+        <!-- Inline Create API Customer Dialog -->
+        <div id="create-api-customer-dialog" class="action-dialog d-none mb-16">
+            <h3 class="mt-0">Neuen Kunden anlegen (API)</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Name *</label><input type="text" id="new-api-cust-name"></div>
+                <div class="form-group"><label>Firma</label><input type="text" id="new-api-cust-company"></div>
+            </div>
+            <div class="form-group"><label>Adresse</label><textarea id="new-api-cust-address" rows="2"></textarea></div>
+            <div class="form-row">
+                <div class="form-group"><label>E-Mail</label><input type="email" id="new-api-cust-email"></div>
+                <div class="form-group"><label>Telefon</label><input type="text" id="new-api-cust-phone"></div>
+            </div>
+            <div class="d-flex gap-10">
+                <button type="button" class="btn btn-success btn-sm" onclick="submitCreateApiCustomer()">Anlegen</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('create-api-customer-dialog').classList.add('d-none')">Abbrechen</button>
+            </div>
+        </div>
+        {% else %}
         <div class="mb-16">
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
             <span class="customer-save-feedback" id="save-feedback"></span>
         </div>
+        {% endif %}
         <div class="form-row">
             <div class="form-group">
                 <label>Startdatum</label>
@@ -42,11 +71,12 @@
     const nameInput = document.getElementById('customer_name');
     const addrInput = document.getElementById('recipient_lines');
     const sugBox = document.getElementById('customer-suggestions');
-    const saveBtn = document.getElementById('save-customer-btn');
     const feedback = document.getElementById('save-feedback');
+    const apiCustIdInput = document.getElementById('api_customer_id');
     let debounce = null;
     let activeIdx = -1;
     let suggestions = [];
+    const useApi = {{ 'true' if accounting_configured else 'false' }};
 
     nameInput.addEventListener('input', function() {
         clearTimeout(debounce);
@@ -69,7 +99,10 @@
     });
 
     function fetchSuggestions(q) {
-        fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(q))
+        const url = useApi
+            ? '{{ url_for("admin.api_customer_search") }}?q=' + encodeURIComponent(q)
+            : '{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(q);
+        fetch(url)
             .then(r => r.json())
             .then(data => {
                 suggestions = data;
@@ -83,7 +116,11 @@
         if (!data.length) { hideSuggestions(); return; }
         data.forEach((c, i) => {
             const d = document.createElement('div');
-            d.textContent = c.name;
+            if (useApi) {
+                d.textContent = c.name + (c.company ? ' (' + c.company + ')' : '');
+            } else {
+                d.textContent = c.name;
+            }
             d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
             sugBox.appendChild(d);
         });
@@ -93,7 +130,13 @@
     function selectSuggestion(idx) {
         const c = suggestions[idx];
         nameInput.value = c.name;
-        addrInput.value = c.recipient_lines;
+        if (useApi) {
+            addrInput.value = c.address || '';
+            apiCustIdInput.value = c.id;
+            showApiCustomerInfo(c);
+        } else {
+            addrInput.value = c.recipient_lines || '';
+        }
         hideSuggestions();
     }
 
@@ -109,6 +152,60 @@
         feedback.classList.toggle('text-success', !isError);
     }
 
+    {% if accounting_configured %}
+    // API customer mode
+    function showApiCustomerInfo(c) {
+        const info = document.getElementById('api-customer-info');
+        const label = document.getElementById('api-customer-label');
+        label.textContent = c.name + (c.company ? ' (' + c.company + ')' : '') + ' [#' + c.id + ']';
+        info.classList.remove('d-none');
+    }
+
+    window.clearApiCustomer = function() {
+        apiCustIdInput.value = '';
+        document.getElementById('api-customer-info').classList.add('d-none');
+    };
+
+    const createBtn = document.getElementById('create-api-customer-btn');
+    if (createBtn) {
+        createBtn.addEventListener('click', function() {
+            // Pre-fill name from the name input
+            document.getElementById('new-api-cust-name').value = nameInput.value.trim();
+            document.getElementById('new-api-cust-address').value = addrInput.value;
+            document.getElementById('create-api-customer-dialog').classList.remove('d-none');
+        });
+    }
+
+    window.submitCreateApiCustomer = function() {
+        const name = document.getElementById('new-api-cust-name').value.trim();
+        if (!name) { setFeedback('Name ist erforderlich.', true); return; }
+        fetch('{{ url_for("admin.api_customer_create") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: name,
+                company: document.getElementById('new-api-cust-company').value.trim(),
+                address: document.getElementById('new-api-cust-address').value.trim(),
+                email: document.getElementById('new-api-cust-email').value.trim(),
+                phone: document.getElementById('new-api-cust-phone').value.trim()
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { setFeedback(data.error, true); return; }
+            nameInput.value = data.name;
+            addrInput.value = data.address || '';
+            apiCustIdInput.value = data.id;
+            showApiCustomerInfo(data);
+            document.getElementById('create-api-customer-dialog').classList.add('d-none');
+            setFeedback('API-Kunde angelegt!', false);
+            setTimeout(() => feedback.textContent = '', 3000);
+        })
+        .catch(() => { setFeedback('Fehler beim Anlegen.', true); });
+    };
+    {% else %}
+    // Local customer mode
+    const saveBtn = document.getElementById('save-customer-btn');
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
             const name = nameInput.value.trim();
@@ -129,6 +226,7 @@
             .catch(() => { setFeedback('Fehler beim Speichern.', true); });
         });
     }
+    {% endif %}
 })();
 </script>
 {% endblock %}

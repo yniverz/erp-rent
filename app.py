@@ -203,6 +203,11 @@ with app.app_context():
     _add_column_if_missing('quote', 'accounting_transaction_id', 'INTEGER')
     _add_column_if_missing('quote', 'accounting_tax_treatment', 'VARCHAR(30)')
     _add_column_if_missing('quote_item_expense', 'accounting_transaction_id', 'INTEGER')
+    _add_column_if_missing('quote', 'api_customer_id', 'INTEGER')
+    _add_column_if_missing('quote', 'api_quote_id', 'INTEGER')
+    _add_column_if_missing('quote', 'api_quote_number', 'VARCHAR(100)')
+    _add_column_if_missing('quote', 'api_invoice_id', 'INTEGER')
+    _add_column_if_missing('quote', 'api_invoice_number', 'VARCHAR(100)')
 
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')

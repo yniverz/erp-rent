@@ -87,9 +87,13 @@
 
     <div class="d-flex gap-10 flex-wrap">
         {% if inquiry.status != 'converted' %}
+            {% if accounting_configured %}
+            <button type="button" class="btn btn-success" onclick="showConvertDialog()">In Angebot umwandeln</button>
+            {% else %}
             <form method="POST" action="{{ url_for('admin.inquiry_convert', inquiry_id=inquiry.id) }}">
                 <button type="submit" class="btn btn-success" onclick="return confirm('Diese Anfrage in ein Angebot umwandeln?');">In Angebot umwandeln</button>
             </form>
+            {% endif %}
         {% endif %}
 
         <a href="mailto:{{ inquiry.customer_email }}?subject=Re: Ihre Mietanfrage" class="btn btn-primary">Per E-Mail antworten</a>
@@ -100,5 +104,101 @@
             <button type="submit" class="btn btn-danger">Löschen</button>
         </form>
     </div>
+
+    {% if accounting_configured and inquiry.status != 'converted' %}
+    <div id="convert-dialog" class="action-dialog d-none mt-16">
+        <form method="POST" action="{{ url_for('admin.inquiry_convert', inquiry_id=inquiry.id) }}">
+            <input type="hidden" name="api_customer_id" id="convert-api-customer-id" value="">
+            <p class="dialog-heading"><strong>In Angebot umwandeln</strong></p>
+            <p class="text-muted dialog-text">Optional: Einen API-Kunden zuordnen. Der Kunde kann auch später im Angebot ausgewählt werden.</p>
+            <div class="form-group autocomplete-wrapper mt-10">
+                <label class="text-sm">API-Kunde suchen</label>
+                <input type="text" id="convert-customer-search" autocomplete="off" placeholder="Kundenname eingeben..." value="{{ inquiry.customer_name }}">
+                <div class="autocomplete-list d-none" id="convert-customer-suggestions"></div>
+            </div>
+            <div id="convert-api-customer-info" class="d-none mb-10">
+                <small class="text-muted">Ausgewählt: <span id="convert-api-customer-label">—</span></small>
+                <button type="button" class="btn btn-sm btn-outline" onclick="clearConvertApiCustomer()">Aufheben</button>
+            </div>
+            <div class="d-flex gap-10 flex-wrap align-center">
+                <button type="submit" class="btn btn-success">Umwandeln</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('convert-dialog').classList.add('d-none')">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
 </div>
+
+{% if accounting_configured and inquiry.status != 'converted' %}
+<script>
+(function() {
+    const searchInput = document.getElementById('convert-customer-search');
+    const sugBox = document.getElementById('convert-customer-suggestions');
+    const custIdInput = document.getElementById('convert-api-customer-id');
+    let debounce = null;
+    let activeIdx = -1;
+    let suggestions = [];
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounce);
+        const q = this.value.trim();
+        if (q.length < 1) { hideSuggestions(); return; }
+        debounce = setTimeout(() => {
+            fetch('{{ url_for("admin.api_customer_search") }}?q=' + encodeURIComponent(q))
+                .then(r => r.json())
+                .then(data => {
+                    suggestions = data;
+                    sugBox.innerHTML = '';
+                    activeIdx = -1;
+                    if (!data.length) { hideSuggestions(); return; }
+                    data.forEach((c, i) => {
+                        const d = document.createElement('div');
+                        d.textContent = c.name + (c.company ? ' (' + c.company + ')' : '');
+                        d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
+                        sugBox.appendChild(d);
+                    });
+                    sugBox.classList.remove('d-none');
+                });
+        }, 200);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        const items = sugBox.querySelectorAll('div');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); highlight(items); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlight(items); }
+        else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); selectSuggestion(activeIdx); }
+        else if (e.key === 'Escape') { hideSuggestions(); }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!sugBox.contains(e.target) && e.target !== searchInput) hideSuggestions();
+    });
+
+    function selectSuggestion(idx) {
+        const c = suggestions[idx];
+        searchInput.value = c.name;
+        custIdInput.value = c.id;
+        document.getElementById('convert-api-customer-label').textContent = c.name + (c.company ? ' (' + c.company + ')' : '') + ' [#' + c.id + ']';
+        document.getElementById('convert-api-customer-info').classList.remove('d-none');
+        hideSuggestions();
+    }
+
+    function highlight(items) {
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    }
+
+    function hideSuggestions() { sugBox.classList.add('d-none'); activeIdx = -1; }
+
+    window.clearConvertApiCustomer = function() {
+        custIdInput.value = '';
+        document.getElementById('convert-api-customer-info').classList.add('d-none');
+    };
+
+    window.showConvertDialog = function() {
+        document.getElementById('convert-dialog').classList.remove('d-none');
+    };
+})();
+</script>
+{% endif %}
 {% endblock %}

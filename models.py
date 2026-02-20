@@ -317,6 +317,12 @@ class Quote(db.Model):
     # Accounting API integration
     accounting_transaction_id = db.Column(db.Integer, nullable=True)  # ID in external accounting service
     accounting_tax_treatment = db.Column(db.String(30), nullable=True)  # Per-quote override (none/standard/reduced/…)
+    # Accounting API quote/invoice integration
+    api_customer_id = db.Column(db.Integer, nullable=True)  # Customer ID in accounting API
+    api_quote_id = db.Column(db.Integer, nullable=True)  # Quote ID in accounting API
+    api_quote_number = db.Column(db.String(50), nullable=True)  # Quote number from API (e.g. A-2026-0001)
+    api_invoice_id = db.Column(db.Integer, nullable=True)  # Invoice ID in accounting API
+    api_invoice_number = db.Column(db.String(50), nullable=True)  # Invoice number from API (e.g. R-2026-0001)
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')

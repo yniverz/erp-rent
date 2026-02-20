@@ -367,6 +367,126 @@ def _delete_expense_accounting(expense):
     return ok, result
 
 
+# ---------------------------------------------------------------------------
+# API Quote / Invoice helpers
+# ---------------------------------------------------------------------------
+
+def _build_api_quote_items(quote):
+    """Build the items list for an API quote/invoice from local quote items."""
+    positions = _extract_positions(quote)
+    items = []
+    for pos in positions:
+        items.append({
+            'description': pos['name'],
+            'quantity': pos['quantity'],
+            'unit': 'Stk.',
+            'unit_price': round(pos['total'] / pos['quantity'], 2) if pos['quantity'] else pos['total'],
+        })
+    return items
+
+
+def _sync_create_api_quote(quote, site_settings=None):
+    """Create an API quote for a local quote. Returns (ok, error_or_None)."""
+    if not accounting.is_configured():
+        return True, None
+    if quote.api_quote_id:
+        return True, None  # already exists
+    if not site_settings:
+        site_settings = SiteSettings.query.first()
+
+    items = _build_api_quote_items(quote)
+    if not items:
+        return False, 'Keine Positionen im Angebot.'
+
+    date_str = (quote.created_at or datetime.utcnow()).strftime('%Y-%m-%d')
+    valid_until = None
+    if site_settings and site_settings.quote_validity_days:
+        from datetime import timedelta
+        valid_date = (quote.created_at or datetime.utcnow()) + timedelta(days=site_settings.quote_validity_days)
+        valid_until = valid_date.strftime('%Y-%m-%d')
+
+    tax_treatment = quote.accounting_tax_treatment or accounting.get_default_tax_treatment(site_settings)
+    agb_text = site_settings.terms_and_conditions_text if site_settings else None
+    payment_terms = (site_settings.payment_terms_days or 14) if site_settings else 14
+    notes = quote.public_notes or None
+
+    ok, result = accounting.create_quote(
+        date=date_str,
+        items=items,
+        customer_id=quote.api_customer_id,
+        valid_until=valid_until,
+        tax_treatment=tax_treatment,
+        discount_percent=quote.discount_percent or 0,
+        notes=notes,
+        agb_text=agb_text,
+        payment_terms_days=payment_terms,
+    )
+    if ok:
+        quote.api_quote_id = result.get('id')
+        quote.api_quote_number = result.get('quote_number')
+    return ok, result if not ok else None
+
+
+def _sync_update_api_quote(quote, site_settings=None):
+    """Update the API quote with current local data."""
+    if not accounting.is_configured() or not quote.api_quote_id:
+        return True, None
+    if not site_settings:
+        site_settings = SiteSettings.query.first()
+
+    items = _build_api_quote_items(quote)
+    tax_treatment = quote.accounting_tax_treatment or accounting.get_default_tax_treatment(site_settings)
+    agb_text = site_settings.terms_and_conditions_text if site_settings else None
+    notes = quote.public_notes or None
+
+    ok, result = accounting.update_quote(
+        quote.api_quote_id,
+        items=items,
+        customer_id=quote.api_customer_id,
+        tax_treatment=tax_treatment,
+        discount_percent=quote.discount_percent or 0,
+        notes=notes,
+        agb_text=agb_text,
+    )
+    return ok, result if not ok else None
+
+
+def _sync_delete_api_quote(quote):
+    """Delete the API quote for a local quote."""
+    if not accounting.is_configured() or not quote.api_quote_id:
+        return True, None
+    ok, result = accounting.delete_quote(quote.api_quote_id)
+    if ok:
+        quote.api_quote_id = None
+        quote.api_quote_number = None
+    return ok, result
+
+
+def _sync_api_quote_status(quote, status):
+    """Sync a status change to the API quote."""
+    if not accounting.is_configured() or not quote.api_quote_id:
+        return True, None
+    ok, result = accounting.set_quote_status(quote.api_quote_id, status)
+    return ok, result if not ok else None
+
+
+def _create_api_invoice_from_quote(quote, date_str=None):
+    """Create an API invoice from the API quote. Returns (ok, error_or_None)."""
+    if not accounting.is_configured():
+        return True, None
+    if not quote.api_quote_id:
+        return False, 'Kein API-Angebot vorhanden. Bitte zuerst ein API-Angebot erstellen.'
+    if quote.api_invoice_id:
+        return True, None  # already exists
+
+    ok, result = accounting.create_invoice_from_quote(
+        quote.api_quote_id, date=date_str)
+    if ok:
+        quote.api_invoice_id = result.get('id')
+        quote.api_invoice_number = result.get('invoice_number')
+    return ok, result if not ok else None
+
+
 def admin_required(f):
     """Decorator to require admin privileges"""
     @wraps(f)
@@ -981,12 +1101,17 @@ def quote_create():
 
             if start_date and end_date and start_date > end_date:
                 flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
-                return render_template('admin/quote_create.html')
+                return render_template('admin/quote_create.html',
+                                       accounting_configured=accounting.is_configured())
 
             rental_days = 1
             if start_date and end_date:
                 delta = end_date - start_date
                 rental_days = max(1, delta.days + 1)
+
+            # API customer ID (when accounting API is configured)
+            api_customer_id_str = request.form.get('api_customer_id', '').strip()
+            api_customer_id = int(api_customer_id_str) if api_customer_id_str else None
 
             quote = Quote(
                 customer_name=customer_name,
@@ -995,7 +1120,8 @@ def quote_create():
                 end_date=end_date,
                 rental_days=rental_days,
                 status='draft',
-                recipient_lines=request.form.get('recipient_lines', '').strip()
+                recipient_lines=request.form.get('recipient_lines', '').strip(),
+                api_customer_id=api_customer_id,
             )
             db.session.add(quote)
             db.session.commit()
@@ -1010,7 +1136,8 @@ def quote_create():
             db.session.rollback()
             flash(f'Fehler beim Erstellen des Angebots: {str(e)}', 'error')
 
-    return render_template('admin/quote_create.html')
+    return render_template('admin/quote_create.html',
+                           accounting_configured=accounting.is_configured())
 
 
 @admin_bp.route('/quotes/<int:quote_id>/edit', methods=['GET', 'POST'])
@@ -1028,6 +1155,9 @@ def quote_edit(quote_id):
         try:
             if action == 'update_quote':
                 quote.customer_name = request.form.get('customer_name', '').strip()
+                # API customer ID (when accounting API is configured)
+                api_cid_str = request.form.get('api_customer_id', '').strip()
+                quote.api_customer_id = int(api_cid_str) if api_cid_str else None
                 start_date_str = request.form.get('start_date')
                 end_date_str = request.form.get('end_date')
 
@@ -1037,7 +1167,8 @@ def quote_edit(quote_id):
                 if start_date and end_date and start_date > end_date:
                     flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
+                    _ss = SiteSettings.query.first()
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
 
                 quote.start_date = start_date
                 quote.end_date = end_date
@@ -1127,7 +1258,8 @@ def quote_edit(quote_id):
                 if not quote.start_date or not quote.end_date:
                     flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel bearbeiten!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
+                    _ss = SiteSettings.query.first()
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
 
                 errors = []
                 for qi in quote.quote_items:
@@ -1239,7 +1371,8 @@ def quote_edit(quote_id):
                 if not quote.start_date or not quote.end_date:
                     flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
+                    _ss = SiteSettings.query.first()
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
 
                 validation_warnings = []
                 for quote_item in quote.quote_items:
@@ -1276,6 +1409,23 @@ def quote_edit(quote_id):
                         )
                         db.session.add(expense)
 
+                # Sync API quote (create if not exists, update if exists)
+                if accounting.is_configured():
+                    if not quote.api_quote_id:
+                        ok, err = _sync_create_api_quote(quote)
+                        if not ok:
+                            flash(f'API-Angebot erstellen fehlgeschlagen: {err}', 'warning')
+                    else:
+                        ok, err = _sync_update_api_quote(quote)
+                        if not ok:
+                            flash(f'API-Angebot aktualisieren fehlgeschlagen: {err}', 'warning')
+                    # Generate API quote PDF
+                    if quote.api_quote_id:
+                        accounting.generate_quote_pdf(quote.api_quote_id)
+                    # Set API quote status to sent
+                    if quote.api_quote_id:
+                        _sync_api_quote_status(quote, 'sent')
+
                 db.session.commit()
                 flash('Angebot finalisiert!', 'success')
                 return redirect(url_for('admin.quote_view', quote_id=quote.id))
@@ -1298,7 +1448,8 @@ def quote_edit(quote_id):
         for item in items:
             item_availability[item.id] = item.total_quantity
 
-    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability)
+    _ss = SiteSettings.query.first()
+    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
 
 
 @admin_bp.route('/quotes/<int:quote_id>')
@@ -1307,8 +1458,10 @@ def quote_view(quote_id):
     """View quote details"""
     quote = Quote.query.get_or_404(quote_id)
     from datetime import date as date_cls
+    site_settings = SiteSettings.query.first()
     return render_template('admin/quote_view.html', quote=quote, today=date_cls.today().isoformat(),
-                           accounting_configured=accounting.is_configured())
+                           accounting_configured=accounting.is_configured(),
+                           site_settings=site_settings)
 
 
 @admin_bp.route('/quotes/<int:quote_id>/unfinalize', methods=['POST'])
@@ -1319,6 +1472,8 @@ def quote_unfinalize(quote_id):
         if quote.status == 'finalized':
             quote.status = 'draft'
             # Keep finalized_at so we can offer it when re-finalizing
+            # Sync API quote status back to draft
+            _sync_api_quote_status(quote, 'draft')
             db.session.commit()
             flash('Angebot zurück in den Entwurf versetzt!', 'success')
         elif quote.status == 'performed':
@@ -1389,6 +1544,8 @@ def quote_mark_paid(quote_id):
             else:
                 quote.paid_at = datetime.utcnow()
 
+            paid_date_iso = quote.paid_at.strftime('%Y-%m-%d')
+
             # Accounting tax treatment override (from pay dialog)
             acct_tax = request.form.get('accounting_tax_treatment', '').strip()
             if acct_tax:
@@ -1398,8 +1555,38 @@ def quote_mark_paid(quote_id):
             acct_account_id_str = request.form.get('accounting_account_id', '').strip()
             acct_account_id = int(acct_account_id_str) if acct_account_id_str else None
 
-            # Book income in accounting service BEFORE committing
-            if accounting.is_configured():
+            # Accounting category override (from pay dialog)
+            acct_category_id_str = request.form.get('accounting_category_id', '').strip()
+            acct_category_id = int(acct_category_id_str) if acct_category_id_str else None
+
+            # If API invoice exists, use mark-paid on it
+            if accounting.is_configured() and quote.api_invoice_id:
+                site_settings = SiteSettings.query.first()
+                if not acct_account_id and site_settings:
+                    acct_account_id = site_settings.accounting_income_account_id
+                if not acct_category_id and site_settings:
+                    acct_category_id = site_settings.accounting_income_category_id
+                if not acct_account_id:
+                    flash('Kein Buchhaltungs-Konto ausgewählt.', 'error')
+                    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+                ok, result = accounting.mark_invoice_paid(
+                    quote.api_invoice_id,
+                    account_id=acct_account_id,
+                    category_id=acct_category_id,
+                    payment_date=paid_date_iso,
+                )
+                if not ok:
+                    db.session.rollback()
+                    flash(f'API-Rechnung bezahlen fehlgeschlagen: {result}', 'error')
+                    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+                # Store linked transaction ID from API response
+                if isinstance(result, dict):
+                    txn = result.get('transaction', {})
+                    if isinstance(txn, dict) and txn.get('id'):
+                        quote.accounting_transaction_id = txn['id']
+
+            elif accounting.is_configured():
+                # Fallback: book directly as transaction (no API invoice)
                 ok, acct_msg = _book_quote_income(quote, account_id=acct_account_id)
                 if not ok:
                     db.session.rollback()
@@ -1422,7 +1609,8 @@ def quote_mark_paid(quote_id):
             db.session.commit()
 
             # Upload Rechnung PDF as document to the accounting transaction
-            if accounting.is_configured() and quote.accounting_transaction_id:
+            # Only when there's NO API invoice (legacy flow)
+            if accounting.is_configured() and quote.accounting_transaction_id and not quote.api_invoice_id:
                 try:
                     pdf_bytes = _generate_rechnung_pdf_bytes(quote)
                     filename = f'rechnung_{quote.reference_number or quote.id}.pdf'
@@ -1532,10 +1720,18 @@ def quote_unpay(quote_id):
                         item_cost = quote_item.total_external_cost
                         quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
 
-            # Delete accounting transaction
-            ok, acct_msg = _delete_quote_accounting(quote)
-            if not ok:
-                flash(f'Buchhaltung: {acct_msg}', 'warning')
+            # Unmark API invoice paid if applicable
+            if accounting.is_configured() and quote.api_invoice_id:
+                ok, result = accounting.unmark_invoice_paid(quote.api_invoice_id)
+                if not ok:
+                    flash(f'API-Rechnung Zahlung aufheben fehlgeschlagen: {result}', 'warning')
+                else:
+                    quote.accounting_transaction_id = None
+            else:
+                # Legacy: delete accounting transaction directly
+                ok, acct_msg = _delete_quote_accounting(quote)
+                if not ok:
+                    flash(f'Buchhaltung: {acct_msg}', 'warning')
 
             # Revert to performed if it was performed, otherwise to finalized
             if quote.performed_at:
@@ -1562,6 +1758,8 @@ def quote_delete(quote_id):
         flash('Nur Entwürfe können gelöscht werden.', 'error')
         return redirect(url_for('admin.quote_view', quote_id=quote_id))
     try:
+        # Delete API quote if exists
+        _sync_delete_api_quote(quote)
         db.session.delete(quote)
         db.session.commit()
         flash('Angebot gelöscht!', 'success')
@@ -1586,7 +1784,8 @@ def inquiry_list():
 def inquiry_view(inquiry_id):
     """View inquiry details"""
     inquiry = Inquiry.query.get_or_404(inquiry_id)
-    return render_template('admin/inquiry_view.html', inquiry=inquiry)
+    return render_template('admin/inquiry_view.html', inquiry=inquiry,
+                           accounting_configured=accounting.is_configured())
 
 
 @admin_bp.route('/inquiries/<int:inquiry_id>/status', methods=['POST'])
@@ -1609,6 +1808,10 @@ def inquiry_convert(inquiry_id):
     inquiry = Inquiry.query.get_or_404(inquiry_id)
 
     try:
+        # API customer ID (optional, when accounting API is configured)
+        api_cid_str = request.form.get('api_customer_id', '').strip()
+        api_customer_id = int(api_cid_str) if api_cid_str else None
+
         quote = Quote(
             customer_name=inquiry.customer_name,
             created_by_id=current_user.id,
@@ -1617,6 +1820,7 @@ def inquiry_convert(inquiry_id):
             rental_days=1,
             status='draft',
             inquiry_id=inquiry.id,
+            api_customer_id=api_customer_id,
             notes=f"Aus Anfrage umgewandelt. E-Mail: {inquiry.customer_email}"
                   + (f", Telefon: {inquiry.customer_phone}" if inquiry.customer_phone else "")
                   + (f"\n{inquiry.message}" if inquiry.message else "")
@@ -2300,6 +2504,190 @@ def lieferschein_pdf(quote_id):
 # ── Legacy PDF generators (kept for backwards compatibility) ──
 
 # ============= CUSTOMER DATABASE =============
+
+# ── API Customer endpoints (when accounting API is configured) ──
+
+@admin_bp.route('/api/customers/api/search')
+@login_required
+def api_customer_search():
+    """Search customers via accounting API."""
+    if not accounting.is_configured():
+        return jsonify([])
+    q = request.args.get('q', '').strip()
+    customers = accounting.get_customers(q=q if q else None)
+    return jsonify(customers)
+
+
+@admin_bp.route('/api/customers/api/<int:customer_id>')
+@login_required
+def api_customer_get(customer_id):
+    """Get a single customer from the accounting API."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'API not configured'}), 503
+    ok, data = accounting.get_customer(customer_id)
+    if ok:
+        return jsonify(data)
+    return jsonify({'error': str(data)}), 404
+
+
+@admin_bp.route('/api/customers/api/create', methods=['POST'])
+@login_required
+def api_customer_create():
+    """Create a customer via accounting API."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'API not configured'}), 503
+    data = request.get_json()
+    if not data or not data.get('name', '').strip():
+        return jsonify({'error': 'Name ist erforderlich.'}), 400
+    ok, result = accounting.create_customer(
+        name=data['name'].strip(),
+        company=data.get('company', '').strip() or None,
+        address=data.get('address', '').strip() or None,
+        email=data.get('email', '').strip() or None,
+        phone=data.get('phone', '').strip() or None,
+        notes=data.get('notes', '').strip() or None,
+    )
+    if ok:
+        return jsonify(result), 201
+    return jsonify({'error': str(result)}), 400
+
+
+@admin_bp.route('/api/customers/api/<int:customer_id>/update', methods=['POST'])
+@login_required
+def api_customer_update(customer_id):
+    """Update a customer via accounting API."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'API not configured'}), 503
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided.'}), 400
+    fields = {}
+    for key in ('name', 'company', 'address', 'email', 'phone', 'notes'):
+        if key in data:
+            fields[key] = data[key]
+    ok, result = accounting.update_customer(customer_id, **fields)
+    if ok:
+        return jsonify(result)
+    return jsonify({'error': str(result)}), 400
+
+
+@admin_bp.route('/api/customers/api/<int:customer_id>/delete', methods=['POST'])
+@login_required
+def api_customer_delete(customer_id):
+    """Delete a customer via accounting API."""
+    if not accounting.is_configured():
+        return jsonify({'error': 'API not configured'}), 503
+    ok, result = accounting.delete_customer(customer_id)
+    if ok:
+        return jsonify({'deleted': True, 'id': customer_id})
+    return jsonify({'error': str(result)}), 400
+
+
+# ── API Quote/Invoice actions ──
+
+@admin_bp.route('/quotes/<int:quote_id>/create_api_quote', methods=['POST'])
+@login_required
+def quote_create_api_quote(quote_id):
+    """Create or update the API quote for a local quote."""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        if quote.api_quote_id:
+            ok, err = _sync_update_api_quote(quote)
+            if not ok:
+                flash(f'API-Angebot aktualisieren fehlgeschlagen: {err}', 'error')
+            else:
+                accounting.generate_quote_pdf(quote.api_quote_id)
+                db.session.commit()
+                flash('API-Angebot aktualisiert!', 'success')
+        else:
+            ok, err = _sync_create_api_quote(quote)
+            if not ok:
+                flash(f'API-Angebot erstellen fehlgeschlagen: {err}', 'error')
+            else:
+                accounting.generate_quote_pdf(quote.api_quote_id)
+                db.session.commit()
+                flash(f'API-Angebot {quote.api_quote_number} erstellt!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/create_api_invoice', methods=['POST'])
+@login_required
+def quote_create_api_invoice(quote_id):
+    """Create an API invoice from the quote's API quote."""
+    quote = Quote.query.get_or_404(quote_id)
+    if quote.api_invoice_id:
+        flash('API-Rechnung existiert bereits.', 'info')
+        return redirect(url_for('admin.quote_view', quote_id=quote_id))
+    try:
+        date_str = request.form.get('invoice_date', '').strip()
+        if not date_str:
+            date_str = (quote.finalized_at or datetime.utcnow()).strftime('%Y-%m-%d')
+
+        # Create API quote first if not exists
+        if not quote.api_quote_id:
+            ok, err = _sync_create_api_quote(quote)
+            if not ok:
+                flash(f'API-Angebot erstellen fehlgeschlagen: {err}', 'error')
+                return redirect(url_for('admin.quote_view', quote_id=quote_id))
+            accounting.generate_quote_pdf(quote.api_quote_id)
+            _sync_api_quote_status(quote, 'sent')
+            _sync_api_quote_status(quote, 'accepted')
+
+        ok, err = _create_api_invoice_from_quote(quote, date_str=date_str)
+        if not ok:
+            flash(f'API-Rechnung erstellen fehlgeschlagen: {err}', 'error')
+        else:
+            # Generate invoice PDF
+            if quote.api_invoice_id:
+                accounting.generate_invoice_pdf(quote.api_invoice_id)
+                # Set invoice status to sent
+                accounting.set_invoice_status(quote.api_invoice_id, 'sent')
+            db.session.commit()
+            flash(f'API-Rechnung {quote.api_invoice_number} erstellt!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
+# ── API PDF proxy downloads ──
+
+@admin_bp.route('/quotes/<int:quote_id>/api_angebot.pdf')
+@login_required
+def api_angebot_pdf(quote_id):
+    """Download the Angebot PDF from the accounting API."""
+    quote = Quote.query.get_or_404(quote_id)
+    if not quote.api_quote_id:
+        flash('Kein API-Angebot vorhanden.', 'error')
+        return redirect(url_for('admin.quote_view', quote_id=quote_id))
+    ok, result = accounting.download_quote_pdf(quote.api_quote_id)
+    if ok:
+        pdf_bytes, content_type, filename = result
+        return _send_pdf_response(pdf_bytes, filename or f'Angebot_{quote.api_quote_number}.pdf')
+    flash(f'PDF-Download fehlgeschlagen: {result}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api_rechnung.pdf')
+@login_required
+def api_rechnung_pdf(quote_id):
+    """Download the Rechnung PDF from the accounting API."""
+    quote = Quote.query.get_or_404(quote_id)
+    if not quote.api_invoice_id:
+        flash('Keine API-Rechnung vorhanden.', 'error')
+        return redirect(url_for('admin.quote_view', quote_id=quote_id))
+    ok, result = accounting.download_invoice_pdf(quote.api_invoice_id)
+    if ok:
+        pdf_bytes, content_type, filename = result
+        return _send_pdf_response(pdf_bytes, filename or f'Rechnung_{quote.api_invoice_number}.pdf')
+    flash(f'PDF-Download fehlgeschlagen: {result}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
+# ── Local customer database (fallback when API not configured) ──
 
 @admin_bp.route('/api/customers/search')
 @login_required

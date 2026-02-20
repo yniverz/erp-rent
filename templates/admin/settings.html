@@ -22,6 +22,7 @@
             <small class="help-text">Offizieller Name – erscheint auf PDFs (Rechnungen, Angebote, Lieferscheine).</small>
         </div>
 
+        {% if not accounting_configured %}
         <div class="form-group">
             <label>Adresszeilen</label>
             <textarea name="address_lines" rows="3" placeholder="Straße&#10;PLZ Stadt&#10;Land">{{ settings.address_lines or '' }}</textarea>
@@ -65,6 +66,11 @@
             <input type="number" name="tax_rate" step="0.1" min="0" max="100" value="{{ settings.tax_rate if settings.tax_rate is not none else 19.0 }}">
             <small class="help-text">&Uuml;blicher Satz: 19% (oder 7% f&uuml;r erm&auml;&szlig;igte G&uuml;ter)</small>
         </div>
+        {% else %}
+        <div class="alert alert-info mt-16 mb-16">
+            Adresse, Bankverbindung und Steuereinstellungen werden über die Buchhaltungs-API verwaltet. Diese Felder sind hier ausgeblendet.
+        </div>
+        {% endif %}
 
         <div class="form-row">
             <div class="form-group">
@@ -186,8 +192,9 @@
 
 <script>
 function toggleTaxRate() {
-    var mode = document.getElementById('tax_mode_select').value;
-    document.getElementById('tax_rate_group').classList.toggle('d-none', mode !== 'regular');
+    var mode = document.getElementById('tax_mode_select');
+    var group = document.getElementById('tax_rate_group');
+    if (mode && group) group.classList.toggle('d-none', mode.value !== 'regular');
 }
 
 {% if accounting_configured %}
