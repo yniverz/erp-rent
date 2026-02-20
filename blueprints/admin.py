@@ -1127,6 +1127,11 @@ def quote_create():
             api_customer_id_str = request.form.get('api_customer_id', '').strip()
             api_customer_id = int(api_customer_id_str) if api_customer_id_str else None
 
+            if accounting.is_configured() and not api_customer_id:
+                flash('Bitte einen API-Kunden auswählen (Buchhaltungs-API ist aktiv).', 'error')
+                return render_template('admin/quote_create.html',
+                                       accounting_configured=accounting.is_configured())
+
             quote = Quote(
                 customer_name=customer_name,
                 created_by_id=current_user.id,
@@ -1384,6 +1389,12 @@ def quote_edit(quote_id):
             elif action == 'finalize':
                 if not quote.start_date or not quote.end_date:
                     flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
+                    item_availability = {item.id: item.total_quantity for item in items}
+                    _ss = SiteSettings.query.first()
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
+
+                if accounting.is_configured() and not quote.api_customer_id:
+                    flash('Kann nicht finalisiert werden: Bitte einen API-Kunden zuordnen (Buchhaltungs-API ist aktiv).', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     _ss = SiteSettings.query.first()
                     return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
