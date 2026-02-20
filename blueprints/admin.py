@@ -385,6 +385,20 @@ def _build_api_quote_items(quote):
     return items
 
 
+def _build_api_notes(quote):
+    """Build notes string for the API quote/invoice, including rental period."""
+    parts = []
+    if quote.start_date and quote.end_date:
+        days = quote.calculate_rental_days()
+        parts.append(
+            f"Mietzeitraum: {quote.start_date.strftime('%d.%m.%Y')} – "
+            f"{quote.end_date.strftime('%d.%m.%Y')} ({days} Tag{'e' if days != 1 else ''})"
+        )
+    if quote.public_notes:
+        parts.append(quote.public_notes)
+    return '\n'.join(parts) if parts else None
+
+
 def _sync_create_api_quote(quote, site_settings=None):
     """Create an API quote for a local quote. Returns (ok, error_or_None)."""
     if not accounting.is_configured():
@@ -408,7 +422,7 @@ def _sync_create_api_quote(quote, site_settings=None):
     tax_treatment = quote.accounting_tax_treatment or accounting.get_default_tax_treatment(site_settings)
     agb_text = site_settings.terms_and_conditions_text if site_settings else None
     payment_terms = (site_settings.payment_terms_days or 14) if site_settings else 14
-    notes = quote.public_notes or None
+    notes = _build_api_notes(quote)
 
     ok, result = accounting.create_quote(
         date=date_str,
@@ -437,7 +451,7 @@ def _sync_update_api_quote(quote, site_settings=None):
     items = _build_api_quote_items(quote)
     tax_treatment = quote.accounting_tax_treatment or accounting.get_default_tax_treatment(site_settings)
     agb_text = site_settings.terms_and_conditions_text if site_settings else None
-    notes = quote.public_notes or None
+    notes = _build_api_notes(quote)
 
     ok, result = accounting.update_quote(
         quote.api_quote_id,
