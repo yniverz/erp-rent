@@ -427,9 +427,11 @@ function deleteExpenseDoc(docId) {
             <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Bearbeiten</a>
         {% endif %}
 
+        {% if quote.status == 'draft' %}
         <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
         </form>
+        {% endif %}
     </div>
 
     {% if quote.status == 'finalized' and quote.performed_at %}

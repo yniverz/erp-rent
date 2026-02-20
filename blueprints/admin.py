@@ -1554,29 +1554,12 @@ def quote_unpay(quote_id):
 @admin_bp.route('/quotes/<int:quote_id>/delete', methods=['POST'])
 @login_required
 def quote_delete(quote_id):
-    """Delete quote and revert revenue if paid"""
+    """Delete quote (only allowed in draft status)"""
     quote = Quote.query.get_or_404(quote_id)
+    if quote.status != 'draft':
+        flash('Nur Entwürfe können gelöscht werden.', 'error')
+        return redirect(url_for('admin.quote_view', quote_id=quote_id))
     try:
-        if quote.status == 'paid':
-            # Delete accounting transaction for the quote payment
-            _delete_quote_accounting(quote)
-
-            discount_multiplier = (100 - quote.discount_percent) / 100
-            for quote_item in quote.quote_items:
-                if not quote_item.is_custom and quote_item.item:
-                    multiplier = 1.0 if quote_item.discount_exempt else discount_multiplier
-                    item_revenue = round(quote_item.total_price * multiplier, 2)
-                    quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
-                    # Reverse external rental costs
-                    if quote_item.rental_cost_per_day:
-                        item_cost = quote_item.total_external_cost
-                        quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
-
-        # Delete accounting transactions for any paid expenses
-        for qi in quote.quote_items:
-            if qi.expense and qi.expense.accounting_transaction_id:
-                _delete_expense_accounting(qi.expense)
-
         db.session.delete(quote)
         db.session.commit()
         flash('Angebot gelöscht!', 'success')
