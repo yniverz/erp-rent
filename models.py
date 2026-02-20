@@ -475,7 +475,8 @@ class SiteSettings(db.Model):
     contact_lines = db.Column(db.Text, nullable=True)
     bank_lines = db.Column(db.Text, nullable=True)
     # Tax / invoicing
-    tax_number = db.Column(db.String(100), nullable=True)  # Steuernummer or USt-IdNr
+    tax_number = db.Column(db.String(100), nullable=True)  # Steuernummer (z.B. 12/345/67890)
+    vat_id = db.Column(db.String(100), nullable=True)  # USt-IdNr (z.B. DE123456789)
     tax_mode = db.Column(db.String(20), default='kleinunternehmer')  # 'kleinunternehmer' or 'regular'
     tax_rate = db.Column(db.Float, default=19.0)  # MwSt-Satz in %, configurable
     payment_terms_days = db.Column(db.Integer, default=14)

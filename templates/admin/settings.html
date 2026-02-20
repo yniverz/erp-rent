@@ -31,8 +31,15 @@
         </div>
 
         <div class="form-group">
-            <label>Steuernummer / USt-IdNr</label>
-            <input type="text" name="tax_number" value="{{ settings.tax_number or '' }}" placeholder="DE123456789 oder 12/345/67890">
+            <label>Steuernummer</label>
+            <input type="text" name="tax_number" value="{{ settings.tax_number or '' }}" placeholder="12/345/67890">
+            <small class="help-text">Wird auf PDF-Dokumenten angezeigt und in E-Rechnungen (ZUGFeRD) eingebettet.</small>
+        </div>
+
+        <div class="form-group">
+            <label>USt-IdNr</label>
+            <input type="text" name="vat_id" value="{{ settings.vat_id or '' }}" placeholder="DE123456789">
+            <small class="help-text">Umsatzsteuer-Identifikationsnummer. F&uuml;r E-Rechnungen (ZUGFeRD) empfohlen.</small>
         </div>
 
         <div class="form-group">

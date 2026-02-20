@@ -31,6 +31,7 @@ def _generate_rechnung_pdf_bytes(quote, *, einvoice=True):
         contact_lines=data['contact_lines'],
         bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
+        vat_id=data.get('vat_id'),
         tax_mode=data['tax_mode'],
         tax_rate=data['tax_rate'],
         logo_path=data['logo_path'],
@@ -251,6 +252,7 @@ def _build_einvoice_data(quote, data, positions, site_settings):
         seller_city=seller_city,
         seller_country='DE',
         seller_tax_number=data.get('tax_number'),
+        seller_vat_id=data.get('vat_id'),
         seller_email=seller_email,
         seller_phone=seller_phone,
         buyer_name=buyer_name,
@@ -1838,6 +1840,7 @@ def settings():
             settings_record.contact_lines = request.form.get('contact_lines', '')
             settings_record.bank_lines = request.form.get('bank_lines', '')
             settings_record.tax_number = request.form.get('tax_number', '').strip()
+            settings_record.vat_id = request.form.get('vat_id', '').strip()
             settings_record.tax_mode = request.form.get('tax_mode', 'kleinunternehmer').strip()
             settings_record.tax_rate = float(request.form.get('tax_rate', '19.0') or 19.0)
             settings_record.payment_terms_days = int(request.form.get('payment_terms_days', '14') or 14)
@@ -2079,6 +2082,7 @@ def _extract_common_pdf_data(quote, site_settings):
         if not recipient or recipient[0] != customer_name:
             recipient.insert(0, customer_name)
     tax_number = site_settings.tax_number if site_settings else None
+    vat_id = site_settings.vat_id if site_settings else None
     tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
     tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
     payment_terms_days = (site_settings.payment_terms_days or 14) if site_settings else 14
@@ -2103,6 +2107,7 @@ def _extract_common_pdf_data(quote, site_settings):
         'bank_lines': bank_lines_list,
         'recipient_lines': recipient,
         'tax_number': tax_number,
+        'vat_id': vat_id,
         'tax_mode': tax_mode,
         'tax_rate': tax_rate,
         'payment_terms_days': payment_terms_days,
@@ -2224,6 +2229,7 @@ def angebot_pdf(quote_id):
         contact_lines=data['contact_lines'],
         bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
+        vat_id=data.get('vat_id'),
         tax_mode=data['tax_mode'],
         tax_rate=data['tax_rate'],
         logo_path=data['logo_path'],
@@ -2279,6 +2285,7 @@ def lieferschein_pdf(quote_id):
         contact_lines=data['contact_lines'],
         bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
+        vat_id=data.get('vat_id'),
         logo_path=data['logo_path'],
         recipient_lines=data['recipient_lines'],
         reference_number=quote.reference_number or f"LS-{quote.id:04d}",

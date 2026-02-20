@@ -36,6 +36,7 @@ def build_lieferschein_pdf(
     contact_lines: list[str],
     bank_lines: list[str],
     tax_number: str | None = None,
+    vat_id: str | None = None,
     logo_path: str | None = None,
 
     # Recipient
@@ -92,7 +93,8 @@ def build_lieferschein_pdf(
                      issuer_address=issuer_address,
                      contact_lines=contact_lines,
                      bank_lines=bank_lines,
-                     tax_number=tax_number)
+                     tax_number=tax_number,
+                     vat_id=vat_id)
 
     doc, cw = build_base_doc(buf, title="Lieferschein", author=issuer_name,
                              on_page_callback=on_page)

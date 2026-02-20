@@ -197,6 +197,7 @@ with app.app_context():
     _add_column_if_missing('site_settings', 'accounting_expense_category_id', 'INTEGER')
     _add_column_if_missing('site_settings', 'accounting_income_account_id', 'INTEGER')
     _add_column_if_missing('site_settings', 'accounting_expense_account_id', 'INTEGER')
+    _add_column_if_missing('site_settings', 'vat_id', 'VARCHAR(100)')
     _add_column_if_missing('quote', 'accounting_transaction_id', 'INTEGER')
     _add_column_if_missing('quote', 'accounting_tax_treatment', 'VARCHAR(30)')
     _add_column_if_missing('quote_item_expense', 'accounting_transaction_id', 'INTEGER')

@@ -181,7 +181,8 @@ def _draw_footer(canvas, doc, *,
                  issuer_address: list[str],
                  contact_lines: list[str],
                  bank_lines: list[str],
-                 tax_number: str | None = None):
+                 tax_number: str | None = None,
+                 vat_id: str | None = None):
     """Draw the 3-column footer with business info."""
     canvas.saveState()
 
@@ -200,8 +201,15 @@ def _draw_footer(canvas, doc, *,
 
     left_lines = [issuer_name] + issuer_address[:3]
     mid_lines = contact_lines[:3]
+    # Add tax identifiers to footer (truncate contact lines to make room)
+    tax_info = []
     if tax_number:
-        mid_lines = mid_lines[:2] + [f"St.-Nr.: {tax_number}"]
+        tax_info.append(f"St.-Nr.: {tax_number}")
+    if vat_id:
+        tax_info.append(f"USt-IdNr: {vat_id}")
+    if tax_info:
+        max_contact = 3 - len(tax_info)
+        mid_lines = mid_lines[:max(1, max_contact)] + tax_info
     right_lines = bank_lines[:4]
 
     dy = 8.5
