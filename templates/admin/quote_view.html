@@ -16,7 +16,7 @@
                 <p class="text-muted text-pre-line">{{ quote.recipient_lines }}</p>
             {% endif %}
             {% if quote.api_customer_id %}
-                <p class="text-muted"><small>API-Kunde #{{ quote.api_customer_id }}</small></p>
+                <p class="text-muted"><small>Buchhaltungs-Kunde #{{ quote.api_customer_id }}</small></p>
             {% endif %}
         </div>
         <div>
@@ -30,10 +30,10 @@
             </p>
             <p><strong>Referenz:</strong> {{ quote.reference_number }}
                 {% if quote.api_quote_number %}
-                    <br><small class="text-muted">API-Angebot: {{ quote.api_quote_number }}</small>
+                    <br><small class="text-muted">Buchhaltungs-Angebot: {{ quote.api_quote_number }}</small>
                 {% endif %}
                 {% if quote.api_invoice_number %}
-                    <br><small class="text-muted">API-Rechnung: {{ quote.api_invoice_number }}</small>
+                    <br><small class="text-muted">Buchhaltungs-Rechnung: {{ quote.api_invoice_number }}</small>
                 {% endif %}
             </p>
             <p><strong>Erstellt:</strong> {{ quote.created_at.strftime('%d.%m.%Y %H:%M') }} von {{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</p>
@@ -430,10 +430,10 @@ function deleteExpenseDoc(docId) {
             <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
             {% if accounting_configured %}
                 {% if quote.api_quote_id %}
-                    <a href="{{ url_for('admin.api_angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">API Angebot PDF</a>
+                    <a href="{{ url_for('admin.api_angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF</a>
                 {% endif %}
                 {% if quote.api_invoice_id %}
-                    <a href="{{ url_for('admin.api_rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">API Rechnung PDF</a>
+                    <a href="{{ url_for('admin.api_rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Rechnung PDF</a>
                 {% endif %}
             {% endif %}
         {% elif quote.status == 'draft' %}
@@ -447,11 +447,11 @@ function deleteExpenseDoc(docId) {
 
         {% if accounting_configured and quote.status in ['finalized', 'performed'] %}
             {% if not quote.api_invoice_id %}
-            <button type="button" class="btn btn-accent" onclick="showCreateInvoiceDialog()">API-Rechnung erstellen</button>
+            <button type="button" class="btn btn-accent" onclick="showCreateInvoiceDialog()">Buchhaltung Rechnung erstellen</button>
             {% endif %}
             {% if not quote.api_quote_id %}
             <form method="POST" action="{{ url_for('admin.quote_create_api_quote', quote_id=quote.id) }}" class="d-inline">
-                <button type="submit" class="btn btn-outline" onclick="return confirm('API-Angebot erstellen?');">API-Angebot sync</button>
+                <button type="submit" class="btn btn-outline" onclick="return confirm('API-Angebot erstellen?');">Buchhaltung-Angebot sync</button>
             </form>
             {% endif %}
         {% endif %}
@@ -530,7 +530,7 @@ function deleteExpenseDoc(docId) {
     {% if accounting_configured and quote.status in ['finalized', 'performed'] and not quote.api_invoice_id %}
     <div id="create-invoice-dialog" class="action-dialog d-none">
         <form method="POST" action="{{ url_for('admin.quote_create_api_invoice', quote_id=quote.id) }}">
-            <p class="dialog-heading"><strong>API-Rechnung erstellen</strong></p>
+            <p class="dialog-heading"><strong>Buchhaltung Rechnung erstellen</strong></p>
             <p class="text-muted dialog-text">Eine Rechnung wird in der Buchhaltungs-API erstellt, basierend auf dem API-Angebot. Falls noch kein API-Angebot existiert, wird dieses zuerst angelegt.</p>
             <div class="form-group mt-10 mb-10">
                 <label class="text-sm"><strong>Rechnungsdatum</strong></label>
