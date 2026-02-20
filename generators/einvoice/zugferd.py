@@ -280,6 +280,24 @@ class ZUGFeRDStandard(EInvoiceStandard):
             end = _el(period, "ram:EndDateTime")
             _el(end, "udt:DateTimeString", _fmt_date(d.service_end_date), format="102")
 
+        # Discount allowance at document level
+        # MUST come before SpecifiedTradePaymentTerms per XSD ordering
+        if d.discount_amount_net > 0:
+            allowance = _el(settlement, "ram:SpecifiedTradeAllowanceCharge")
+            _el(allowance, "ram:ChargeIndicator")
+            ind = allowance.find(f"{{{NS['ram']}}}ChargeIndicator")
+            _el(ind, "udt:Indicator", "false")
+            _el(allowance, "ram:ActualAmount", _fmt_amount(d.discount_amount_net))
+            _el(allowance, "ram:Reason", "Rabatt")
+            allowance_tax = _el(allowance, "ram:CategoryTradeTax")
+            _el(allowance_tax, "ram:TypeCode", "VAT")
+            if d.tax_mode == "kleinunternehmer":
+                _el(allowance_tax, "ram:CategoryCode", "E")
+                _el(allowance_tax, "ram:RateApplicablePercent", "0.00")
+            else:
+                _el(allowance_tax, "ram:CategoryCode", "S")
+                _el(allowance_tax, "ram:RateApplicablePercent", _fmt_amount(d.tax_rate))
+
         # Payment terms
         terms = _el(settlement, "ram:SpecifiedTradePaymentTerms")
         _el(terms, "ram:Description",
@@ -306,20 +324,3 @@ class ZUGFeRDStandard(EInvoiceStandard):
         tax_total = _el(summary, "ram:TaxTotalAmount", _fmt_amount(d.tax_amount), currencyID=d.currency_code)
         _el(summary, "ram:GrandTotalAmount", _fmt_amount(d.total_gross))
         _el(summary, "ram:DuePayableAmount", _fmt_amount(d.total_gross - d.prepaid_amount))
-
-        # Discount allowance at document level
-        if d.discount_amount_net > 0:
-            allowance = _el(settlement, "ram:SpecifiedTradeAllowanceCharge")
-            _el(allowance, "ram:ChargeIndicator")
-            ind = allowance.find(f"{{{NS['ram']}}}ChargeIndicator")
-            _el(ind, "udt:Indicator", "false")
-            _el(allowance, "ram:ActualAmount", _fmt_amount(d.discount_amount_net))
-            _el(allowance, "ram:Reason", "Rabatt")
-            allowance_tax = _el(allowance, "ram:CategoryTradeTax")
-            _el(allowance_tax, "ram:TypeCode", "VAT")
-            if d.tax_mode == "kleinunternehmer":
-                _el(allowance_tax, "ram:CategoryCode", "E")
-                _el(allowance_tax, "ram:RateApplicablePercent", "0.00")
-            else:
-                _el(allowance_tax, "ram:CategoryCode", "S")
-                _el(allowance_tax, "ram:RateApplicablePercent", _fmt_amount(d.tax_rate))
