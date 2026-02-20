@@ -100,7 +100,7 @@ def send_inquiry_notification(inquiry, settings):
         print("No notification email configured")
         return False
 
-    business_name = settings.business_name if settings and settings.business_name else 'ERP Rent'
+    business_name = settings.display_name or settings.business_name if settings and (settings.display_name or settings.business_name) else 'ERP Rent'
 
     # Build item list
     item_lines = []

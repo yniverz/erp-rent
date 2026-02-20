@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>Anmelden - {{ site_settings.business_name or 'ERP Rent' }}</title>
+    <title>Anmelden - {{ brand_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables_light.css') }}" media="(prefers-color-scheme: light)">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables_dark.css') }}" media="(prefers-color-scheme: dark)">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
@@ -12,7 +12,7 @@
 </head>
 <body class="login-page">
     <div class="login-card">
-        <h1>{{ site_settings.business_name or 'ERP Rent' }}</h1>
+        <h1>{{ brand_name }}</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}

@@ -1,6 +1,6 @@
 {% extends "public/base.html" %}
 
-{% block title %}Anfrage gesendet - {{ site_settings.business_name or 'Verleih' }}{% endblock %}
+{% block title %}Anfrage gesendet - {{ brand_name }}{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/public-inquiry-sent.css') }}">

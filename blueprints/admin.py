@@ -1821,6 +1821,7 @@ def settings():
     if request.method == 'POST':
         try:
             settings_record.business_name = request.form.get('business_name', '').strip()
+            settings_record.display_name = request.form.get('display_name', '').strip() or None
             settings_record.address_lines = request.form.get('address_lines', '')
             settings_record.contact_lines = request.form.get('contact_lines', '')
             settings_record.bank_lines = request.form.get('bank_lines', '')

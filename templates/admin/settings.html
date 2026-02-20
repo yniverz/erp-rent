@@ -11,8 +11,15 @@
         <p class="text-muted mb-16">Wird in PDFs und der öffentlichen Storefront verwendet.</p>
 
         <div class="form-group">
+            <label>Anzeigename / Markenname</label>
+            <input type="text" name="display_name" value="{{ settings.display_name or '' }}" placeholder="{{ settings.business_name or '' }}">
+            <small class="help-text">Wird auf der Website, im Seitentitel und im Header angezeigt. Wenn leer, wird der Firmenname verwendet.</small>
+        </div>
+
+        <div class="form-group">
             <label>Firmenname</label>
             <input type="text" name="business_name" value="{{ settings.business_name or '' }}">
+            <small class="help-text">Offizieller Name – erscheint auf PDFs (Rechnungen, Angebote, Lieferscheine).</small>
         </div>
 
         <div class="form-group">

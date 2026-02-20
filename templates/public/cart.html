@@ -1,6 +1,6 @@
 {% extends "public/base.html" %}
 
-{% block title %}Warenkorb - {{ site_settings.business_name or 'Verleih' }}{% endblock %}
+{% block title %}Warenkorb - {{ brand_name }}{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/public-cart.css') }}">

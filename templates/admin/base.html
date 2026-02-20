@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>{% block title %}Admin - {{ site_settings.business_name or 'ERP Rent' }}{% endblock %}</title>
+    <title>{% block title %}Admin - {{ brand_name }}{% endblock %}</title>
     {% if has_favicon %}
     <link rel="icon" href="/favicon.ico" type="{{ favicon_mimetype }}">
     <link rel="shortcut icon" href="/favicon.ico" type="{{ favicon_mimetype }}">
@@ -19,7 +19,7 @@
 <body>
     <nav>
         <div class="nav-inner">
-            <a href="{{ url_for('admin.dashboard') }}" class="nav-brand">{{ site_settings.business_name or 'ERP Rent' }} Verwaltung</a>
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-brand">{{ brand_name }} Verwaltung</a>
             <button class="nav-hamburger" aria-label="Menü" onclick="document.querySelector('.nav-links').classList.toggle('open')">
                 <span></span><span></span><span></span>
             </button>

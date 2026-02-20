@@ -143,6 +143,7 @@ def inject_site_settings():
     tax_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
     return dict(
         site_settings=settings,
+        brand_name=(settings.display_name or settings.business_name or 'Verleih') if settings else 'Verleih',
         has_favicon=_favicon_data is not None,
         favicon_mimetype=_favicon_mimetype,
         show_netto=show_netto,
@@ -193,6 +194,7 @@ with app.app_context():
             db.session.commit()
             print(f"  migrated: {table}.{column} ({col_type})")
 
+    _add_column_if_missing('site_settings', 'display_name', 'VARCHAR(200)')
     _add_column_if_missing('site_settings', 'accounting_income_category_id', 'INTEGER')
     _add_column_if_missing('site_settings', 'accounting_expense_category_id', 'INTEGER')
     _add_column_if_missing('site_settings', 'accounting_income_account_id', 'INTEGER')

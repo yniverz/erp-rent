@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>{% block title %}{{ site_settings.business_name or 'Verleih' }}{% endblock %}</title>
+    <title>{% block title %}{{ brand_name }}{% endblock %}</title>
     {% if has_favicon %}
     <link rel="icon" href="/favicon.ico" type="{{ favicon_mimetype }}">
     <link rel="shortcut icon" href="/favicon.ico" type="{{ favicon_mimetype }}">
@@ -18,7 +18,7 @@
 <body>
     <header>
         <div class="header-inner">
-            <a href="{{ url_for('public.catalog') }}" class="logo">{{ site_settings.business_name or 'Verleih' }}</a>
+            <a href="{{ url_for('public.catalog') }}" class="logo">{{ brand_name }}</a>
             <div class="header-nav">
                 <a href="{{ url_for('public.catalog') }}">Katalog</a>
                 <a href="{{ url_for('public.cart') }}" class="cart-link{{ ' d-none' if not cart_count else '' }}" id="cart-link">
@@ -60,7 +60,7 @@
                     <a href="{{ site_settings.privacy_url }}" target="_blank" rel="noopener">Datenschutz</a>
                 {% endif %}
             </div>
-            <div>&copy; {{ site_settings.business_name or 'Verleih' }}</div>
+            <div>&copy; {{ brand_name }}</div>
         </div>
     </footer>
 

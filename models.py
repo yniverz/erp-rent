@@ -471,6 +471,7 @@ class SiteSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # Business info (used in PDFs)
     business_name = db.Column(db.String(200), nullable=True)
+    display_name = db.Column(db.String(200), nullable=True)  # Alias for website / storefront
     address_lines = db.Column(db.Text, nullable=True)
     contact_lines = db.Column(db.Text, nullable=True)
     bank_lines = db.Column(db.Text, nullable=True)
