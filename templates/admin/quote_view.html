@@ -61,7 +61,6 @@
             {% endif %}
             {% if quote.status == 'paid' and quote.paid_at %}
             <p><strong>Bezahlt:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}
-                {% if quote.payment_method == 'cash' %}(Bar){% elif quote.payment_method == 'bank' %}(Überweisung){% endif %}
                 {% if quote.status == 'paid' %}
                 <button type="button" class="btn btn-sm btn-outline edit-date-btn" id="edit-paid-date-btn" onclick="document.getElementById('edit-paid-date').classList.remove('d-none');this.classList.add('d-none');">✏️ Datum ändern</button>
                 {% endif %}
@@ -453,15 +452,7 @@ function deleteExpenseDoc(docId) {
     {% if quote.status in ['finalized', 'performed'] %}
     <div id="pay-dialog" class="action-dialog d-none">
         <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}" id="pay-form">
-            <p class="dialog-heading"><strong>Zahlungsart wählen</strong></p>
-            <div class="pay-methods">
-                <label class="pay-method-label">
-                    <input type="radio" name="payment_method" value="bank" checked> Überweisung
-                </label>
-                <label class="pay-method-label">
-                    <input type="radio" name="payment_method" value="cash"> Bar
-                </label>
-            </div>
+            <p class="dialog-heading"><strong>Als bezahlt markieren</strong></p>
             {% if accounting_configured %}
             <div class="form-group mt-10 mb-10">
                 <label class="text-sm"><strong>Buchhaltung – Steuerbehandlung</strong></label>

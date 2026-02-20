@@ -72,7 +72,7 @@ def _book_quote_income(quote, site_settings=None, account_id=None):
         account_id=account_id,
         category_id=category_id,
         tax_treatment=tax_treatment,
-        notes=f'Angebot {quote.reference_number}, Zahlung: {quote.payment_method or "bank"}',
+        notes=f'Angebot {quote.reference_number}',
     )
     if ok:
         quote.accounting_transaction_id = result  # store the returned ID
@@ -1152,12 +1152,6 @@ def quote_mark_paid(quote_id):
                 quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
             else:
                 quote.paid_at = datetime.utcnow()
-
-            # Payment method: cash or bank
-            payment_method = request.form.get('payment_method', 'bank').strip()
-            if payment_method not in ('cash', 'bank'):
-                payment_method = 'bank'
-            quote.payment_method = payment_method
 
             # Accounting tax treatment override (from pay dialog)
             acct_tax = request.form.get('accounting_tax_treatment', '').strip()
