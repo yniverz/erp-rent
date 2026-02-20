@@ -41,6 +41,8 @@ def _generate_rechnung_pdf_bytes(quote, *, einvoice=True):
         start_date_str=data['start_date_str'],
         end_date_str=data['end_date_str'],
         rental_days=data['rental_days'],
+        is_pauschale=data['is_pauschale'],
+        leistungszeitraum=data.get('leistungszeitraum'),
         positions=positions,
         discount_percent=quote.discount_percent or 0,
         discount_label=quote.discount_label,
@@ -2082,6 +2084,15 @@ def _extract_common_pdf_data(quote, site_settings):
     start_str = quote.start_date.strftime("%d.%m.%Y") if quote.start_date else None
     end_str = quote.end_date.strftime("%d.%m.%Y") if quote.end_date else None
     rental_days = quote.calculate_rental_days()
+    is_pauschale = bool(quote.rental_days_override)
+
+    # Build a compact period label for Pauschale mode
+    leistungszeitraum = None
+    if start_str and end_str:
+        if start_str == end_str:
+            leistungszeitraum = start_str
+        else:
+            leistungszeitraum = f"{start_str} – {end_str}"
 
     return {
         'issuer_name': issuer_name,
@@ -2099,6 +2110,8 @@ def _extract_common_pdf_data(quote, site_settings):
         'start_date_str': start_str,
         'end_date_str': end_str,
         'rental_days': rental_days,
+        'is_pauschale': is_pauschale,
+        'leistungszeitraum': leistungszeitraum,
     }
 
 
@@ -2221,6 +2234,8 @@ def angebot_pdf(quote_id):
         start_date_str=data['start_date_str'],
         end_date_str=data['end_date_str'],
         rental_days=data['rental_days'],
+        is_pauschale=data['is_pauschale'],
+        leistungszeitraum=data.get('leistungszeitraum'),
         positions=positions,
         discount_percent=quote.discount_percent or 0,
         discount_label=quote.discount_label,

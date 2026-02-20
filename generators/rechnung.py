@@ -47,6 +47,8 @@ def build_rechnung_pdf(
     start_date_str: str | None = None,
     end_date_str: str | None = None,
     rental_days: int = 1,
+    is_pauschale: bool = False,
+    leistungszeitraum: str | None = None,
 
     # Positions (same structure as Angebot)
     positions: list[dict],
@@ -73,19 +75,19 @@ def build_rechnung_pdf(
     if not rechnungs_datum:
         rechnungs_datum = date.today().strftime("%d.%m.%Y")
 
-    leistungszeitraum = "—"
+    leistungszeitraum_display = "—"
     if start_date_str and end_date_str:
         if start_date_str == end_date_str:
-            leistungszeitraum = start_date_str
+            leistungszeitraum_display = start_date_str
         else:
-            leistungszeitraum = f"{start_date_str} – {end_date_str}"
+            leistungszeitraum_display = f"{start_date_str} – {end_date_str}"
 
     meta_lines = [
         ("Rechnungs-Nr.:", reference_number),
         ("Rechnungsdatum:", rechnungs_datum),
-        ("Leistungszeitraum:", leistungszeitraum),
+        ("Leistungszeitraum:", leistungszeitraum_display),
     ]
-    if rental_days > 1:
+    if not is_pauschale and rental_days > 1:
         meta_lines.append(("Miettage:", str(rental_days)))
 
     def on_page(canvas, doc):
@@ -153,6 +155,11 @@ def build_rechnung_pdf(
     else:
         position_nettos = None  # not used in Kleinunternehmer mode
 
+    # Build compact period label for Pauschale descriptions
+    pauschale_suffix = ""
+    if is_pauschale and leistungszeitraum:
+        pauschale_suffix = f" (Nutzung {leistungszeitraum})"
+
     col_widths = [
         22,
         cw - 22 - 30 - 30 - 50 - 58,
@@ -166,8 +173,8 @@ def build_rechnung_pdf(
         Paragraph("Pos", styles["table_header"]),
         Paragraph("Bezeichnung", styles["table_header"]),
         Paragraph("Menge", styles["table_header"]),
-        Paragraph("Tage", styles["table_header"]),
-        Paragraph("EP/Tag", styles["table_header"]),
+        Paragraph("Tage" if not is_pauschale else "", styles["table_header"]),
+        Paragraph("EP/Tag" if not is_pauschale else "Preis", styles["table_header"]),
         Paragraph("Gesamt", styles["table_header"]),
     ]
     table_data = [header_row]
@@ -176,11 +183,12 @@ def build_rechnung_pdf(
     for pos_idx, item in enumerate(positions):
         if item.get("is_bundle"):
             display_total = position_nettos[pos_idx] if is_regular else item["total"]
+            name_label = f"<b>{item['name']}{pauschale_suffix}</b>" if is_pauschale else f"<b>{item['name']}</b>"
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
-                Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
+                Paragraph(name_label, styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
-                Paragraph(str(rental_days), styles["table_cell"]),
+                Paragraph("" if is_pauschale else str(rental_days), styles["table_cell"]),
                 Paragraph("pauschal", styles["table_cell"]),
                 Paragraph(f"<b>{fmt_eur(display_total)}</b>", styles["table_cell_right"]),
             ])
@@ -200,14 +208,26 @@ def build_rechnung_pdf(
             else:
                 display_ppd = item["price_per_day"]
                 display_total = item["total"]
-            table_data.append([
-                Paragraph(str(pos_nr), styles["table_cell"]),
-                Paragraph(item["name"], styles["table_cell"]),
-                Paragraph(str(item["quantity"]), styles["table_cell"]),
-                Paragraph(str(rental_days), styles["table_cell"]),
-                Paragraph(fmt_eur(display_ppd), styles["table_cell_right"]),
-                Paragraph(fmt_eur(display_total), styles["table_cell_right"]),
-            ])
+
+            if is_pauschale:
+                name_label = f"{item['name']}{pauschale_suffix}"
+                table_data.append([
+                    Paragraph(str(pos_nr), styles["table_cell"]),
+                    Paragraph(name_label, styles["table_cell"]),
+                    Paragraph(str(item["quantity"]), styles["table_cell"]),
+                    Paragraph("", styles["table_cell"]),
+                    Paragraph("pauschal", styles["table_cell"]),
+                    Paragraph(fmt_eur(display_total), styles["table_cell_right"]),
+                ])
+            else:
+                table_data.append([
+                    Paragraph(str(pos_nr), styles["table_cell"]),
+                    Paragraph(item["name"], styles["table_cell"]),
+                    Paragraph(str(item["quantity"]), styles["table_cell"]),
+                    Paragraph(str(rental_days), styles["table_cell"]),
+                    Paragraph(fmt_eur(display_ppd), styles["table_cell_right"]),
+                    Paragraph(fmt_eur(display_total), styles["table_cell_right"]),
+                ])
         pos_nr += 1
 
     table = Table(table_data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
