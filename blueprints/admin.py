@@ -60,6 +60,8 @@ def _book_quote_income(quote, site_settings=None, account_id=None):
     # Determine account: explicit override > site default
     if not account_id and site_settings:
         account_id = site_settings.accounting_income_account_id
+    if not account_id:
+        return False, 'Kein Buchhaltungs-Konto ausgewählt. Bitte in den Einstellungen ein Einnahmen-Konto hinterlegen oder im Bezahl-Dialog auswählen.'
     paid_date = quote.paid_at.strftime('%Y-%m-%d') if quote.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
     description = f'{quote.customer_name} – {quote.reference_number or ("RE" + str(quote.id))}'
     ok, result = accounting.create_transaction(
@@ -98,6 +100,8 @@ def _book_expense_transaction(expense, quote_item, site_settings=None, account_i
     # Determine account: explicit override > site default
     if not account_id and site_settings:
         account_id = site_settings.accounting_expense_account_id
+    if not account_id:
+        return False, 'Kein Buchhaltungs-Konto ausgewählt. Bitte in den Einstellungen ein Ausgaben-Konto hinterlegen oder im Bezahl-Dialog auswählen.'
     paid_date = expense.paid_at.strftime('%Y-%m-%d') if expense.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
     quote = quote_item.quote
     item_name = quote_item.display_name
