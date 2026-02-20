@@ -9,3 +9,5 @@ svglib<1.6
 Pillow
 cssmin
 rjsmin
+factur-x>=3.5
+lxml
