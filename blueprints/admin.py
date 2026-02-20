@@ -629,6 +629,19 @@ def expense_mark_paid(expense_id):
                         flash(f'Buchhaltung Dokument: {dok_msg}', 'warning')
                 except Exception as doc_err:
                     flash(f'Dokument-Upload fehlgeschlagen: {doc_err}', 'warning')
+
+        flash('Ausgabe als bezahlt markiert.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
+
+
+@admin_bp.route('/expense/<int:expense_id>/mark_unpaid', methods=['POST'])
+@login_required
+def expense_mark_unpaid(expense_id):
+    """Mark an external cost expense as unpaid"""
+    expense = QuoteItemExpense.query.get_or_404(expense_id)
     try:
         # Delete accounting transaction for this expense
         ok, acct_msg = _delete_expense_accounting(expense)
