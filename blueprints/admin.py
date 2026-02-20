@@ -1127,11 +1127,6 @@ def quote_create():
             api_customer_id_str = request.form.get('api_customer_id', '').strip()
             api_customer_id = int(api_customer_id_str) if api_customer_id_str else None
 
-            if accounting.is_configured() and not api_customer_id:
-                flash('Bitte einen API-Kunden auswählen (Buchhaltungs-API ist aktiv).', 'error')
-                return render_template('admin/quote_create.html',
-                                       accounting_configured=accounting.is_configured())
-
             quote = Quote(
                 customer_name=customer_name,
                 created_by_id=current_user.id,
