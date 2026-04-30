@@ -1490,6 +1490,18 @@ def quote_unfinalize(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'finalized':
+            # Optionally delete the linked API invoice (asked via confirm dialog in UI)
+            delete_api_invoice = request.form.get('delete_api_invoice') == '1'
+            if delete_api_invoice and accounting.is_configured() and quote.api_invoice_id:
+                if quote.accounting_transaction_id:
+                    flash('Die API-Rechnung ist bereits verbucht. Bitte zuerst die Zahlung aufheben.', 'error')
+                    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+                ok, result = accounting.delete_invoice(quote.api_invoice_id)
+                if ok:
+                    quote.api_invoice_id = None
+                else:
+                    flash(f'API-Rechnung konnte nicht gelöscht werden: {result}. Finalisierung wurde trotzdem aufgehoben.', 'warning')
+
             quote.status = 'draft'
             # Keep finalized_at so we can offer it when re-finalizing
             # Sync API quote status back to draft
