@@ -1499,6 +1499,12 @@ def quote_unfinalize(quote_id):
                 ok, result = accounting.delete_invoice(quote.api_invoice_id)
                 if ok:
                     quote.api_invoice_id = None
+                    quote.api_invoice_number = None
+                elif isinstance(result, str) and 'HTTP 404' in result:
+                    # Already deleted in the accounting system – just unlink locally.
+                    quote.api_invoice_id = None
+                    quote.api_invoice_number = None
+                    flash('API-Rechnung war bereits gelöscht – Verknüpfung entfernt.', 'info')
                 else:
                     flash(f'API-Rechnung konnte nicht gelöscht werden: {result}. Finalisierung wurde trotzdem aufgehoben.', 'warning')
 
@@ -2722,6 +2728,14 @@ def api_rechnung_pdf(quote_id):
     if ok:
         pdf_bytes, content_type, filename = result
         return _send_pdf_response(pdf_bytes, filename or f'Rechnung_{quote.api_invoice_number}.pdf')
+    # If the invoice no longer exists in the accounting system, unlink it locally
+    # so the stale "Rechnung PDF" button disappears.
+    if isinstance(result, str) and 'HTTP 404' in result:
+        quote.api_invoice_id = None
+        quote.api_invoice_number = None
+        db.session.commit()
+        flash('Die API-Rechnung existiert nicht mehr im Buchhaltungssystem – Verknüpfung entfernt.', 'info')
+        return redirect(url_for('admin.quote_view', quote_id=quote_id))
     flash(f'PDF-Download fehlgeschlagen: {result}', 'error')
     return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
