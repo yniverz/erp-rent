@@ -22,6 +22,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from generators.pdf_base import (
     _base_styles, HLine, build_base_doc,
     _draw_header, _draw_footer,
+    NumberedCanvas,
     PAGE_W, CONTENT_W, MARGIN_LEFT, MARGIN_RIGHT,
     CLR_TABLE_HEADER_BG, CLR_BLACK, CLR_GREY_DARK, CLR_GREY_MID,
     fmt_eur,
@@ -277,5 +278,5 @@ def build_lieferschein_pdf(
     ]))
     story.append(sig_table2)
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     return buf.getvalue()

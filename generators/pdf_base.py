@@ -13,6 +13,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas as _rl_canvas
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -217,11 +218,39 @@ def _draw_footer(canvas, doc, *,
     for i, t in enumerate(right_lines):
         canvas.drawString(x3, y_start - i * dy, t)
 
-    # Page number
-    canvas.drawRightString(PAGE_W - MARGIN_RIGHT, 8 * mm,
-                           f"Seite {canvas.getPageNumber()}")
+    # Page number is drawn in NumberedCanvas (so the total page count is known).
 
     canvas.restoreState()
+
+
+class NumberedCanvas(_rl_canvas.Canvas):
+    """Canvas that records each page state and stamps 'Seite N von M' on output."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self._draw_page_number(total)
+            super().showPage()
+        super().save()
+
+    def _draw_page_number(self, total_pages: int):
+        self.saveState()
+        self.setFont("Helvetica", 6.5)
+        self.setFillColor(CLR_GREY_DARK)
+        self.drawRightString(
+            PAGE_W - MARGIN_RIGHT, 8 * mm,
+            f"Seite {self._pageNumber} von {total_pages}",
+        )
+        self.restoreState()
 
 
 # ─── Document builder helper ─────────────────────────────────────

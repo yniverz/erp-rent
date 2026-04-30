@@ -20,6 +20,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from generators.pdf_base import (
     _base_styles, HLine, build_base_doc,
     _draw_header, _draw_footer,
+    NumberedCanvas,
     CONTENT_W, CLR_TABLE_HEADER_BG, CLR_GREY_DARK, CLR_BLACK,
     PAGE_W, PAGE_H,
     fmt_eur, fmt_percent,
@@ -386,7 +387,7 @@ def build_angebot_pdf(
         story.append(PageBreak())
         _render_agb_markdown(story, terms_and_conditions_text, styles)
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     return buf.getvalue()
 
 

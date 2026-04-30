@@ -18,6 +18,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from generators.pdf_base import (
     _base_styles, HLine, build_base_doc,
     _draw_header, _draw_footer,
+    NumberedCanvas,
     CONTENT_W, CLR_TABLE_HEADER_BG, CLR_BLACK, CLR_GREY_DARK,
     fmt_eur, fmt_percent,
 )
@@ -353,5 +354,5 @@ def build_rechnung_pdf(
     story.append(Spacer(1, 16))
     story.append(Paragraph(issuer_name, styles["bold"]))
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     return buf.getvalue()
