@@ -2397,12 +2397,18 @@ def _extract_items_for_lieferschein(quote):
             seen_package_ids.add(qi.package_id)
             components = [q for q in quote.quote_items if q.package_id == qi.package_id]
             pkg_name = qi.package.name if qi.package else "Paket"
+            pkg_description = qi.package.description if qi.package else None
             items.append({
                 'name': pkg_name,
                 'quantity': 1,
                 'is_bundle': True,
+                'description': pkg_description,
                 'bundle_components': [
-                    {'name': c.display_name, 'quantity': c.quantity}
+                    {
+                        'name': c.display_name,
+                        'quantity': c.quantity,
+                        'description': c.item.description if c.item else None,
+                    }
                     for c in components
                 ],
             })
@@ -2411,6 +2417,7 @@ def _extract_items_for_lieferschein(quote):
                 'name': qi.display_name,
                 'quantity': qi.quantity,
                 'is_bundle': False,
+                'description': qi.item.description if qi.item else None,
             })
 
     return items

@@ -3,7 +3,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+.DS_Store
+
 # Project-specific files
+STYLE_SUMMARY.md
 .venv/
 instance/uploads/
 instance/*.db*

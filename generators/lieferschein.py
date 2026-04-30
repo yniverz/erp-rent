@@ -121,34 +121,49 @@ def build_lieferschein_pdf(
     ]
     table_data = [header_row]
 
+    def _fmt_desc(text):
+        """Format a description for the comment column (preserve line breaks, escape HTML)."""
+        if not text:
+            return ""
+        from xml.sax.saxutils import escape as _esc
+        return _esc(text.strip()).replace("\n", "<br/>")
+
     pos_nr = 1
+    data_row_heights: list = []
     for item in items:
         if item.get("is_bundle"):
             # Bundle header
+            desc = _fmt_desc(item.get("description"))
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
                 Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
-                Paragraph("", styles["table_cell"]),
+                Paragraph(desc, styles["table_cell"]),
             ])
+            data_row_heights.append(None if desc else 24)
             for comp in item.get("bundle_components", []):
+                cdesc = _fmt_desc(comp.get("description"))
                 table_data.append([
                     Paragraph("", styles["table_cell"]),
                     Paragraph(f"↳ {comp['name']}", styles["table_cell_indent"]),
                     Paragraph(str(comp["quantity"]), styles["table_cell_indent"]),
-                    Paragraph("", styles["table_cell"]),
+                    Paragraph(cdesc, styles["table_cell_indent"]),
                 ])
+                data_row_heights.append(None if cdesc else 24)
         else:
+            desc = _fmt_desc(item.get("description"))
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
                 Paragraph(item["name"], styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
-                Paragraph("", styles["table_cell"]),  # Empty for handwritten notes
+                Paragraph(desc, styles["table_cell"]),
             ])
+            data_row_heights.append(None if desc else 24)
         pos_nr += 1
 
-    # Make the comment column taller for handwriting
-    row_heights = [None] + [24] * (len(table_data) - 1)
+    # Header row auto, data rows fixed-min where empty (room for handwriting)
+    # or auto-grow where description is pre-filled.
+    row_heights = [None] + data_row_heights
 
     table = Table(table_data, colWidths=col_widths, hAlign="LEFT",
                   repeatRows=1, rowHeights=row_heights)
