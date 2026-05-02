@@ -13,6 +13,25 @@ import uuid
 admin_bp = Blueprint('admin', __name__)
 
 
+def _effective_tax_mode_and_rate(site_settings):
+    """Return (tax_mode, tax_rate) – preferring the accounting API when
+    configured, falling back to local SiteSettings.
+
+    When the accounting service is connected, its `tax_mode` is the source of
+    truth; the local setting is overridden so users can't accidentally diverge.
+    Network errors or missing API config silently fall back to local settings.
+    """
+    local_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
+    local_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
+    if accounting.is_configured():
+        api_settings = accounting.get_settings()
+        if api_settings:
+            mode = (api_settings.get('tax_mode') or local_mode).strip().lower()
+            rate = api_settings.get('tax_rate') or local_rate
+            return mode, float(rate)
+    return local_mode, float(local_rate)
+
+
 def _generate_rechnung_pdf_bytes(quote, *, einvoice=True):
     """Generate the Rechnung PDF bytes for a quote.
 
@@ -1208,7 +1227,8 @@ def quote_edit(quote_id):
                     flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     _ss = SiteSettings.query.first()
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
+                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
 
                 quote.start_date = start_date
                 quote.end_date = end_date
@@ -1299,7 +1319,8 @@ def quote_edit(quote_id):
                     flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel bearbeiten!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     _ss = SiteSettings.query.first()
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
+                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
 
                 errors = []
                 for qi in quote.quote_items:
@@ -1420,13 +1441,15 @@ def quote_edit(quote_id):
                     flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     _ss = SiteSettings.query.first()
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
+                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
 
                 if accounting.is_configured() and not quote.api_customer_id:
                     flash('Kann nicht finalisiert werden: Bitte einen API-Kunden zuordnen (Buchhaltungs-API ist aktiv).', 'error')
                     item_availability = {item.id: item.total_quantity for item in items}
                     _ss = SiteSettings.query.first()
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
+                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
+                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
 
                 validation_warnings = []
                 for quote_item in quote.quote_items:
@@ -1503,7 +1526,8 @@ def quote_edit(quote_id):
             item_availability[item.id] = item.total_quantity
 
     _ss = SiteSettings.query.first()
-    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=(_ss.tax_rate if _ss and _ss.tax_rate else 19.0))
+    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
+    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, accounting_configured=accounting.is_configured(), site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
 
 
 @admin_bp.route('/quotes/<int:quote_id>')
@@ -2345,8 +2369,7 @@ def _extract_common_pdf_data(quote, site_settings):
             recipient.insert(0, customer_name)
     tax_number = site_settings.tax_number if site_settings else None
     vat_id = site_settings.vat_id if site_settings else None
-    tax_mode = (site_settings.tax_mode or 'kleinunternehmer') if site_settings else 'kleinunternehmer'
-    tax_rate = (site_settings.tax_rate if site_settings and site_settings.tax_rate else 19.0)
+    tax_mode, tax_rate = _effective_tax_mode_and_rate(site_settings)
     payment_terms_days = (site_settings.payment_terms_days or 14) if site_settings else 14
     quote_validity_days = (site_settings.quote_validity_days or 14) if site_settings else 14
 
