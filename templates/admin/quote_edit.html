@@ -383,38 +383,71 @@
                 </div>
             </div>
             <div class="price-row align-center mt-8">
-                <span>oder Gesamtpreis</span>
+                <span>oder {% if tax_mode == 'regular' and quote.prices_are_net %}Nettobetrag{% else %}Gesamtpreis{% endif %}</span>
                 <div class="d-flex gap-8 align-center">
                     <span>&euro;</span>
                     <input type="number" name="target_total" id="target_total" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total) }}">
                     <button type="submit" class="btn btn-sm btn-outline">Übernehmen</button>
                 </div>
             </div>
+            {% if tax_mode == 'regular' and quote.prices_are_net %}
+            <div class="price-row align-center mt-8">
+                <span>oder Bruttobetrag (inkl. {{ "%g"|format(tax_rate) }}% MwSt.)</span>
+                <div class="d-flex gap-8 align-center">
+                    <span>&euro;</span>
+                    <input type="number" id="target_total_gross" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total * (1 + tax_rate / 100)) }}">
+                    <span class="text-sm text-muted">(wird in Netto umgerechnet)</span>
+                </div>
+            </div>
+            {% endif %}
         </form>
 
         <script>
         (function() {
             const pctInput = document.getElementById('discount_percent');
             const totalInput = document.getElementById('target_total');
+            const grossInput = document.getElementById('target_total_gross');
             const subtotal = {{ quote.subtotal }};
             const discountable = {{ quote.discountable_subtotal }};
+            const taxFactor = {{ (1 + tax_rate / 100) if (tax_mode == 'regular' and quote.prices_are_net) else 1 }};
+
+            function syncFromNet(target) {
+                if (isNaN(target) || discountable <= 0) return;
+                const needed = subtotal - target;
+                const pct = Math.max(0, Math.min(100, (needed / discountable) * 100));
+                pctInput.value = pct.toFixed(4);
+                if (grossInput) {
+                    grossInput.value = '';
+                    grossInput.placeholder = (target * taxFactor).toFixed(2);
+                }
+            }
 
             pctInput.addEventListener('input', function() {
                 if (discountable > 0) {
                     const pct = parseFloat(this.value) || 0;
                     const discount = discountable * (pct / 100);
+                    const net = subtotal - discount;
                     totalInput.value = '';
-                    totalInput.placeholder = (subtotal - discount).toFixed(2);
+                    totalInput.placeholder = net.toFixed(2);
+                    if (grossInput) {
+                        grossInput.value = '';
+                        grossInput.placeholder = (net * taxFactor).toFixed(2);
+                    }
                 }
             });
             totalInput.addEventListener('input', function() {
                 const target = parseFloat(this.value);
-                if (!isNaN(target) && discountable > 0) {
-                    const needed = subtotal - target;
-                    const pct = Math.max(0, Math.min(100, (needed / discountable) * 100));
-                    pctInput.value = pct.toFixed(4);
-                }
+                syncFromNet(target);
             });
+            if (grossInput) {
+                grossInput.addEventListener('input', function() {
+                    const gross = parseFloat(this.value);
+                    if (isNaN(gross)) return;
+                    const net = +(gross / taxFactor).toFixed(2);
+                    totalInput.value = net.toFixed(2);
+                    syncFromNet(net);
+                });
+            }
         })();
         </script>
 
