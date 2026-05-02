@@ -352,9 +352,21 @@
 <!-- Pricing Summary -->
 <div class="card quote-section">
     <h2>Preisübersicht</h2>
+    {% if site_settings and site_settings.tax_mode == 'regular' %}
+    <form method="POST" class="mb-10">
+        <input type="hidden" name="action" value="update_prices_mode">
+        <label class="d-flex gap-8 align-center text-sm">
+            <input type="checkbox" name="prices_are_net" value="1"
+                   {% if quote.prices_are_net %}checked{% endif %}
+                   onchange="this.form.submit()">
+            <span>Eingegebene Preise sind <strong>Nettobeträge</strong> – MwSt. wird oben drauf gerechnet</span>
+        </label>
+        <small class="help-text">Standard: Bruttopreise (MwSt. ist im eingegebenen Preis enthalten).</small>
+    </form>
+    {% endif %}
     <div class="price-summary">
         <div class="price-row">
-            <span>Zwischensumme ({{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }})</span>
+            <span>Zwischensumme{% if site_settings and site_settings.tax_mode == 'regular' and quote.prices_are_net %} (netto){% endif %} ({{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }})</span>
             <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
         </div>
 
@@ -418,15 +430,28 @@
         {% endif %}
 
         <div class="price-row total">
-            <span>Gesamt</span>
+            <span>{% if site_settings and site_settings.tax_mode == 'regular' and quote.prices_are_net %}Nettobetrag{% else %}Gesamt{% endif %}</span>
             <span>&euro;{{ "%.2f"|format(quote.total) }}</span>
         </div>
         {% if site_settings and site_settings.tax_mode == 'regular' %}
+        {% if quote.prices_are_net %}
+        {% set mwst_amount = (quote.total * tax_rate / 100)|round(2) %}
+        {% set brutto_total = (quote.total + mwst_amount)|round(2) %}
+        <div class="price-row price-row-muted">
+            <span>zzgl. {{ "%g"|format(tax_rate) }}% MwSt.</span>
+            <span>&euro;{{ "%.2f"|format(mwst_amount) }}</span>
+        </div>
+        <div class="price-row total">
+            <span>Gesamtbetrag (brutto)</span>
+            <span>&euro;{{ "%.2f"|format(brutto_total) }}</span>
+        </div>
+        {% else %}
         {% set mwst_amount = (quote.total - (quote.total / (1 + tax_rate / 100)))|round(2) %}
         <div class="price-row price-row-muted">
             <span>darin enthaltene {{ "%g"|format(tax_rate) }}% MwSt.</span>
             <span>&euro;{{ "%.2f"|format(mwst_amount) }}</span>
         </div>
+        {% endif %}
         {% endif %}
     </div>
 

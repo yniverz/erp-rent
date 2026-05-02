@@ -34,6 +34,7 @@ def _generate_rechnung_pdf_bytes(quote, *, einvoice=True):
         vat_id=data.get('vat_id'),
         tax_mode=data['tax_mode'],
         tax_rate=data['tax_rate'],
+        prices_are_net=bool(getattr(quote, 'prices_are_net', False)),
         logo_path=data['logo_path'],
         recipient_lines=data['recipient_lines'],
         reference_number=quote.reference_number or f'RE-{quote.id:04d}',
@@ -190,9 +191,18 @@ def _build_einvoice_data(quote, data, positions, site_settings):
 
     rental_days = data.get('rental_days', 1)
     discount_percent = quote.discount_percent or 0
+    prices_are_net = bool(getattr(quote, 'prices_are_net', False))
 
-    if is_regular:
-        # All stored prices are brutto; derive netto
+    if is_regular and prices_are_net:
+        # Stored prices are net; tax added on top
+        netto_subtotal = round(quote.subtotal, 2)
+        netto_discount = round(quote.discount_amount, 2) if discount_percent > 0 else 0.0
+        netto_total = round(netto_subtotal - netto_discount, 2)
+        brutto_total = round(netto_total * tax_factor, 2)
+        mwst = round(brutto_total - netto_total, 2)
+        position_nettos = [round(p['total'], 2) for p in positions]
+    elif is_regular:
+        # Legacy: stored prices are brutto; derive netto
         brutto_subtotal = quote.subtotal
         brutto_discount = quote.discount_amount
         brutto_total = brutto_subtotal - brutto_discount
@@ -372,15 +382,31 @@ def _delete_expense_accounting(expense):
 # ---------------------------------------------------------------------------
 
 def _build_api_quote_items(quote):
-    """Build the items list for an API quote/invoice from local quote items."""
+    """Build the items list for an API quote/invoice from local quote items.
+
+    The accounting API expects GROSS (brutto) unit prices. If this quote stores
+    prices as net (prices_are_net=True with regular tax mode), we convert by
+    applying the configured tax factor.
+    """
     positions = _extract_positions(quote)
     items = []
+
+    # Determine if we need to convert net -> gross for the API payload
+    convert_factor = 1.0
+    if getattr(quote, 'prices_are_net', False):
+        _ss = SiteSettings.query.first()
+        if _ss and _ss.tax_mode == 'regular':
+            rate = _ss.tax_rate if _ss.tax_rate else 19.0
+            convert_factor = 1 + rate / 100.0
+
     for pos in positions:
+        line_gross = round(pos['total'] * convert_factor, 2)
+        unit_gross = round(line_gross / pos['quantity'], 2) if pos['quantity'] else line_gross
         items.append({
             'description': pos['name'],
             'quantity': pos['quantity'],
             'unit': 'Stk.',
-            'unit_price': round(pos['total'] / pos['quantity'], 2) if pos['quantity'] else pos['total'],
+            'unit_price': unit_gross,
         })
     return items
 
@@ -1362,6 +1388,14 @@ def quote_edit(quote_id):
                     db.session.add(quote_item)
                     db.session.commit()
                     flash(f'Eigene Position "{custom_name}" hinzugefügt!', 'success')
+
+            elif action == 'update_prices_mode':
+                quote.prices_are_net = (request.form.get('prices_are_net') == '1')
+                db.session.commit()
+                if quote.prices_are_net:
+                    flash('Preise werden jetzt als Nettobeträge behandelt – die MwSt. wird oben drauf gerechnet.', 'success')
+                else:
+                    flash('Preise werden als Bruttobeträge behandelt (inklusive MwSt.).', 'success')
 
             elif action == 'update_discount':
                 target_total_str = request.form.get('target_total', '').strip()
@@ -2478,6 +2512,7 @@ def angebot_pdf(quote_id):
         vat_id=data.get('vat_id'),
         tax_mode=data['tax_mode'],
         tax_rate=data['tax_rate'],
+        prices_are_net=bool(getattr(quote, 'prices_are_net', False)),
         logo_path=data['logo_path'],
         recipient_lines=data['recipient_lines'],
         reference_number=quote.reference_number or f"AN-{quote.id:04d}",

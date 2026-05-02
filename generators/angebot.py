@@ -38,6 +38,7 @@ def build_angebot_pdf(
     vat_id: str | None = None,
     tax_mode: str = "kleinunternehmer",  # 'kleinunternehmer' or 'regular'
     tax_rate: float = 19.0,
+    prices_are_net: bool = False,  # If True (regular mode only): stored prices are NET, VAT added on top
     logo_path: str | None = None,
 
     # Recipient
@@ -138,20 +139,26 @@ def build_angebot_pdf(
     is_regular = (tax_mode == "regular")
     tax_factor = 1 + tax_rate / 100
 
-    # ── Pre-compute netto values from brutto (rückwärts) ──
-    if is_regular:
+    # ── Pre-compute netto values ──
+    if is_regular and prices_are_net:
+        # Stored prices ARE net – tax is added on top
+        netto_subtotal = round(subtotal, 2)
+        netto_discount = round(discount_amount, 2) if discount_percent > 0 else 0.0
+        netto_total = round(netto_subtotal - netto_discount, 2)
+        brutto_total = round(netto_total * tax_factor, 2)
+        mwst = round(brutto_total - netto_total, 2)
+        position_nettos = [round(item["total"], 2) for item in positions]
+    elif is_regular:
         import math as _math
 
-        # 1. Tax from known brutto total
+        # Legacy: stored prices are brutto; derive netto rückwärts
         brutto_total = subtotal - (discount_amount if discount_percent > 0 else 0)
         netto_total = round(brutto_total / tax_factor, 2)
         mwst = round(brutto_total - netto_total, 2)
 
-        # 2. Derive netto subtotal so that netto_subtotal - netto_discount == netto_total
         netto_subtotal = round(subtotal / tax_factor, 2)
         netto_discount = round(netto_subtotal - netto_total, 2) if discount_percent > 0 else 0.0
 
-        # 3. Distribute netto_subtotal across positions (largest-remainder)
         position_bruttos = [item["total"] for item in positions]
         brutto_sum = sum(position_bruttos) or 1  # avoid div-by-zero
         raw_nettos = [netto_subtotal * (pb / brutto_sum) for pb in position_bruttos]
@@ -219,7 +226,10 @@ def build_angebot_pdf(
                 ])
         else:
             # Regular item
-            if is_regular:
+            if is_regular and prices_are_net:
+                display_ppd = round(item["price_per_day"], 2)
+                display_total = position_nettos[pos_idx]
+            elif is_regular:
                 display_ppd = round(item["price_per_day"] / tax_factor, 2)
                 display_total = position_nettos[pos_idx]
             else:

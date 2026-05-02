@@ -314,6 +314,11 @@ class Quote(db.Model):
     notes = db.Column(db.Text, nullable=True)  # Internal notes (not on PDF)
     public_notes = db.Column(db.Text, nullable=True)  # Shown on Angebot/Rechnung/Lieferschein
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)
+    # Pricing
+    # When True (and global tax_mode='regular'), all stored item prices are
+    # treated as NET values and VAT is added on top in PDFs / API exports.
+    # When False (default), stored prices are GROSS (brutto) – legacy behaviour.
+    prices_are_net = db.Column(db.Boolean, default=False, nullable=False)
     # Accounting API integration
     accounting_transaction_id = db.Column(db.Integer, nullable=True)  # ID in external accounting service
     accounting_tax_treatment = db.Column(db.String(30), nullable=True)  # Per-quote override (none/standard/reduced/…)
