@@ -138,16 +138,29 @@ def load_user(user_id):
 # Context processor to inject settings into all templates
 @app.context_processor
 def inject_site_settings():
+    import accounting
     settings = SiteSettings.query.first()
     show_netto = request.cookies.get('price_mode') == 'netto'
-    tax_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
+    local_mode = (settings.tax_mode or 'kleinunternehmer') if settings else 'kleinunternehmer'
+    local_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
+    eff_mode, eff_rate = local_mode, local_rate
+    if accounting.is_configured():
+        try:
+            api_settings = accounting.get_settings()
+            if api_settings:
+                eff_mode = (api_settings.get('tax_mode') or local_mode).strip().lower()
+                eff_rate = float(api_settings.get('tax_rate') or local_rate)
+        except Exception:
+            pass
     return dict(
         site_settings=settings,
         brand_name=(settings.display_name or settings.business_name or 'Verleih') if settings else 'Verleih',
         has_favicon=_favicon_data is not None,
         favicon_mimetype=_favicon_mimetype,
         show_netto=show_netto,
-        tax_rate=tax_rate,
+        tax_rate=eff_rate,
+        effective_tax_mode=eff_mode,
+        effective_tax_rate=eff_rate,
     )
 
 
