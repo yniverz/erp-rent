@@ -370,7 +370,7 @@
             <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
         </div>
 
-        <form method="POST" class="mb-10 mt-10" id="discount_form">
+        <form method="POST" class="mb-10 mt-10">
             <input type="hidden" name="action" value="update_discount">
             <div class="price-row align-center">
                 <div class="d-flex gap-8 align-center">
@@ -383,65 +383,66 @@
                 </div>
             </div>
             <div class="price-row align-center mt-8">
-                <span>oder Gesamtpreis</span>
-                <div class="d-flex gap-8 align-center flex-wrap">
+                <span>oder {% if tax_mode == 'regular' and quote.prices_are_net %}Nettobetrag{% else %}Gesamtpreis{% endif %}</span>
+                <div class="d-flex gap-8 align-center">
                     <span>&euro;</span>
                     <input type="number" name="target_total" id="target_total" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total) }}">
-                    {% if tax_mode == 'regular' and quote.prices_are_net %}
-                    <label class="checkbox-group text-sm" style="margin:0;">
-                        <input type="checkbox" id="target_is_gross" style="width:auto;flex:0 0 auto;">
-                        als Brutto (inkl. {{ "%g"|format(tax_rate) }}% MwSt.)
-                    </label>
-                    {% endif %}
                     <button type="submit" class="btn btn-sm btn-outline">Übernehmen</button>
                 </div>
             </div>
+            {% if tax_mode == 'regular' and quote.prices_are_net %}
+            <div class="price-row align-center mt-8">
+                <span>oder Bruttobetrag (inkl. {{ "%g"|format(tax_rate) }}% MwSt.)</span>
+                <div class="d-flex gap-8 align-center">
+                    <span>&euro;</span>
+                    <input type="number" id="target_total_gross" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total * (1 + tax_rate / 100)) }}">
+                    <span class="text-sm text-muted">(nur Anzeige)</span>
+                </div>
+            </div>
+            {% endif %}
         </form>
 
         <script>
         (function() {
-            const form = document.getElementById('discount_form');
             const pctInput = document.getElementById('discount_percent');
             const totalInput = document.getElementById('target_total');
-            const grossToggle = document.getElementById('target_is_gross');
+            const grossInput = document.getElementById('target_total_gross');
             const subtotal = {{ quote.subtotal }};
             const discountable = {{ quote.discountable_subtotal }};
             const taxFactor = {{ (1 + tax_rate / 100) if (tax_mode == 'regular' and quote.prices_are_net) else 1 }};
 
-            function netPlaceholder() {
-                const pct = parseFloat(pctInput.value) || 0;
-                const discount = discountable * (pct / 100);
-                return subtotal - discount;
+            // Update OTHER fields based on a known net total, never touching `source`.
+            function applyNet(net, source) {
+                if (discountable > 0 && source !== pctInput) {
+                    const pct = Math.max(0, Math.min(100, ((subtotal - net) / discountable) * 100));
+                    pctInput.value = pct.toFixed(4);
+                }
+                if (source !== totalInput) {
+                    totalInput.value = net.toFixed(2);
+                }
+                if (grossInput && source !== grossInput) {
+                    grossInput.value = (net * taxFactor).toFixed(2);
+                }
             }
-            function updatePlaceholder() {
-                const net = netPlaceholder();
-                const isGross = grossToggle && grossToggle.checked;
-                totalInput.placeholder = (isGross ? net * taxFactor : net).toFixed(2);
-            }
-            updatePlaceholder();
 
             pctInput.addEventListener('input', function() {
-                totalInput.value = '';
-                updatePlaceholder();
+                const pct = parseFloat(this.value);
+                if (isNaN(pct) || discountable <= 0) return;
+                const net = subtotal - discountable * (pct / 100);
+                applyNet(net, pctInput);
             });
-            if (grossToggle) {
-                grossToggle.addEventListener('change', function() {
-                    const val = parseFloat(totalInput.value);
-                    if (!isNaN(val)) {
-                        // convert displayed value between modes
-                        totalInput.value = (this.checked ? val * taxFactor : val / taxFactor).toFixed(2);
-                    }
-                    updatePlaceholder();
+            totalInput.addEventListener('input', function() {
+                const net = parseFloat(this.value);
+                if (isNaN(net)) return;
+                applyNet(net, totalInput);
+            });
+            if (grossInput) {
+                grossInput.addEventListener('input', function() {
+                    const gross = parseFloat(this.value);
+                    if (isNaN(gross)) return;
+                    applyNet(gross / taxFactor, grossInput);
                 });
             }
-            form.addEventListener('submit', function() {
-                if (grossToggle && grossToggle.checked) {
-                    const val = parseFloat(totalInput.value);
-                    if (!isNaN(val)) {
-                        totalInput.value = (val / taxFactor).toFixed(2);
-                    }
-                }
-            });
         })();
         </script>
 
