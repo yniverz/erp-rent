@@ -329,11 +329,17 @@ def _book_quote_income(quote, site_settings=None, account_id=None):
         return False, 'Kein Buchhaltungs-Konto ausgewählt. Bitte in den Einstellungen ein Einnahmen-Konto hinterlegen oder im Bezahl-Dialog auswählen.'
     paid_date = quote.paid_at.strftime('%Y-%m-%d') if quote.paid_at else datetime.utcnow().strftime('%Y-%m-%d')
     description = f'{quote.customer_name} – {quote.reference_number or ("RE" + str(quote.id))}'
+    # Accounting API expects GROSS (brutto) amount. Convert when stored prices are net.
+    gross_amount = quote.total
+    if getattr(quote, 'prices_are_net', False):
+        eff_mode, eff_rate = _effective_tax_mode_and_rate(site_settings)
+        if eff_mode == 'regular':
+            gross_amount = round(quote.total * (1 + eff_rate / 100.0), 2)
     ok, result = accounting.create_transaction(
         date=paid_date,
         txn_type='income',
         description=description,
-        amount=quote.total,
+        amount=gross_amount,
         account_id=account_id,
         category_id=category_id,
         tax_treatment=tax_treatment,
@@ -414,9 +420,9 @@ def _build_api_quote_items(quote):
     convert_factor = 1.0
     if getattr(quote, 'prices_are_net', False):
         _ss = SiteSettings.query.first()
-        if _ss and _ss.tax_mode == 'regular':
-            rate = _ss.tax_rate if _ss.tax_rate else 19.0
-            convert_factor = 1 + rate / 100.0
+        eff_mode, eff_rate = _effective_tax_mode_and_rate(_ss)
+        if eff_mode == 'regular':
+            convert_factor = 1 + eff_rate / 100.0
 
     for pos in positions:
         line_gross = round(pos['total'] * convert_factor, 2)
@@ -1537,9 +1543,11 @@ def quote_view(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     from datetime import date as date_cls
     site_settings = SiteSettings.query.first()
+    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(site_settings)
     return render_template('admin/quote_view.html', quote=quote, today=date_cls.today().isoformat(),
                            accounting_configured=accounting.is_configured(),
-                           site_settings=site_settings)
+                           site_settings=site_settings,
+                           tax_mode=_eff_mode, tax_rate=_eff_rate)
 
 
 @admin_bp.route('/quotes/<int:quote_id>/unfinalize', methods=['POST'])

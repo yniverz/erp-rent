@@ -355,8 +355,8 @@
     {% if tax_mode == 'regular' %}
     <form method="POST" class="mb-10">
         <input type="hidden" name="action" value="update_prices_mode">
-        <label class="d-flex gap-8 align-center text-sm">
-            <input type="checkbox" name="prices_are_net" value="1"
+        <label class="d-flex gap-8 align-center text-sm checkbox-group" style="cursor:pointer;">
+            <input type="checkbox" name="prices_are_net" value="1" style="width:auto;flex:0 0 auto;"
                    {% if quote.prices_are_net %}checked{% endif %}
                    onchange="this.form.submit()">
             <span>Eingegebene Preise sind <strong>Nettobeträge</strong> – MwSt. wird oben drauf gerechnet</span>
