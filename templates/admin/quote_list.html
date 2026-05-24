@@ -25,7 +25,12 @@
         {% for quote in quotes %}
         <tr>
             <td><strong>{{ quote.reference_number or '—' }}</strong></td>
-            <td>{{ quote.customer_name }}</td>
+            <td>
+                {{ quote.customer_name }}
+                {% if quote.notes %}
+                    <br><small class="text-muted">({{ quote.notes }})</small>
+                {% endif %}
+            </td>
             <td>
                 {% if quote.start_date and quote.end_date %}
                     {{ quote.start_date.strftime('%d.%m.%Y') }} – {{ quote.end_date.strftime('%d.%m.%Y') }}
