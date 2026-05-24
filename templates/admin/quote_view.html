@@ -92,10 +92,26 @@
         <p class="mt-14"><strong>Bemerkungen (auf Rechnung):</strong></p>
         <p class="text-muted text-pre-line">{{ quote.public_notes }}</p>
     {% endif %}
-    {% if quote.notes %}
-        <p class="mt-14"><strong>Interne Notizen:</strong></p>
-        <p class="text-muted text-pre-line">{{ quote.notes }}</p>
-    {% endif %}
+    <p class="mt-14">
+        <strong>Interne Notizen:</strong>
+        <button type="button" class="btn btn-sm btn-outline edit-date-btn" id="edit-internal-notes-btn" onclick="document.getElementById('edit-internal-notes').classList.remove('d-none');document.getElementById('view-internal-notes').classList.add('d-none');this.classList.add('d-none');">✏️ Bearbeiten</button>
+    </p>
+    <div id="view-internal-notes">
+        {% if quote.notes %}
+            <p class="text-muted text-pre-line">{{ quote.notes }}</p>
+        {% else %}
+            <p class="text-muted"><em>Keine internen Notizen.</em></p>
+        {% endif %}
+    </div>
+    <div id="edit-internal-notes" class="d-none">
+        <form method="POST" action="{{ url_for('admin.quote_update_notes', quote_id=quote.id) }}">
+            <textarea name="notes" rows="3" placeholder="Nur intern sichtbar, nicht auf der Rechnung">{{ quote.notes or '' }}</textarea>
+            <div class="mt-14">
+                <button type="submit" class="btn btn-sm btn-success btn-compact">Speichern</button>
+                <button type="button" class="btn btn-sm btn-outline btn-compact" onclick="document.getElementById('edit-internal-notes').classList.add('d-none');document.getElementById('view-internal-notes').classList.remove('d-none');document.getElementById('edit-internal-notes-btn').classList.remove('d-none');">Abbrechen</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- Items -->

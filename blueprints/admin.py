@@ -1762,6 +1762,21 @@ def quote_update_paid_date(quote_id):
     return redirect(url_for('admin.quote_view', quote_id=quote_id))
 
 
+@admin_bp.route('/quotes/<int:quote_id>/update_notes', methods=['POST'])
+@login_required
+def quote_update_notes(quote_id):
+    """Update internal notes of a quote (allowed in any status)."""
+    quote = Quote.query.get_or_404(quote_id)
+    try:
+        quote.notes = request.form.get('notes', '')
+        db.session.commit()
+        flash('Interne Notizen aktualisiert!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_view', quote_id=quote_id))
+
+
 @admin_bp.route('/quotes/<int:quote_id>/update_finalized_date', methods=['POST'])
 @login_required
 def quote_update_finalized_date(quote_id):
