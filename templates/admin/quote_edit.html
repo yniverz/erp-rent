@@ -494,6 +494,11 @@
         </form>
         {% endif %}
         <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
+        {% if not accounting_configured %}
+        <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF (Entwurf)</a>
+        <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Rechnung PDF (Entwurf)</a>
+        {% endif %}
+        <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
         {% if quote.status == 'draft' %}
         <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
