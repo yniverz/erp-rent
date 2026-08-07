@@ -499,6 +499,8 @@
         <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Rechnung PDF (Entwurf)</a>
         {% endif %}
         <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
+        <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
+        <span id="pk-save-quote-status" class="d-flex align-center text-sm text-muted"></span>
         {% if quote.status == 'draft' %}
         <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
@@ -764,5 +766,71 @@ function removePackage(packageId) {
 function showFinalizeDialog() {
     document.getElementById('finalize-dialog').classList.remove('d-none');
 }
+</script>
+
+<!--
+  Papierkram export: sends the current quote to the browser extension
+  (source "erp-to-papierkram"). The quote data is rendered server-side
+  below, so it reflects the last SAVED state of the quote. Save your
+  changes before exporting.
+-->
+<script>
+(function () {
+  // Quote data rendered from the server (last saved state).
+  {% set rental_days = quote.calculate_rental_days() %}
+  const quoteData = {
+    label: {{ ('Angebot ' + (quote.reference_number or quote.customer_name or 'Entwurf')) | tojson }},
+    discountPercentage: {{ (quote.discount_percent or 0) | tojson }},
+    discountName: {{ (quote.discount_label or None) | tojson }},
+    items: [
+      {% for qi in quote.quote_items %}
+      {
+        name: {{ (qi.custom_item_name if qi.is_custom else qi.item.name) | tojson }},
+        count: {{ (qi.quantity or 0) | tojson }},
+        price: {{ ((qi.rental_price_per_day or 0) * rental_days) | tojson }}
+      }{{ ',' if not loop.last }}
+      {% endfor %}
+    ]
+  };
+
+  function collectQuote() {
+    const items = quoteData.items.filter((i) => i.name);
+    if (!items.length) return null;
+    return {
+      label: quoteData.label,
+      items: items,
+      discountPercentage: quoteData.discountPercentage,
+      discountName: quoteData.discountName,
+    };
+  }
+
+  const btn = document.getElementById("pk-save-quote-btn");
+  const statusEl = document.getElementById("pk-save-quote-status");
+  if (!btn) return;
+
+  btn.addEventListener("click", function () {
+    const quote = collectQuote();
+    if (!quote) {
+      statusEl.textContent = "Keine Positionen gefunden.";
+      return;
+    }
+    window.postMessage(
+      { source: "erp-to-papierkram", type: "SAVE_QUOTE", quote: quote },
+      "*"
+    );
+    statusEl.textContent = "Sende an Extension …";
+  });
+
+  window.addEventListener("message", function (event) {
+    if (event.source !== window) return;
+    const msg = event.data;
+    if (!msg || msg.source !== "erp-to-papierkram") return;
+    if (msg.type === "SAVE_QUOTE_ACK") {
+      statusEl.textContent = "Gespeichert: " + msg.label;
+    } else if (msg.type === "SAVE_QUOTE_ERROR") {
+      statusEl.textContent = "Fehler: " + msg.error;
+    }
+  });
+})();
 </script>
 {% endblock %}
