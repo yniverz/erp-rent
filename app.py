@@ -138,20 +138,11 @@ def load_user(user_id):
 # Context processor to inject settings into all templates
 @app.context_processor
 def inject_site_settings():
-    import accounting
     settings = SiteSettings.query.first()
     show_netto = request.cookies.get('price_mode') == 'netto'
     local_mode = (settings.tax_mode or 'kleinunternehmer') if settings else 'kleinunternehmer'
     local_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
     eff_mode, eff_rate = local_mode, local_rate
-    if accounting.is_configured():
-        try:
-            api_settings = accounting.get_settings()
-            if api_settings:
-                eff_mode = (api_settings.get('tax_mode') or local_mode).strip().lower()
-                eff_rate = float(api_settings.get('tax_rate') or local_rate)
-        except Exception:
-            pass
     return dict(
         site_settings=settings,
         brand_name=(settings.display_name or settings.business_name or 'Verleih') if settings else 'Verleih',
@@ -196,7 +187,8 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 with app.app_context():
     db.create_all()
 
-    # ── Auto-migrate: add missing columns to existing tables ──────────
+    # ── Auto-migrate helper: add missing columns to existing tables ───
+    # Kept for convenience when introducing new columns later.
     def _add_column_if_missing(table, column, col_type='TEXT'):
         """Add a column to an existing SQLite table if it doesn't exist yet."""
         from sqlalchemy import text, inspect as sa_inspect
@@ -206,22 +198,6 @@ with app.app_context():
             db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}'))
             db.session.commit()
             print(f"  migrated: {table}.{column} ({col_type})")
-
-    _add_column_if_missing('site_settings', 'display_name', 'VARCHAR(200)')
-    _add_column_if_missing('site_settings', 'accounting_income_category_id', 'INTEGER')
-    _add_column_if_missing('site_settings', 'accounting_expense_category_id', 'INTEGER')
-    _add_column_if_missing('site_settings', 'accounting_income_account_id', 'INTEGER')
-    _add_column_if_missing('site_settings', 'accounting_expense_account_id', 'INTEGER')
-    _add_column_if_missing('site_settings', 'vat_id', 'VARCHAR(100)')
-    _add_column_if_missing('quote', 'accounting_transaction_id', 'INTEGER')
-    _add_column_if_missing('quote', 'accounting_tax_treatment', 'VARCHAR(30)')
-    _add_column_if_missing('quote_item_expense', 'accounting_transaction_id', 'INTEGER')
-    _add_column_if_missing('quote', 'api_customer_id', 'INTEGER')
-    _add_column_if_missing('quote', 'api_quote_id', 'INTEGER')
-    _add_column_if_missing('quote', 'api_quote_number', 'VARCHAR(100)')
-    _add_column_if_missing('quote', 'api_invoice_id', 'INTEGER')
-    _add_column_if_missing('quote', 'api_invoice_number', 'VARCHAR(100)')
-    _add_column_if_missing('quote', 'prices_are_net', 'BOOLEAN DEFAULT 0')
 
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')

@@ -319,15 +319,6 @@ class Quote(db.Model):
     # treated as NET values and VAT is added on top in PDFs / API exports.
     # When False (default), stored prices are GROSS (brutto) – legacy behaviour.
     prices_are_net = db.Column(db.Boolean, default=False, nullable=False)
-    # Accounting API integration
-    accounting_transaction_id = db.Column(db.Integer, nullable=True)  # ID in external accounting service
-    accounting_tax_treatment = db.Column(db.String(30), nullable=True)  # Per-quote override (none/standard/reduced/…)
-    # Accounting API quote/invoice integration
-    api_customer_id = db.Column(db.Integer, nullable=True)  # Customer ID in accounting API
-    api_quote_id = db.Column(db.Integer, nullable=True)  # Quote ID in accounting API
-    api_quote_number = db.Column(db.String(50), nullable=True)  # Quote number from API (e.g. A-2026-0001)
-    api_invoice_id = db.Column(db.Integer, nullable=True)  # Invoice ID in accounting API
-    api_invoice_number = db.Column(db.String(50), nullable=True)  # Invoice number from API (e.g. R-2026-0001)
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')
@@ -420,8 +411,6 @@ class QuoteItemExpense(db.Model):
     paid_at = db.Column(db.DateTime, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    # Accounting API integration
-    accounting_transaction_id = db.Column(db.Integer, nullable=True)  # ID in external accounting service
 
     quote_item = db.relationship('QuoteItem', back_populates='expense')
     documents = db.relationship('QuoteItemExpenseDocument', back_populates='expense',
@@ -503,9 +492,4 @@ class SiteSettings(db.Model):
     terms_and_conditions_text = db.Column(db.Text, nullable=True)
     # Notification
     notification_email = db.Column(db.String(200), nullable=True)
-    # Accounting API integration
-    accounting_income_category_id = db.Column(db.Integer, nullable=True)  # Category ID in accounting service for income
-    accounting_expense_category_id = db.Column(db.Integer, nullable=True)  # Category ID in accounting service for expenses
-    accounting_income_account_id = db.Column(db.Integer, nullable=True)  # Account ID in accounting service for income
-    accounting_expense_account_id = db.Column(db.Integer, nullable=True)  # Account ID in accounting service for expenses
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

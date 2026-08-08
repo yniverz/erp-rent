@@ -19,9 +19,6 @@ services:
       - SMTP_FROM=${SMTP_FROM:-}
       # Optional favicon
       - FAVICON_URL=${FAVICON_URL:-}
-      # Optional accounting API integration
-      - ACCOUNTING_API_URL=${ACCOUNTING_API_URL:-}
-      - ACCOUNTING_API_KEY=${ACCOUNTING_API_KEY:-}
     volumes:
       - ./instance:/app/instance
     restart: unless-stopped

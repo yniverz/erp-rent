@@ -22,7 +22,6 @@
             <small class="help-text">Offizieller Name – erscheint auf PDFs (Rechnungen, Angebote, Lieferscheine).</small>
         </div>
 
-        {% if not accounting_configured %}
         <div class="form-group">
             <label>Adresszeilen</label>
             <textarea name="address_lines" rows="3" placeholder="Straße&#10;PLZ Stadt&#10;Land">{{ settings.address_lines or '' }}</textarea>
@@ -66,11 +65,6 @@
             <input type="number" name="tax_rate" step="0.1" min="0" max="100" value="{{ settings.tax_rate if settings.tax_rate is not none else 19.0 }}">
             <small class="help-text">&Uuml;blicher Satz: 19% (oder 7% f&uuml;r erm&auml;&szlig;igte G&uuml;ter)</small>
         </div>
-        {% else %}
-        <div class="alert alert-info mt-16 mb-16">
-            Adresse, Bankverbindung und Steuereinstellungen werden über die Buchhaltungs-API verwaltet. Diese Felder sind hier ausgeblendet.
-        </div>
-        {% endif %}
 
         <div class="form-row">
             <div class="form-group">
@@ -144,48 +138,6 @@
             <small class="help-text">E-Mail-Adresse, die Benachrichtigungen erhält, wenn Kunden Anfragen absenden. SMTP muss über Umgebungsvariablen konfiguriert sein (SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).</small>
         </div>
 
-        <hr class="section-divider">
-
-        <h2>Buchhaltungs-API</h2>
-        {% if accounting_configured %}
-        <p class="text-muted mb-16">Verbindung konfiguriert über Umgebungsvariablen (ACCOUNTING_API_URL, ACCOUNTING_API_KEY). Wählen Sie die Kategorien und Konten für Einnahmen und Ausgaben.</p>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label>Einnahmen-Kategorie</label>
-                <select name="accounting_income_category_id" id="acct_income_cat">
-                    <option value="">— Keine —</option>
-                </select>
-                <small class="help-text">Kategorie für Zahlungseingänge aus Angeboten.</small>
-            </div>
-            <div class="form-group">
-                <label>Ausgaben-Kategorie</label>
-                <select name="accounting_expense_category_id" id="acct_expense_cat">
-                    <option value="">— Keine —</option>
-                </select>
-                <small class="help-text">Kategorie für externe Mietkosten.</small>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Einnahmen-Konto</label>
-                <select name="accounting_income_account_id" id="acct_income_acc">
-                    <option value="">— Keins —</option>
-                </select>
-                <small class="help-text">Standard-Konto für Zahlungseingänge (z.B. Bank, Bargeld).</small>
-            </div>
-            <div class="form-group">
-                <label>Ausgaben-Konto</label>
-                <select name="accounting_expense_account_id" id="acct_expense_acc">
-                    <option value="">— Keins —</option>
-                </select>
-                <small class="help-text">Standard-Konto für externe Mietkosten.</small>
-            </div>
-        </div>
-        {% else %}
-        <p class="text-muted mb-16">Nicht konfiguriert. Setzen Sie die Umgebungsvariablen <code>ACCOUNTING_API_URL</code> und <code>ACCOUNTING_API_KEY</code>, um die Buchhaltungs-Integration zu aktivieren.</p>
-        {% endif %}
-
         <button type="submit" class="btn btn-primary mt-10">Einstellungen speichern</button>
     </form>
 </div>
@@ -196,54 +148,6 @@ function toggleTaxRate() {
     var group = document.getElementById('tax_rate_group');
     if (mode && group) group.classList.toggle('d-none', mode.value !== 'regular');
 }
-
-{% if accounting_configured %}
-(function() {
-    var savedIncomeCat = {{ settings.accounting_income_category_id|default('null', true) }};
-    var savedExpenseCat = {{ settings.accounting_expense_category_id|default('null', true) }};
-    var savedIncomeAcc = {{ settings.accounting_income_account_id|default('null', true) }};
-    var savedExpenseAcc = {{ settings.accounting_expense_account_id|default('null', true) }};
-
-    function loadCategories(type, selectId, savedVal) {
-        fetch('{{ url_for("admin.accounting_categories") }}?type=' + type)
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var sel = document.getElementById(selectId);
-                if (!data.categories) return;
-                data.categories.forEach(function(c) {
-                    var opt = document.createElement('option');
-                    opt.value = c.id;
-                    opt.textContent = c.name + (c.description ? ' – ' + c.description : '');
-                    if (savedVal !== null && c.id === savedVal) opt.selected = true;
-                    sel.appendChild(opt);
-                });
-            })
-            .catch(function(err) { console.error('Fehler beim Laden der Kategorien:', err); });
-    }
-
-    function loadAccounts(selectId, savedVal) {
-        fetch('{{ url_for("admin.accounting_accounts") }}')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var sel = document.getElementById(selectId);
-                if (!data.accounts) return;
-                data.accounts.forEach(function(a) {
-                    var opt = document.createElement('option');
-                    opt.value = a.id;
-                    opt.textContent = a.name + (a.description ? ' – ' + a.description : '');
-                    if (savedVal !== null && a.id === savedVal) opt.selected = true;
-                    sel.appendChild(opt);
-                });
-            })
-            .catch(function(err) { console.error('Fehler beim Laden der Konten:', err); });
-    }
-
-    loadCategories('income', 'acct_income_cat', savedIncomeCat);
-    loadCategories('expense', 'acct_expense_cat', savedExpenseCat);
-    loadAccounts('acct_income_acc', savedIncomeAcc);
-    loadAccounts('acct_expense_acc', savedExpenseAcc);
-})();
-{% endif %}
 </script>
 
 {% endblock %}
