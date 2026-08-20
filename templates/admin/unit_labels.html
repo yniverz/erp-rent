@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Etiketten – {{ item.name }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #f5f5f5; }
+        .toolbar { margin-bottom: 20px; display: flex; gap: 10px; align-items: center; }
+        .toolbar button { padding: 8px 20px; font-size: 1em; cursor: pointer; }
+        .labels { display: flex; flex-wrap: wrap; gap: 8px; }
+        .label {
+            width: 62mm;
+            border: 1px dashed #999;
+            border-radius: 3px;
+            padding: 3mm;
+            display: flex;
+            gap: 3mm;
+            align-items: center;
+            background: #fff;
+            page-break-inside: avoid;
+        }
+        .label img { width: 22mm; height: 22mm; flex-shrink: 0; }
+        .label .info { min-width: 0; overflow: hidden; }
+        .label .item-name { font-size: 9pt; font-weight: 700; line-height: 1.2; }
+        .label .tag { font-size: 11pt; font-weight: 700; font-family: monospace; margin-top: 1mm; }
+        .label .serial { font-size: 7pt; color: #444; word-break: break-all; }
+        .label .biz { font-size: 6.5pt; color: #777; margin-top: 1mm; }
+        .qr-missing { font-size: 7pt; color: #c00; }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .toolbar { display: none; }
+            .label { border-color: #ccc; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button onclick="window.print()">🖨 Drucken</button>
+        <button onclick="window.close()">Schließen</button>
+        <span>{{ labels|length }} Etikett(en) – {{ item.name }}</span>
+    </div>
+    <div class="labels">
+        {% for l in labels %}
+        <div class="label">
+            {% if l.qr %}
+                <img src="{{ l.qr }}" alt="QR {{ l.unit.asset_tag }}">
+            {% else %}
+                <span class="qr-missing">QR-Bibliothek fehlt<br>(pip install segno)</span>
+            {% endif %}
+            <div class="info">
+                <div class="item-name">{{ item.name }}</div>
+                <div class="tag">{{ l.unit.asset_tag or l.unit.id }}</div>
+                {% if l.unit.serial_number %}<div class="serial">SN: {{ l.unit.serial_number }}</div>{% endif %}
+                {% if site_settings and site_settings.business_name %}<div class="biz">{{ site_settings.business_name }}</div>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% if not labels %}
+        <p>Keine Einheiten vorhanden.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -11,3 +11,4 @@ cssmin
 rjsmin
 factur-x>=3.5
 lxml
+segno

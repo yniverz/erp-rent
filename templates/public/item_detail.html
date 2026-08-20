@@ -43,6 +43,19 @@
             <div class="detail-description">{{ item.description|nl2br }}</div>
         {% endif %}
 
+        {% if item.has_specs %}
+            <div class="detail-specs">
+                <h3>Technische Daten</h3>
+                <table class="specs-table">
+                    {% if item.manufacturer %}<tr><th>Hersteller</th><td>{{ item.manufacturer }}</td></tr>{% endif %}
+                    {% if item.model_name %}<tr><th>Modell</th><td>{{ item.model_name }}</td></tr>{% endif %}
+                    {% if item.weight_kg %}<tr><th>Gewicht</th><td>{{ '%g'|format(item.weight_kg) }} kg</td></tr>{% endif %}
+                    {% if item.power_watts %}<tr><th>Leistungsaufnahme</th><td>{{ '%g'|format(item.power_watts) }} W</td></tr>{% endif %}
+                    {% if item.dimensions %}<tr><th>Maße</th><td>{{ item.dimensions }}</td></tr>{% endif %}
+                </table>
+            </div>
+        {% endif %}
+
         {% if item.is_package and item.package_components %}
             <div class="detail-components">
                 <h3>Paketinhalt</h3>

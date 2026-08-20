@@ -15,7 +15,6 @@
             <th>Anzeigename</th>
             <th>E-Mail</th>
             <th>Rolle</th>
-            <th>Artikel</th>
             <th>Aktiv</th>
             <th>Erstellt</th>
             <th>Aktionen</th>
@@ -28,17 +27,12 @@
             <td>{{ user.display_name or '—' }}</td>
             <td>{{ user.email or '—' }}</td>
             <td>
-                {% if user.is_external_user %}
-                    <span class="badge badge-new">Extern</span>
-                {% elif user.is_admin %}
+                {% if user.is_admin %}
                     <span class="badge badge-paid">Admin</span>
-                {% elif user.can_edit_all %}
-                    <span class="badge badge-finalized">Bearbeiter</span>
                 {% else %}
                     <span class="badge badge-draft">Mitglied</span>
                 {% endif %}
             </td>
-            <td>{{ user.ownerships.count() }}</td>
             <td>
                 {% if user.active %}
                     <span class="text-success">&#10003;</span>
@@ -50,7 +44,7 @@
             <td>
                 <a href="{{ url_for('admin.user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
                 {% if user.id != current_user.id %}
-                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" class="d-inline" onsubmit="return confirm('Benutzer {{ user.username }} löschen? Artikel werden Ihnen zugewiesen.');">
+                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" class="d-inline" onsubmit="return confirm('Benutzer {{ user.username }} löschen?');">
                         <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                     </form>
                 {% endif %}

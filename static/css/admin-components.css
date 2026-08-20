@@ -164,6 +164,74 @@
 .thumb-img          { width: 40px; height: 40px; object-fit: contain; border-radius: 4px; display: block; background: #fff; }
 .search-input-inline { max-width: 350px; margin: 0; }
 
+/* ── Inventory list: filter bar & stats ── */
+.stats-grid-compact .stat-card  { padding: 12px 16px; }
+.stats-grid-compact .stat-value { font-size: 1.5em; }
+.stat-card.stat-danger          { border-left-color: var(--color-danger, #ef4444); }
+.inventory-filter-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.inventory-filter-bar select { margin: 0; width: auto; max-width: 220px; }
+.badge-danger       { background: var(--color-danger, #ef4444); color: white; font-size: 0.7em; vertical-align: middle; }
+.text-warning-strong { color: var(--color-warning-dark, #b45309); font-weight: 600; }
+.d-block            { display: block; }
+
+/* ── Item units (serial number tracking) ── */
+.units-table            { width: 100%; font-size: 0.9em; }
+.units-table input,
+.units-table select     { margin: 0; padding: 5px 8px; font-size: 0.95em; }
+.unit-actions           { white-space: nowrap; }
+.unit-actions .btn      { padding: 4px 8px; }
+.unit-row-inactive td   { opacity: 0.55; }
+.input-overdue          { border-color: var(--color-danger, #ef4444) !important; }
+.input-due-soon         { border-color: var(--color-warning, #f59e0b) !important; }
+
+/* ── Quote edit: supplier sourcing ── */
+.sourcing-box           { display: flex; flex-direction: column; gap: 3px; min-width: 160px; }
+.sourcing-cost          { font-weight: 600; font-size: 0.92em; }
+.sourcing-row           { display: flex; align-items: center; gap: 6px; font-size: 0.85em; white-space: nowrap; }
+.sourcing-row input     { margin: 0; padding: 3px 6px; }
+.sourcing-label         { overflow: hidden; text-overflow: ellipsis; }
+.w-60                   { width: 60px; }
+
+/* ── Inventory list: bulk selection ── */
+.select-cell            { width: 34px; text-align: center; }
+.select-cell input      { margin: 0; width: 16px; height: 16px; cursor: pointer; vertical-align: middle; }
+tr.row-selected td      { background: var(--color-accent-light, rgba(201, 168, 76, 0.12)) !important; }
+body.has-bulk-bar       { padding-bottom: 90px; }
+.bulk-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    max-width: calc(100vw - 32px);
+    padding: 10px 16px;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: var(--radius-lg, 12px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+}
+.bulk-bar.d-none        { display: none; }
+.bulk-count             { font-size: 0.9em; white-space: nowrap; }
+.bulk-sep               { width: 1px; height: 24px; background: var(--border-color, #ddd); }
+.bulk-group             { display: flex; align-items: center; gap: 4px; }
+.bulk-input             { margin: 0; padding: 5px 8px; font-size: 0.85em; max-width: 190px; }
+.bulk-input-sm          { max-width: 130px; }
+.bulk-input-xs          { max-width: 90px; }
+@media (max-width: 900px) {
+    .bulk-bar           { bottom: 0; left: 0; right: 0; transform: none; max-width: none; border-radius: 0; }
+    .bulk-sep           { display: none; }
+}
+
 /* ── Quote view: inline date editor ── */
 .edit-date-btn      { margin-left: 6px; padding: 3px 8px; font-size: 0.8em; }
 .edit-date-wrapper  { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }

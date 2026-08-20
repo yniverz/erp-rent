@@ -37,6 +37,43 @@
             <textarea name="description" placeholder="Sichtbar in der öffentlichen Storefront...">{{ item.description if item and item.description is not none else '' }}</textarea>
         </div>
 
+        <h3>Technische Daten &amp; Logistik</h3>
+        <p class="help-text mb-10">Optional. Hersteller, Modell, Gewicht, Leistung und Maße werden im Shop auf der Artikelseite angezeigt – Lagerort und Wiederbeschaffungswert sind nur intern sichtbar.</p>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Hersteller</label>
+                <input type="text" name="manufacturer" value="{{ item.manufacturer or '' if item else '' }}" placeholder="z.B. Shure">
+            </div>
+            <div class="form-group">
+                <label>Modell</label>
+                <input type="text" name="model_name" value="{{ item.model_name or '' if item else '' }}" placeholder="z.B. SM58">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Gewicht (kg)</label>
+                <input type="number" name="weight_kg" step="0.01" min="0" value="{{ item.weight_kg if item and item.weight_kg is not none else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Leistungsaufnahme (W)</label>
+                <input type="number" name="power_watts" step="1" min="0" value="{{ item.power_watts|int if item and item.power_watts is not none else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Maße (L × B × H)</label>
+                <input type="text" name="dimensions" value="{{ item.dimensions or '' if item else '' }}" placeholder="z.B. 60 × 40 × 30 cm">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Lagerort / Case</label>
+                <input type="text" name="storage_location" value="{{ item.storage_location or '' if item else '' }}" placeholder="z.B. Regal A3, Case 12">
+            </div>
+            <div class="form-group">
+                <label>Wiederbeschaffungswert (&euro;)</label>
+                <input type="number" name="replacement_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="pro Stück, für Versicherung/Schadensfall">
+            </div>
+        </div>
+
         <div class="form-group">
             <div class="checkbox-group">
                 <input type="checkbox" name="is_package" id="is_package" {{ 'checked' if item and item.is_package }} onchange="togglePackageFields()">
@@ -100,61 +137,60 @@
             <small class="help-text">Akzeptierte Formate: PNG, JPG, GIF, WebP (max. 16MB)</small>
         </div>
 
-        <!-- Ownership Section (hidden when is_package is checked) -->
+        <!-- Stock & Suppliers Section (hidden when is_package is checked) -->
         <div id="ownership-section">
-            <h3>Eigentümer / Anbieter</h3>
-            <p class="help-text mb-10">Pro Benutzer: Menge und optional einen externen Mietpreis (= externer Anbieter). Gesamtmenge ergibt sich aus der Summe.</p>
-            <table id="ownership-table" class="ownership-table">
+            <h3>Bestand &amp; Lieferanten</h3>
+            <div class="form-group">
+                <label>Eigener Bestand (Stück)</label>
+                <input type="number" name="stock_quantity" value="{{ item.stock_quantity if item else 0 }}" min="-1" class="w-100" title="-1 = unbegrenzt">
+                <small class="help-text">Firmeneigener Bestand. -1 = unbegrenzt.</small>
+            </div>
+
+            <h4 class="mt-16">Externe Anbieter (Lieferanten)</h4>
+            <p class="help-text mb-10">Optional: Lieferanten, die diesen Artikel liefern können – mit Menge und dem Preis/Tag, den der Lieferant berechnet. <a href="{{ url_for('admin.suppliers') }}" target="_blank">Lieferanten verwalten ↗</a></p>
+            {% if not suppliers %}
+                <p class="text-muted">Noch keine Lieferanten angelegt. <a href="{{ url_for('admin.suppliers') }}">Jetzt anlegen</a>.</p>
+            {% else %}
+            <table id="supply-table" class="ownership-table">
                 <thead>
                     <tr>
-                        <th>Benutzer</th>
+                        <th>Lieferant</th>
                         <th class="col-w-90">Menge</th>
-                        <th class="col-w-130">Ext. Preis/Tag (&euro;)</th>
-                        {% if effective_tax_mode == 'regular' %}<th class="col-w-80">Ext. B/N</th>{% endif %}
-                        <th class="col-w-130">Ansch.kosten (&euro;)</th>
+                        <th class="col-w-130">Preis/Tag (&euro;)</th>
                         {% if effective_tax_mode == 'regular' %}<th class="col-w-80">B/N</th>{% endif %}
                         <th class="col-w-30"></th>
                     </tr>
                 </thead>
-                <tbody id="ownership-container">
-                    {% if item and item.ownerships %}
-                        {% for o in item.ownerships %}
-                    <tr class="ownership-card" data-ownership-index="{{ loop.index0 }}">
+                <tbody id="supply-container">
+                    {% if item and item.supplies %}
+                        {% for s in item.supplies %}
+                    <tr class="supply-row">
                         <td>
-                            <input type="hidden" name="ownership_ids" value="{{ o.id }}">
-                            <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
-                                <option value="">— Benutzer wählen —</option>
-                                {% for u in users %}
-                                    <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}" {{ 'selected' if u.id == o.user_id }}>{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
+                            <select name="supply_supplier_ids" class="w-full">
+                                <option value="">— Lieferant wählen —</option>
+                                {% for sup in suppliers %}
+                                    <option value="{{ sup.id }}" {{ 'selected' if sup.id == s.supplier_id }}>{{ sup.name }}</option>
                                 {% endfor %}
                             </select>
                         </td>
-                        <td><input type="number" name="ownership_quantities" value="{{ o.quantity }}" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
-                        <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" value="{{ '%.2f'|format(o.external_price_per_day) if o.external_price_per_day is not none else '' }}" class="w-full" placeholder="leer = intern" {{ 'required' if o.user and o.user.is_external_user }}></td>
+                        <td><input type="number" name="supply_quantities" value="{{ s.quantity }}" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
+                        <td><input type="number" name="supply_prices" step="0.01" min="0" value="{{ '%.2f'|format(s.price_per_day) }}" class="w-full" required></td>
                         {% if effective_tax_mode == 'regular' %}
                         <td>
-                            <select name="ownership_ext_price_is_brutto" class="w-full">
-                                <option value="1" {{ 'selected' if o.external_price_is_brutto }}>Brutto</option>
-                                <option value="0" {{ 'selected' if not o.external_price_is_brutto }}>Netto</option>
+                            <select name="supply_price_is_brutto" class="w-full">
+                                <option value="1" {{ 'selected' if s.price_is_brutto }}>Brutto</option>
+                                <option value="0" {{ 'selected' if not s.price_is_brutto }}>Netto</option>
                             </select>
                         </td>
                         {% endif %}
-                        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" value="{{ '%.2f'|format(o.purchase_cost) if o.purchase_cost else '' }}" class="w-full" placeholder="0.00"></td>
-                        {% if effective_tax_mode == 'regular' %}
-                        <td>
-                            <select name="ownership_purchase_cost_is_brutto" class="w-full">
-                                <option value="1" {{ 'selected' if o.purchase_cost_is_brutto }}>Brutto</option>
-                                <option value="0" {{ 'selected' if not o.purchase_cost_is_brutto }}>Netto</option>
-                            </select>
-                        </td>
-                        {% endif %}
-                        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeOwnershipRow(this)">✕</button></td>
+                        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
                     </tr>
                         {% endfor %}
                     {% endif %}
                 </tbody>
             </table>
-            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addOwnershipRow()">+ Eigentümer hinzufügen</button>
+            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addSupplyRow()">+ Lieferant hinzufügen</button>
+            {% endif %}
         </div>
 
         <div class="d-flex gap-10 mt-24">
@@ -194,6 +230,111 @@
     </form>
 </div>
 
+{% if item and not item.is_package %}
+<div class="card mt-24" id="units">
+    <div class="d-flex gap-10 align-center">
+        <h3 class="m-0 flex-1">Einheiten &amp; Seriennummern</h3>
+        {% if item.units %}
+            <a href="{{ url_for('admin.unit_labels', item_id=item.id) }}" target="_blank" class="btn btn-sm btn-outline">QR-Etiketten drucken</a>
+        {% endif %}
+    </div>
+    <p class="help-text mb-10">Optional: einzelne Geräte mit Seriennummer, Status und Prüfterminen (z.B. DGUV V3) erfassen. Einheiten mit Status „Defekt“, „In Reparatur“ oder „Ausgemustert“ reduzieren automatisch die buchbare Menge.</p>
+
+    {% set active_units = item.units | rejectattr('status', 'equalto', 'retired') | list %}
+    {% if item.units and item.stock_quantity != -1 and active_units|length > item.stock_quantity %}
+        <div class="alert alert-warning">Es sind mehr aktive Einheiten ({{ active_units|length }}) erfasst als der eigene Bestand ({{ item.stock_quantity }}). Bitte Bestand oben prüfen.</div>
+    {% endif %}
+
+    {% if item.units %}
+    <table class="units-table">
+        <thead>
+            <tr>
+                <th class="col-w-80">Kennung</th>
+                <th>Seriennummer</th>
+                <th class="col-w-130">Status</th>
+                <th class="col-w-130">Kaufdatum</th>
+                <th class="col-w-130">Letzte Prüfung</th>
+                <th class="col-w-130">Nächste Prüfung</th>
+                <th>Notizen</th>
+                <th class="col-w-130"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in item.units %}
+            <tr id="unit-{{ u.id }}" class="{{ 'unit-row-inactive' if u.status == 'retired' }}">
+                <td><strong>{{ u.asset_tag or u.id }}</strong></td>
+                <td><input form="unit-form-{{ u.id }}" type="text" name="serial_number" value="{{ u.serial_number or '' }}" class="w-full" placeholder="—"></td>
+                <td>
+                    <select form="unit-form-{{ u.id }}" name="status" class="w-full unit-status-{{ u.status }}">
+                        {% for value, label in {'available': 'Einsatzbereit', 'defect': 'Defekt', 'repair': 'In Reparatur', 'retired': 'Ausgemustert'}.items() %}
+                            <option value="{{ value }}" {{ 'selected' if u.status == value }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td><input form="unit-form-{{ u.id }}" type="date" name="purchase_date" value="{{ u.purchase_date.isoformat() if u.purchase_date }}" class="w-full"></td>
+                <td><input form="unit-form-{{ u.id }}" type="date" name="last_inspection_date" value="{{ u.last_inspection_date.isoformat() if u.last_inspection_date }}" class="w-full"></td>
+                <td>
+                    <input form="unit-form-{{ u.id }}" type="date" name="next_inspection_date" value="{{ u.next_inspection_date.isoformat() if u.next_inspection_date }}" class="w-full {{ 'input-overdue' if u.inspection_overdue else ('input-due-soon' if u.inspection_due_soon) }}">
+                    {% if u.inspection_overdue %}<small class="text-danger">überfällig</small>{% elif u.inspection_due_soon %}<small class="text-warning-strong">bald fällig</small>{% endif %}
+                </td>
+                <td><input form="unit-form-{{ u.id }}" type="text" name="notes" value="{{ u.notes or '' }}" class="w-full" placeholder="—"></td>
+                <td class="unit-actions">
+                    <button form="unit-form-{{ u.id }}" type="submit" class="btn btn-sm btn-primary" title="Einheit speichern">✓</button>
+                    <a href="{{ url_for('admin.unit_label', unit_id=u.id) }}" target="_blank" class="btn btn-sm btn-outline" title="QR-Etikett drucken">QR</a>
+                    <button form="unit-del-{{ u.id }}" type="submit" class="btn btn-sm btn-danger" title="Einheit löschen">✕</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% for u in item.units %}
+        <form id="unit-form-{{ u.id }}" method="POST" action="{{ url_for('admin.unit_update', unit_id=u.id) }}"></form>
+        <form id="unit-del-{{ u.id }}" method="POST" action="{{ url_for('admin.unit_delete', unit_id=u.id) }}" onsubmit="return confirm('Einheit {{ u.asset_tag or u.id }} löschen?');"></form>
+    {% endfor %}
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin.unit_add', item_id=item.id) }}" class="d-flex gap-10 align-center mt-10 flex-wrap">
+        <input type="text" name="serial_number" placeholder="Seriennummer (optional)" class="min-w-180">
+        <input type="number" name="count" value="1" min="1" max="100" class="w-80" title="Anzahl neuer Einheiten">
+        <button type="submit" class="btn btn-sm btn-outline">+ Einheit(en) hinzufügen</button>
+    </form>
+</div>
+
+<div class="card mt-24" id="availability">
+    <h3>Verfügbarkeit &amp; Buchungen</h3>
+    <div class="d-flex gap-10 align-center flex-wrap mb-10">
+        <label class="m-0">Zeitraum prüfen:</label>
+        <input type="date" id="avail-start" class="dialog-input-sm">
+        <span>–</span>
+        <input type="date" id="avail-end" class="dialog-input-sm">
+        <button type="button" class="btn btn-sm btn-outline" onclick="checkAvailability()">Prüfen</button>
+        <span id="avail-result"></span>
+    </div>
+
+    {% if upcoming_bookings %}
+    <h4 class="mt-16 mb-6">Aktuelle &amp; kommende Buchungen</h4>
+    <table>
+        <thead>
+            <tr><th>Zeitraum</th><th>Kunde</th><th>Menge</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for b in upcoming_bookings %}
+            <tr>
+                <td>{{ b.quote.start_date.strftime('%d.%m.%Y') }} – {{ b.quote.end_date.strftime('%d.%m.%Y') }}</td>
+                <td>{{ b.quote.customer_name }}</td>
+                <td>{{ b.quantity }}</td>
+                <td><span class="badge badge-{{ b.quote.status }}">{{ b.quote.status }}</span></td>
+                <td><a href="{{ url_for('admin.quote_view', quote_id=b.quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">Keine aktuellen oder kommenden Buchungen für diesen Artikel.</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <script>
 var _isRegularTax = {{ 'true' if effective_tax_mode == 'regular' else 'false' }};
 var _taxRateUnit = _isRegularTax ? {{ tax_rate|default(19) }} : 0;
@@ -212,50 +353,26 @@ function togglePackageFields() {
     }
 }
 
-// ── Ownership row management ──
-function removeOwnershipRow(btn) {
-    btn.closest('tr').remove();
-}
-
-function addOwnershipRow() {
-    var tbody = document.getElementById('ownership-container');
+// ── Supply row management ──
+function addSupplyRow() {
+    var tbody = document.getElementById('supply-container');
     var tr = document.createElement('tr');
-    tr.className = 'ownership-card';
+    tr.className = 'supply-row';
     tr.innerHTML = `
         <td>
-            <input type="hidden" name="ownership_ids" value="">
-            <select name="ownership_user_ids" class="w-full" onchange="onOwnershipUserChange(this)">
-                <option value="">— Benutzer wählen —</option>
-                {% for u in users %}
-                <option value="{{ u.id }}" data-external="{{ '1' if u.is_external_user else '0' }}">{{ u.display_name or u.username }}{{ ' (extern)' if u.is_external_user }}</option>
+            <select name="supply_supplier_ids" class="w-full">
+                <option value="">— Lieferant wählen —</option>
+                {% for sup in suppliers %}
+                <option value="{{ sup.id }}">{{ sup.name }}</option>
                 {% endfor %}
             </select>
         </td>
-        <td><input type="number" name="ownership_quantities" value="0" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
-        <td><input type="number" name="ownership_ext_prices" step="0.01" min="0" class="w-full" placeholder="leer = intern"></td>
-        ${_isRegularTax ? '<td><select name="ownership_ext_price_is_brutto" class="w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
-        <td><input type="number" name="ownership_purchase_costs" step="0.01" min="0" class="w-full" placeholder="0.00"></td>
-        ${_isRegularTax ? '<td><select name="ownership_purchase_cost_is_brutto" class="w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeOwnershipRow(this)">✕</button></td>
+        <td><input type="number" name="supply_quantities" value="0" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
+        <td><input type="number" name="supply_prices" step="0.01" min="0" class="w-full" required></td>
+        ${_isRegularTax ? '<td><select name="supply_price_is_brutto" class="w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
+        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
     `;
     tbody.appendChild(tr);
-}
-
-// ── External user handling ──
-function onOwnershipUserChange(selectEl) {
-    var card = selectEl.closest('tr.ownership-card');
-    var extPriceInput = card.querySelector('input[name="ownership_ext_prices"]');
-    var selectedOption = selectEl.options[selectEl.selectedIndex];
-    var isExternal = selectedOption && selectedOption.getAttribute('data-external') === '1';
-    if (isExternal) {
-        extPriceInput.required = true;
-        extPriceInput.placeholder = 'Pflichtfeld';
-        extPriceInput.classList.toggle('border-danger', !extPriceInput.value);
-    } else {
-        extPriceInput.required = false;
-        extPriceInput.placeholder = 'leer = intern';
-        extPriceInput.classList.remove('border-danger');
-    }
 }
 
 // ── Component rows (packages) ──
@@ -280,10 +397,29 @@ function addComponentRow() {
 // ── Initialize on page load ──
 togglePackageFields();
 
-// Init existing ownership cards
-document.querySelectorAll('tr.ownership-card select[name="ownership_user_ids"]').forEach(function(sel) {
-    onOwnershipUserChange(sel);
-});
+{% if item and not item.is_package %}
+// ── Availability check ──
+function checkAvailability() {
+    var start = document.getElementById('avail-start').value;
+    var end = document.getElementById('avail-end').value;
+    var result = document.getElementById('avail-result');
+    if (!start || !end) { result.textContent = 'Bitte Zeitraum wählen.'; result.className = 'text-muted'; return; }
+    result.textContent = '…';
+    fetch('{{ url_for('admin.item_availability_api', item_id=item.id) }}?start=' + start + '&end=' + end)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { result.textContent = data.error; result.className = 'text-danger'; return; }
+            if (data.available === -1) {
+                result.textContent = 'Unbegrenzt verfügbar';
+                result.className = 'text-success font-bold';
+            } else {
+                result.textContent = data.available + ' von ' + (data.total === -1 ? '∞' : data.total) + ' verfügbar';
+                result.className = data.available > 0 ? 'text-success font-bold' : 'text-danger font-bold';
+            }
+        })
+        .catch(() => { result.textContent = 'Fehler bei der Abfrage.'; result.className = 'text-danger'; });
+}
+{% endif %}
 
 // Serialize form before submit
 document.querySelector('form').addEventListener('submit', function(e) {

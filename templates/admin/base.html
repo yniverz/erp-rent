@@ -26,11 +26,12 @@
             <div class="nav-links">
                 <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint == 'admin.dashboard' }}">Dashboard</a>
 
-                <div class="nav-dropdown {{ 'active' if 'inventory' in request.endpoint or request.endpoint == 'admin.categories' }}">
+                <div class="nav-dropdown {{ 'active' if 'inventory' in request.endpoint or 'supplier' in request.endpoint or request.endpoint == 'admin.categories' }}">
                     <button class="nav-dropdown-toggle">Katalog <span class="nav-arrow">▾</span></button>
                     <div class="nav-dropdown-menu">
                         <a href="{{ url_for('admin.inventory_list') }}" class="{{ 'active' if 'inventory' in request.endpoint }}">Inventar</a>
                         <a href="{{ url_for('admin.categories') }}" class="{{ 'active' if request.endpoint == 'admin.categories' }}">Kategorien</a>
+                        <a href="{{ url_for('admin.suppliers') }}" class="{{ 'active' if 'supplier' in request.endpoint }}">Lieferanten</a>
                     </div>
                 </div>
 
@@ -43,13 +44,6 @@
                             {% set new_count = inquiry_count if inquiry_count is defined else 0 %}
                         </a>
                         <a href="{{ url_for('admin.schedule') }}" class="{{ 'active' if request.endpoint == 'admin.schedule' }}">Zeitplan</a>
-                    </div>
-                </div>
-
-                <div class="nav-dropdown {{ 'active' if request.endpoint == 'admin.report_payoff' }}">
-                    <button class="nav-dropdown-toggle">Finanzen <span class="nav-arrow">▾</span></button>
-                    <div class="nav-dropdown-menu">
-                        <a href="{{ url_for('admin.report_payoff') }}" class="{{ 'active' if request.endpoint == 'admin.report_payoff' }}">Abrechnung</a>
                     </div>
                 </div>
 

@@ -161,6 +161,23 @@
         {% set package_items = inventory_items|selectattr('package_id')|list %}
         {% set package_ids = package_items|map(attribute='package_id')|unique|list %}
         {% if inventory_items %}
+        {% macro cost_cell(qi, cost_name) %}
+            {% if qi.item.supplies %}
+                <div class="sourcing-box">
+                    <div class="sourcing-cost" title="Durchschnittliche Kosten pro Stück/Tag aus der Beschaffung">Ø &euro;{{ "%.2f"|format(qi.rental_cost_per_day or 0) }}</div>
+                    <small class="text-muted d-block">Eigen: {{ '∞' if qi.item.stock_quantity == -1 else qi.item.stock_quantity }} St.</small>
+                    {% for s in qi.item.supplies_sorted %}
+                        {% set src = (qi.sources | selectattr('supplier_id', 'equalto', s.supplier_id) | list | first) %}
+                        <label class="sourcing-row" title="{{ s.supplier.name }}: max. {{ '∞' if s.quantity == -1 else s.quantity }} Stück zu €{{ '%.2f'|format(s.price_per_day) }}/Tag">
+                            <input type="number" name="src_{{ qi.id }}_{{ s.id }}" value="{{ src.quantity if src else 0 }}" min="0" {% if s.quantity != -1 %}max="{{ s.quantity }}"{% endif %} class="w-60">
+                            <span class="sourcing-label">{{ s.supplier.name }} <small class="text-muted">@{{ '%.2f'|format(s.price_per_day) }}€</small></span>
+                        </label>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <input type="number" name="{{ cost_name }}" value="{{ '%.2f'|format(qi.rental_cost_per_day or 0) }}" step="0.01" min="0" class="w-100">
+            {% endif %}
+        {% endmacro %}
         <form method="POST">
             <input type="hidden" name="action" value="update_items">
             <table>
@@ -170,7 +187,7 @@
                         <th>Verfügbar</th>
                         <th>Menge</th>
                         <th>Preis/Tag</th>
-                        <th>Kosten/Tag</th>
+                        <th>Kosten/Tag &amp; Beschaffung</th>
                         <th>Kein Rabatt</th>
                         <th>Summe</th>
                         <th></th>
@@ -206,7 +223,7 @@
                         <td><input type="number" name="quantity_pkg_{{ qi.id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
                         <td><input type="number" name="price_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
-                            <input type="number" name="cost_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
+                            {{ cost_cell(qi, 'cost_pkg_' ~ qi.id) }}
                         </td>
                         <td class="text-center">
                             <label class="exempt-label" title="Vom Rabatt ausgenommen">
@@ -240,7 +257,7 @@
                         <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
                         <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
                         <td>
-                            <input type="number" name="cost_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_cost_per_day) }}" step="0.01" min="0" class="w-100">
+                            {{ cost_cell(qi, 'cost_' ~ qi.item_id) }}
                         </td>
                         <td class="text-center">
                             <label class="exempt-label" title="Vom Rabatt ausgenommen">

@@ -2,7 +2,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from models import db, Item, Quote, QuoteItem, PackageComponent, ItemOwnership
+from models import db, Item, Quote, QuoteItem, PackageComponent
 from sqlalchemy import and_, or_
 
 
@@ -13,20 +13,8 @@ def get_upload_path():
     return base
 
 
-def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None):
-    """
-    Calculate available quantity for an item during a specific date range.
-    Considers overlapping quotes that are finalized or paid.
-    Also accounts for items consumed by package rentals (via quote_items with package_id).
-    Returns -1 for unlimited items (items with total_quantity = -1).
-    """
-    item = Item.query.get(item_id)
-    if not item:
-        return 0
-
-    if item.total_quantity == -1:
-        return -1
-
+def _booked_quantity(item_id, start_date, end_date, exclude_quote_id=None):
+    """Total quantity of an item booked in overlapping quotes."""
     overlapping_quotes = Quote.query.filter(
         Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
         Quote.start_date.isnot(None),
@@ -37,26 +25,53 @@ def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None)
             and_(Quote.start_date <= start_date, Quote.end_date >= end_date)
         )
     )
-
     if exclude_quote_id:
         overlapping_quotes = overlapping_quotes.filter(Quote.id != exclude_quote_id)
 
-    overlapping_quotes = overlapping_quotes.all()
-
-    booked_quantity = 0
-    for quote in overlapping_quotes:
+    booked = 0
+    for quote in overlapping_quotes.all():
         for quote_item in quote.quote_items:
             if quote_item.is_custom:
                 continue
-            # Direct booking of this item
-            if quote_item.item_id == item_id and not quote_item.package_id:
-                booked_quantity += quote_item.quantity
-            # This item booked as part of a package (expanded component)
-            elif quote_item.item_id == item_id and quote_item.package_id:
-                booked_quantity += quote_item.quantity
+            if quote_item.item_id == item_id:
+                booked += quote_item.quantity
+    return booked
 
-    available = item.total_quantity - booked_quantity
-    return max(0, available)
+
+def get_available_quantity(item_id, start_date, end_date, exclude_quote_id=None):
+    """
+    Calculate available quantity for an item during a specific date range.
+    Considers overlapping quotes, subtracts out-of-service units, and includes
+    supplier quantities on top of own stock.
+    Returns -1 for unlimited items.
+    """
+    item = Item.query.get(item_id)
+    if not item:
+        return 0
+
+    total = item.operational_quantity
+    if total == -1:
+        return -1
+
+    booked = _booked_quantity(item_id, start_date, end_date, exclude_quote_id)
+    return max(0, total - booked)
+
+
+def get_own_stock_available(item_id, start_date, end_date, exclude_quote_id=None):
+    """
+    Available quantity from OWN stock only (no suppliers) during a date range.
+    Bookings are counted against own stock first. Returns -1 for unlimited.
+    """
+    item = Item.query.get(item_id)
+    if not item:
+        return 0
+
+    own = item.operational_stock
+    if own == -1:
+        return -1
+
+    booked = _booked_quantity(item_id, start_date, end_date, exclude_quote_id)
+    return max(0, own - booked)
 
 
 def get_package_available_quantity(package_id, start_date, end_date, exclude_quote_id=None):

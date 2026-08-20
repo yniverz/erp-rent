@@ -110,7 +110,7 @@
     <h2>Artikel</h2>
     <table>
         <thead>
-            <tr><th>Artikel</th><th>Eigentümer</th><th>Menge</th><th>Preis/Tag</th><th>Kosten/Tag</th><th>Summe</th></tr>
+            <tr><th>Artikel</th><th>Beschaffung</th><th>Menge</th><th>Preis/Tag</th><th>Kosten/Tag</th><th>Summe</th></tr>
         </thead>
         <tbody>
             {% set package_items = quote.quote_items|selectattr('package_id')|list %}
@@ -139,7 +139,15 @@
                                 <br><small class="text-warning">Kein Rabatt</small>
                             {% endif %}
                         </td>
-                        <td>—</td>
+                        <td>
+                            {% if pqi.sources %}
+                                {% for src in pqi.sources %}
+                                    <small class="text-external">{{ src.quantity }}× {{ src.supplier_name }}</small>{% if not loop.last %}<br>{% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <small class="text-muted">Eigen</small>
+                            {% endif %}
+                        </td>
                         <td>{{ pqi.quantity }}</td>
                         <td>&euro;{{ "%.2f"|format(pqi.rental_price_per_day) }}</td>
                         <td>
@@ -168,7 +176,17 @@
                             <br><small class="text-warning">Kein Rabatt</small>
                         {% endif %}
                     </td>
-                    <td>—</td>
+                    <td>
+                        {% if qi.is_custom %}
+                            <small class="text-muted">—</small>
+                        {% elif qi.sources %}
+                            {% for src in qi.sources %}
+                                <small class="text-external">{{ src.quantity }}× {{ src.supplier_name }}</small>{% if not loop.last %}<br>{% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <small class="text-muted">Eigen</small>
+                        {% endif %}
+                    </td>
                     <td>{{ qi.quantity }}</td>
                     <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
                     <td>
@@ -231,155 +249,6 @@
         {% endif %}
     </div>
 </div>
-
-<!-- External Expenses / Ausgaben -->
-{% set expense_items = [] %}
-{% for qi in quote.quote_items if qi.expense %}
-    {% if expense_items.append(qi) %}{% endif %}
-{% endfor %}
-
-{% if quote.status in ['finalized', 'performed', 'paid'] and expense_items|length > 0 %}
-<div class="card">
-    <h2>Externe Ausgaben</h2>
-    <p class="text-muted mb-14">Externe Kosten für dieses Angebot. Markiere jede Ausgabe einzeln als bezahlt – nur bezahlte Ausgaben erscheinen in der GuV.</p>
-
-    {% set ns = namespace(total_ext_cost=0, total_paid=0) %}
-    {% for qi in expense_items %}
-        {% set exp = qi.expense %}
-        {% set ns.total_ext_cost = ns.total_ext_cost + exp.amount %}
-        {% if exp.paid %}{% set ns.total_paid = ns.total_paid + exp.amount %}{% endif %}
-    <div class="expense-card">
-        <div class="expense-card-header">
-            <div>
-                <strong>{{ qi.display_name }}</strong>
-                <span class="text-muted expense-card-meta">({{ qi.quantity }}× &euro;{{ "%.2f"|format(qi.rental_cost_per_day) }}/Tag × {{ qi.quote.calculate_rental_days() }} Tage)</span>
-            </div>
-            <div class="expense-card-amount">
-                <strong>&euro;{{ "%.2f"|format(exp.amount) }}</strong>
-                {% if exp.paid %}
-                    <span class="badge badge-paid">Bezahlt{{ ' am ' + exp.paid_at.strftime('%d.%m.%Y') if exp.paid_at }}</span>
-                {% else %}
-                    <span class="badge badge-draft">Unbezahlt</span>
-                {% endif %}
-            </div>
-        </div>
-
-        {% if exp.notes %}
-        <p class="text-muted expense-card-notes">{{ exp.notes }}</p>
-        {% endif %}
-
-        <!-- Documents -->
-        {% if exp.documents %}
-        <div class="expense-docs-section">
-            <small class="text-muted"><strong>Dokumente:</strong></small>
-            <div id="expense-docs-{{ exp.id }}" class="expense-docs-tags">
-                {% for doc in exp.documents %}
-                <div class="expense-doc-tag" id="expense-doc-{{ doc.id }}">
-                    <a href="{{ url_for('admin.expense_download_document', doc_id=doc.id) }}" title="Herunterladen">📄 {{ doc.original_name }}</a>
-                    <button type="button" onclick="deleteExpenseDoc({{ doc.id }})" class="expense-doc-delete-btn" title="Löschen">&times;</button>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Actions -->
-        <div class="expense-actions">
-            {% if not exp.paid %}
-            <button type="button" class="btn btn-sm btn-success" onclick="showExpensePayDialog({{ exp.id }})">Als bezahlt markieren</button>
-            {% else %}
-            <form method="POST" action="{{ url_for('admin.expense_mark_unpaid', expense_id=exp.id) }}" class="d-inline">
-                <button type="submit" class="btn btn-sm btn-warning">Zahlung aufheben</button>
-            </form>
-            {% endif %}
-
-            <!-- File upload -->
-            <label class="btn btn-sm btn-outline upload-label">
-                📎 Dokument hochladen
-                <input type="file" class="upload-input-hidden" onchange="uploadExpenseDoc({{ exp.id }}, this)">
-            </label>
-        </div>
-
-        <!-- Pay dialog (hidden) -->
-        {% if not exp.paid %}
-        <div id="pay-expense-{{ exp.id }}" class="expense-pay-dialog d-none">
-            <form method="POST" action="{{ url_for('admin.expense_mark_paid', expense_id=exp.id) }}" class="expense-pay-form">
-                <label class="expense-pay-label">Bezahldatum:</label>
-                <input type="date" name="paid_at" value="{{ exp.paid_at.strftime('%Y-%m-%d') if exp.paid_at else today }}" class="dialog-input-sm">
-                <input type="text" name="notes" placeholder="Notiz (optional)" class="dialog-input-notes">
-                <button type="submit" class="btn btn-sm btn-success">Bestätigen</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="this.closest('[id^=pay-expense]').classList.add('d-none')">Abbrechen</button>
-            </form>
-        </div>
-        {% endif %}
-    </div>
-    {% endfor %}
-
-    <div class="price-summary mt-10">
-        <div class="price-row">
-            <span>Externe Kosten gesamt</span>
-            <span>&euro;{{ "%.2f"|format(ns.total_ext_cost) }}</span>
-        </div>
-        <div class="price-row">
-            <span>Davon bezahlt</span>
-            <span>&euro;{{ "%.2f"|format(ns.total_paid) }}</span>
-        </div>
-        <div class="price-row">
-            <span>Noch offen</span>
-            <span>&euro;{{ "%.2f"|format(ns.total_ext_cost - ns.total_paid) }}</span>
-        </div>
-        <div class="price-row total">
-            <span>Netto nach ext. Kosten</span>
-            <span>&euro;{{ "%.2f"|format(quote.total - ns.total_ext_cost) }}</span>
-        </div>
-    </div>
-</div>
-
-<script>
-function uploadExpenseDoc(expenseId, input) {
-    if (!input.files || !input.files[0]) return;
-    var formData = new FormData();
-    formData.append('document', input.files[0]);
-    fetch('/admin/expense/' + expenseId + '/upload-document', {
-        method: 'POST',
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.error) { alert(data.error); return; }
-        var container = document.getElementById('expense-docs-' + expenseId);
-        if (!container) {
-            // Create container if it doesn't exist
-            location.reload();
-            return;
-        }
-        var div = document.createElement('div');
-        div.className = 'expense-doc-tag';
-        div.id = 'expense-doc-' + data.id;
-        div.innerHTML = '<a href="' + data.download_url + '" title="Herunterladen">📄 ' + data.original_name + '</a>' +
-            '<button type="button" onclick="deleteExpenseDoc(' + data.id + ')" class="expense-doc-delete-btn" title="Löschen">&times;</button>';
-        container.appendChild(div);
-        input.value = '';
-    })
-    .catch(err => { alert('Upload fehlgeschlagen: ' + err); input.value = ''; });
-}
-
-function deleteExpenseDoc(docId) {
-    if (!confirm('Dokument löschen?')) return;
-    fetch('/admin/expense/document/' + docId + '/delete', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            var el = document.getElementById('expense-doc-' + docId);
-            if (el) el.remove();
-        } else {
-            alert(data.error || 'Fehler beim Löschen');
-        }
-    })
-    .catch(err => alert('Fehler: ' + err));
-}
-</script>
-{% endif %}
 
 <!-- Revenue Breakdown -->
 {% if quote.status == 'paid' %}
@@ -543,10 +412,6 @@ function showPayDialog() {
 
 function showPerformDialog() {
     document.getElementById('perform-dialog').classList.remove('d-none');
-}
-
-function showExpensePayDialog(expenseId) {
-    document.getElementById('pay-expense-' + expenseId).classList.remove('d-none');
 }
 
 function submitCustomPayDate() {

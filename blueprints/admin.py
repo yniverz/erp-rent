@@ -1,11 +1,10 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemOwnership, QuoteItemExpense, QuoteItemExpenseDocument
-from helpers import get_available_quantity, get_package_available_quantity, get_upload_path, allowed_image_file, allowed_document_file
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource
+from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
-from werkzeug.utils import secure_filename
 import os
 import uuid
 
@@ -311,7 +310,7 @@ def admin_required(f):
 
 
 def can_edit_or_admin(f):
-    """Decorator: user must be admin or have can_edit_all, or own the resource"""
+    """Decorator: any logged-in staff user"""
     @wraps(f)
     @login_required
     def decorated_function(*args, **kwargs):
@@ -423,14 +422,142 @@ def categories():
 @admin_bp.route('/inventory')
 @login_required
 def inventory_list():
-    """List all inventory items"""
+    """List all inventory items with filters, stats and today's availability"""
+    from datetime import date as _date
+    from sqlalchemy import and_, or_
+
+    filter_category = request.args.get('category', type=int)
+    filter_supplier = request.args.get('supplier', type=int)
+    filter_status = request.args.get('status', '').strip()
+
     items = Item.query.all()
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
-    # Build a mapping from category_id -> tree position for hierarchical sorting
+    suppliers = Supplier.query.order_by(Supplier.name).all()
+
+    # ── Stats (computed over ALL items, before filtering) ──
+    total_units = sum(i.total_quantity for i in items if not i.is_package and i.total_quantity > 0)
+    defect_units = sum(i.defect_count for i in items)
+    inspection_due = sum(len(i.inspection_due_units()) for i in items)
+    hidden_items = sum(1 for i in items if not i.visible_in_shop)
+    stats = {
+        'total_items': len(items),
+        'total_units': total_units,
+        'defect_units': defect_units,
+        'inspection_due': inspection_due,
+        'hidden_items': hidden_items,
+    }
+
+    # ── Booked quantities for today (single query pass) ──
+    today = datetime.combine(_date.today(), datetime.min.time())
+    overlapping_quotes = Quote.query.filter(
+        Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
+        Quote.start_date.isnot(None),
+        Quote.end_date.isnot(None),
+        Quote.start_date <= today,
+        Quote.end_date >= today,
+    ).all()
+    booked_today = {}
+    for q in overlapping_quotes:
+        for qi in q.quote_items:
+            if qi.is_custom or not qi.item_id:
+                continue
+            booked_today[qi.item_id] = booked_today.get(qi.item_id, 0) + qi.quantity
+
+    available_today = {}
+    for item in items:
+        if item.is_package:
+            continue
+        op = item.operational_quantity
+        if op == -1:
+            available_today[item.id] = -1
+        else:
+            available_today[item.id] = max(0, op - booked_today.get(item.id, 0))
+
+    # ── Filters ──
+    if filter_category:
+        cat = next((c for c in categories if c.id == filter_category), None)
+        if cat:
+            cat_ids = cat.all_descendant_ids()
+            items = [i for i in items
+                     if i.category_id in cat_ids
+                     or any(sc.id in cat_ids for sc in i.subcategories)]
+    if filter_supplier:
+        items = [i for i in items if any(s.supplier_id == filter_supplier for s in i.supplies)]
+    if filter_status == 'defect':
+        items = [i for i in items if i.defect_count > 0]
+    elif filter_status == 'inspection_due':
+        items = [i for i in items if i.inspection_due_units()]
+    elif filter_status == 'hidden':
+        items = [i for i in items if not i.visible_in_shop]
+    elif filter_status == 'external':
+        items = [i for i in items if i.is_external]
+    elif filter_status == 'packages':
+        items = [i for i in items if i.is_package]
+    elif filter_status == 'unavailable':
+        items = [i for i in items if not i.is_package and available_today.get(i.id) == 0]
+
+    # ── Hierarchical category sort ──
     cat_order = {cat.id: idx for idx, (cat, depth) in enumerate(category_tree)}
     items.sort(key=lambda item: (cat_order.get(item.category_id, len(cat_order)), item.name))
-    return render_template('admin/inventory_list.html', items=items, categories=categories, category_tree=category_tree)
+
+    return render_template('admin/inventory_list.html',
+                           items=items,
+                           categories=categories,
+                           category_tree=category_tree,
+                           suppliers=suppliers,
+                           stats=stats,
+                           available_today=available_today,
+                           filter_category=filter_category,
+                           filter_supplier=filter_supplier,
+                           filter_status=filter_status)
+
+
+# ============= INVENTORY =============
+
+def _parse_float_or_none(val):
+    """Parse a form value to float, accepting comma decimals. Empty -> None."""
+    s = (val or '').strip().replace(',', '.')
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _apply_item_specs(item, form):
+    """Apply technical spec / logistics fields from a form to an item."""
+    item.manufacturer = form.get('manufacturer', '').strip() or None
+    item.model_name = form.get('model_name', '').strip() or None
+    item.weight_kg = _parse_float_or_none(form.get('weight_kg'))
+    item.power_watts = _parse_float_or_none(form.get('power_watts'))
+    item.dimensions = form.get('dimensions', '').strip() or None
+    item.storage_location = form.get('storage_location', '').strip() or None
+    item.replacement_value = _parse_float_or_none(form.get('replacement_value'))
+
+
+def _parse_supplies_form(form):
+    """Parse supplier offer rows from the inventory form.
+    Returns list of dicts. Raises ValueError on invalid input."""
+    supplier_ids = form.getlist('supply_supplier_ids', type=int)
+    quantities = form.getlist('supply_quantities', type=int)
+    prices = form.getlist('supply_prices')
+    brutto_flags = form.getlist('supply_price_is_brutto')
+    result = []
+    seen = set()
+    for i, sid in enumerate(supplier_ids):
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
+        qty = quantities[i] if i < len(quantities) else 0
+        price = _parse_float_or_none(prices[i] if i < len(prices) else '')
+        if price is None:
+            raise ValueError('Jeder Lieferanten-Eintrag benötigt einen Preis/Tag.')
+        is_brutto = (brutto_flags[i] == '1') if i < len(brutto_flags) else True
+        result.append({'supplier_id': sid, 'quantity': qty,
+                       'price_per_day': round(price, 2), 'price_is_brutto': is_brutto})
+    return result
 
 
 @admin_bp.route('/inventory/add', methods=['GET', 'POST'])
@@ -439,7 +566,7 @@ def inventory_add():
     """Add new inventory item"""
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
-    users = User.query.filter_by(active=True).order_by(User.username).all()
+    suppliers = Supplier.query.order_by(Supplier.name).all()
 
     if request.method == 'POST':
         try:
@@ -451,6 +578,9 @@ def inventory_add():
             visible = request.form.get('visible_in_shop') == 'on'
             is_package = request.form.get('is_package') == 'on'
             show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
+            stock_quantity = request.form.get('stock_quantity', type=int)
+            if stock_quantity is None or stock_quantity < -1:
+                stock_quantity = 0
 
             # Handle image upload
             image_filename = None
@@ -470,8 +600,10 @@ def inventory_add():
                 visible_in_shop=visible,
                 image_filename=image_filename,
                 is_package=is_package,
-                show_bundle_discount=show_bundle_discount
+                show_bundle_discount=show_bundle_discount,
+                stock_quantity=0 if is_package else stock_quantity,
             )
+            _apply_item_specs(item, request.form)
 
             # Handle subcategories
             subcategory_ids = request.form.getlist('subcategory_ids', type=int)
@@ -493,51 +625,9 @@ def inventory_add():
                         )
                         db.session.add(pc)
             else:
-                # Handle ownership entries
-                ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
-                ownership_quantities = request.form.getlist('ownership_quantities', type=int)
-                ownership_ext_prices = request.form.getlist('ownership_ext_prices')
-                ownership_ext_price_is_brutto = request.form.getlist('ownership_ext_price_is_brutto')
-                ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
-                ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
-
-                for i, uid in enumerate(ownership_user_ids):
-                    if not uid:
-                        continue
-                    qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
-                    ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
-                    purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
-                    ext_price = float(ext_price_str) if ext_price_str.strip() else None
-                    purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
-
-                    # Brutto/Netto flags (default to brutto=True)
-                    ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
-                    pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
-                    ext_is_brutto = ext_is_brutto_str == '1'
-                    pc_is_brutto = pc_is_brutto_str == '1'
-
-                    # External users must always have an external price
-                    owner_user = User.query.get(uid)
-                    if owner_user and owner_user.is_external_user and ext_price is None:
-                        flash(f'Externer Benutzer "{owner_user.display_name or owner_user.username}" erfordert einen externen Preis/Tag.', 'error')
-                        db.session.rollback()
-                        return render_template('admin/inventory_form.html',
-                                               item=None,
-                                               categories=categories,
-                                               category_tree=category_tree,
-                                               users=users,
-                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
-
-                    ownership = ItemOwnership(
-                        item_id=item.id,
-                        user_id=uid,
-                        quantity=qty,
-                        external_price_per_day=ext_price,
-                        external_price_is_brutto=ext_is_brutto,
-                        purchase_cost=purchase_cost,
-                        purchase_cost_is_brutto=pc_is_brutto,
-                    )
-                    db.session.add(ownership)
+                # Supplier offers
+                for s in _parse_supplies_form(request.form):
+                    db.session.add(ItemSupply(item_id=item.id, **s))
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -551,7 +641,7 @@ def inventory_add():
                            item=None,
                            categories=categories,
                            category_tree=category_tree,
-                           users=users,
+                           suppliers=suppliers,
                            all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
 
 
@@ -562,7 +652,7 @@ def inventory_edit(item_id):
     item = Item.query.get_or_404(item_id)
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
-    users = User.query.filter_by(active=True).order_by(User.username).all()
+    suppliers = Supplier.query.order_by(Supplier.name).all()
 
     if not current_user.can_edit_item(item):
         flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
@@ -578,11 +668,12 @@ def inventory_edit(item_id):
             item.visible_in_shop = request.form.get('visible_in_shop') == 'on'
             item.is_package = request.form.get('is_package') == 'on'
             item.show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
+            _apply_item_specs(item, request.form)
 
             if item.is_package:
-                # Clear ownerships for packages
-                for old_o in ItemOwnership.query.filter_by(item_id=item.id).all():
-                    db.session.delete(old_o)
+                # Packages carry no stock or supplier offers
+                item.stock_quantity = 0
+                ItemSupply.query.filter_by(item_id=item.id).delete()
 
                 # Update package components
                 PackageComponent.query.filter_by(package_id=item.id).delete()
@@ -597,86 +688,16 @@ def inventory_edit(item_id):
                         )
                         db.session.add(pc)
             else:
-                # Update ownership entries
-                ownership_ids = request.form.getlist('ownership_ids')
-                ownership_user_ids = request.form.getlist('ownership_user_ids', type=int)
-                ownership_quantities = request.form.getlist('ownership_quantities', type=int)
-                ownership_ext_prices = request.form.getlist('ownership_ext_prices')
-                ownership_ext_price_is_brutto = request.form.getlist('ownership_ext_price_is_brutto')
-                ownership_purchase_costs = request.form.getlist('ownership_purchase_costs')
-                ownership_purchase_cost_is_brutto = request.form.getlist('ownership_purchase_cost_is_brutto')
+                # Own stock
+                stock_quantity = request.form.get('stock_quantity', type=int)
+                if stock_quantity is None or stock_quantity < -1:
+                    stock_quantity = 0
+                item.stock_quantity = stock_quantity
 
-                # Collect existing ownership IDs BEFORE processing
-                existing_ownership_ids = {o.id for o in ItemOwnership.query.filter_by(item_id=item.id).all()}
-                submitted_ids = set()
-                for i, uid in enumerate(ownership_user_ids):
-                    if not uid:
-                        continue
-                    qty = ownership_quantities[i] if i < len(ownership_quantities) else 0
-                    ext_price_str = ownership_ext_prices[i] if i < len(ownership_ext_prices) else ''
-                    purchase_cost_str = ownership_purchase_costs[i] if i < len(ownership_purchase_costs) else ''
-                    ext_price = float(ext_price_str) if ext_price_str.strip() else None
-                    purchase_cost = float(purchase_cost_str) if purchase_cost_str.strip() else 0
-
-                    # Brutto/Netto flags (default to brutto=True)
-                    ext_is_brutto_str = ownership_ext_price_is_brutto[i] if i < len(ownership_ext_price_is_brutto) else '1'
-                    pc_is_brutto_str = ownership_purchase_cost_is_brutto[i] if i < len(ownership_purchase_cost_is_brutto) else '1'
-                    ext_is_brutto = ext_is_brutto_str == '1'
-                    pc_is_brutto = pc_is_brutto_str == '1'
-
-                    # External users must always have an external price
-                    owner_user = User.query.get(uid)
-                    if owner_user and owner_user.is_external_user and ext_price is None:
-                        flash(f'Externer Benutzer "{owner_user.display_name or owner_user.username}" erfordert einen externen Preis/Tag.', 'error')
-                        db.session.rollback()
-                        return render_template('admin/inventory_form.html',
-                                               item=item,
-                                               categories=categories,
-                                               category_tree=category_tree,
-                                               users=users,
-                                               all_items=Item.query.filter_by(is_package=False).order_by(Item.name).all())
-
-                    oid_str = ownership_ids[i] if i < len(ownership_ids) else ''
-                    oid = int(oid_str) if oid_str.strip() else None
-
-                    if oid:
-                        # Update existing ownership row
-                        ownership = ItemOwnership.query.get(oid)
-                        if ownership and ownership.item_id == item.id:
-                            ownership.user_id = uid
-                            ownership.quantity = qty
-                            ownership.external_price_per_day = ext_price
-                            ownership.external_price_is_brutto = ext_is_brutto
-                            ownership.purchase_cost = purchase_cost
-                            ownership.purchase_cost_is_brutto = pc_is_brutto
-                            submitted_ids.add(oid)
-                        else:
-                            # ID invalid, create new
-                            ownership = ItemOwnership(
-                                item_id=item.id, user_id=uid, quantity=qty,
-                                external_price_per_day=ext_price,
-                                external_price_is_brutto=ext_is_brutto,
-                                purchase_cost=purchase_cost,
-                                purchase_cost_is_brutto=pc_is_brutto,
-                            )
-                            db.session.add(ownership)
-                    else:
-                        ownership = ItemOwnership(
-                            item_id=item.id, user_id=uid, quantity=qty,
-                            external_price_per_day=ext_price,
-                            external_price_is_brutto=ext_is_brutto,
-                            purchase_cost=purchase_cost,
-                            purchase_cost_is_brutto=pc_is_brutto,
-                        )
-                        db.session.add(ownership)
-
-                    db.session.flush()
-
-                # Delete removed ownership rows
-                for removed_id in existing_ownership_ids - submitted_ids:
-                    old_o = ItemOwnership.query.get(removed_id)
-                    if old_o:
-                        db.session.delete(old_o)
+                # Supplier offers: rebuild from form
+                ItemSupply.query.filter_by(item_id=item.id).delete()
+                for s in _parse_supplies_form(request.form):
+                    db.session.add(ItemSupply(item_id=item.id, **s))
 
             # Handle image upload
             if 'image' in request.files:
@@ -710,11 +731,27 @@ def inventory_edit(item_id):
             db.session.rollback()
             flash(f'Fehler beim Aktualisieren des Artikels: {str(e)}', 'error')
 
+    # Upcoming / current bookings for this item (availability overview)
+    from datetime import date as _date
+    _today = datetime.combine(_date.today(), datetime.min.time())
+    upcoming_bookings = []
+    if not item.is_package:
+        booking_rows = db.session.query(QuoteItem, Quote).join(Quote).filter(
+            QuoteItem.item_id == item.id,
+            QuoteItem.is_custom == False,
+            Quote.start_date.isnot(None),
+            Quote.end_date.isnot(None),
+            Quote.end_date >= _today,
+            Quote.status.in_(['draft', 'finalized', 'performed', 'paid'])
+        ).order_by(Quote.start_date).all()
+        upcoming_bookings = [{'quote': q, 'quantity': qi.quantity} for qi, q in booking_rows]
+
     return render_template('admin/inventory_form.html',
                            item=item,
                            categories=categories,
                            category_tree=category_tree,
-                           users=users,
+                           suppliers=suppliers,
+                           upcoming_bookings=upcoming_bookings,
                            all_items=Item.query.filter(Item.is_package == False, Item.id != item.id).order_by(Item.name).all())
 
 
@@ -747,112 +784,346 @@ def inventory_delete(item_id):
     return redirect(url_for('admin.inventory_list'))
 
 
-# ============= QUOTE ITEM EXPENSES =============
-
-@admin_bp.route('/expense/<int:expense_id>/mark_paid', methods=['POST'])
+@admin_bp.route('/inventory/bulk', methods=['POST'])
 @login_required
-def expense_mark_paid(expense_id):
-    """Mark an external cost expense as paid"""
-    expense = QuoteItemExpense.query.get_or_404(expense_id)
+def inventory_bulk():
+    """Apply a bulk action to multiple inventory items"""
+    def _back():
+        ref = request.referrer
+        if ref and ref.startswith(request.host_url):
+            return redirect(ref)
+        return redirect(url_for('admin.inventory_list'))
+
+    action = request.form.get('action', '').strip()
+    item_ids = request.form.getlist('item_ids', type=int)
+
+    if not item_ids:
+        flash('Keine Artikel ausgewählt.', 'error')
+        return _back()
+
+    items = Item.query.filter(Item.id.in_(item_ids)).all()
+    editable = [i for i in items if current_user.can_edit_item(i)]
+    skipped = len(items) - len(editable)
+
     try:
-        paid_date_str = request.form.get('paid_at', '').strip()
-        if paid_date_str:
-            expense.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
+        count = len(editable)
+        if action == 'show_in_shop':
+            for i in editable:
+                i.visible_in_shop = True
+            msg = f'{count} Artikel im Shop sichtbar gemacht.'
+        elif action == 'hide_from_shop':
+            for i in editable:
+                i.visible_in_shop = False
+            msg = f'{count} Artikel im Shop ausgeblendet.'
+        elif action == 'show_price':
+            for i in editable:
+                i.show_price_publicly = True
+            msg = f'Preis wird bei {count} Artikeln öffentlich angezeigt.'
+        elif action == 'hide_price':
+            for i in editable:
+                i.show_price_publicly = False
+            msg = f'{count} Artikel auf „Preis auf Anfrage" gesetzt.'
+        elif action == 'set_category':
+            category_id = request.form.get('bulk_category_id', type=int) or None
+            if category_id and not Category.query.get(category_id):
+                raise ValueError('Kategorie nicht gefunden.')
+            for i in editable:
+                i.category_id = category_id
+            cat_name = Category.query.get(category_id).name if category_id else 'Ohne Kategorie'
+            msg = f'{count} Artikel nach „{cat_name}" verschoben.'
+        elif action == 'set_storage':
+            location = request.form.get('bulk_storage_location', '').strip() or None
+            for i in editable:
+                i.storage_location = location
+            msg = f'Lagerort für {count} Artikel {"gesetzt" if location else "entfernt"}.'
+        elif action == 'adjust_price':
+            mode = request.form.get('bulk_price_mode', 'percent')
+            value = _parse_float_or_none(request.form.get('bulk_price_value'))
+            if value is None:
+                raise ValueError('Bitte einen Wert für die Preisanpassung angeben.')
+            for i in editable:
+                if mode == 'set':
+                    i.default_rental_price_per_day = round(max(0, value), 2)
+                else:  # percent
+                    i.default_rental_price_per_day = round(
+                        max(0, i.default_rental_price_per_day * (1 + value / 100)), 2)
+            msg = (f'Preis bei {count} Artikeln auf €{value:.2f} gesetzt.' if mode == 'set'
+                   else f'Preise bei {count} Artikeln um {value:+g}% angepasst.')
+        elif action == 'delete':
+            for i in editable:
+                if i.image_filename:
+                    old_path = os.path.join(get_upload_path(), i.image_filename)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                PackageComponent.query.filter_by(component_item_id=i.id).delete()
+                db.session.delete(i)
+            msg = f'{count} Artikel gelöscht.'
         else:
-            expense.paid_at = datetime.utcnow()
-        expense.paid = True
-        notes = request.form.get('notes', '').strip()
-        if notes:
-            expense.notes = notes
+            flash('Unbekannte Aktion.', 'error')
+            return _back()
 
         db.session.commit()
-
-        flash('Ausgabe als bezahlt markiert.', 'success')
+        if skipped:
+            msg += f' ({skipped} ohne Berechtigung übersprungen.)'
+        flash(msg, 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
+        flash(f'Fehler bei der Massenaktion: {str(e)}', 'error')
+
+    return _back()
 
 
-@admin_bp.route('/expense/<int:expense_id>/mark_unpaid', methods=['POST'])
-@login_required
-def expense_mark_unpaid(expense_id):
-    """Mark an external cost expense as unpaid"""
-    expense = QuoteItemExpense.query.get_or_404(expense_id)
+# ============= ITEM UNITS (serial number / asset tracking) =============
+
+def _parse_date_or_none(val):
+    """Parse a YYYY-MM-DD form value to a date. Empty/invalid -> None."""
+    s = (val or '').strip()
+    if not s:
+        return None
     try:
-        expense.paid = False
-        # Keep paid_at so it can be prefilled when re-marking as paid
+        return datetime.strptime(s, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+@admin_bp.route('/inventory/<int:item_id>/units/add', methods=['POST'])
+@login_required
+def unit_add(item_id):
+    """Add one or more physical units to an item"""
+    item = Item.query.get_or_404(item_id)
+    if not current_user.can_edit_item(item):
+        flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
+        return redirect(url_for('admin.inventory_list'))
+
+    try:
+        count = max(1, min(request.form.get('count', 1, type=int) or 1, 100))
+        serial = request.form.get('serial_number', '').strip() or None
+        for _ in range(count):
+            unit = ItemUnit(
+                item_id=item.id,
+                serial_number=serial if count == 1 else None,
+                status=ItemUnit.STATUS_AVAILABLE,
+            )
+            db.session.add(unit)
+            db.session.flush()
+            unit.generate_asset_tag()
         db.session.commit()
-        flash('Ausgabe als unbezahlt markiert.', 'success')
+        flash(f'{count} Einheit(en) hinzugefügt.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=expense.quote_item.quote_id))
+        flash(f'Fehler beim Hinzufügen der Einheit: {str(e)}', 'error')
+
+    return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
 
 
-@admin_bp.route('/expense/<int:expense_id>/upload-document', methods=['POST'])
+@admin_bp.route('/inventory/units/<int:unit_id>/update', methods=['POST'])
 @login_required
-def expense_upload_document(expense_id):
-    """Upload a document (invoice, receipt) to an expense entry (AJAX)"""
-    expense = QuoteItemExpense.query.get_or_404(expense_id)
+def unit_update(unit_id):
+    """Update a single unit (serial, status, dates, notes)"""
+    unit = ItemUnit.query.get_or_404(unit_id)
+    item = unit.item
+    if not current_user.can_edit_item(item):
+        flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
+        return redirect(url_for('admin.inventory_list'))
 
-    if 'document' not in request.files:
-        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+    try:
+        unit.serial_number = request.form.get('serial_number', '').strip() or None
+        status = request.form.get('status', '').strip()
+        if status in ItemUnit.STATUS_LABELS:
+            unit.status = status
+        unit.purchase_date = _parse_date_or_none(request.form.get('purchase_date'))
+        unit.last_inspection_date = _parse_date_or_none(request.form.get('last_inspection_date'))
+        unit.next_inspection_date = _parse_date_or_none(request.form.get('next_inspection_date'))
+        unit.notes = request.form.get('notes', '').strip() or None
+        db.session.commit()
+        flash(f'Einheit {unit.asset_tag or unit.id} aktualisiert.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler beim Aktualisieren der Einheit: {str(e)}', 'error')
 
-    file = request.files['document']
-    if not file or not file.filename:
-        return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+    return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
 
-    if not allowed_document_file(file.filename):
-        return jsonify({'error': 'Dateityp nicht erlaubt.'}), 400
 
-    original_name = secure_filename(file.filename)
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    stored_name = f"{uuid.uuid4().hex}.{ext}"
-    file.save(os.path.join(get_upload_path(), stored_name))
+@admin_bp.route('/inventory/units/<int:unit_id>/delete', methods=['POST'])
+@login_required
+def unit_delete(unit_id):
+    """Delete a unit"""
+    unit = ItemUnit.query.get_or_404(unit_id)
+    item = unit.item
+    if not current_user.can_edit_item(item):
+        flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
+        return redirect(url_for('admin.inventory_list'))
 
-    doc = QuoteItemExpenseDocument(
-        expense_id=expense.id,
-        filename=stored_name,
-        original_name=original_name
-    )
-    db.session.add(doc)
-    db.session.commit()
+    try:
+        db.session.delete(unit)
+        db.session.commit()
+        flash('Einheit gelöscht.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler beim Löschen der Einheit: {str(e)}', 'error')
 
+    return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
+
+
+def _unit_qr_data_uri(unit):
+    """Generate an SVG data URI QR code linking to the unit lookup URL."""
+    try:
+        import segno
+    except ImportError:
+        return None
+    lookup_url = url_for('admin.unit_lookup', asset_tag=unit.asset_tag or str(unit.id), _external=True)
+    qr = segno.make(lookup_url, error='m')
+    return qr.svg_data_uri(scale=4, border=1)
+
+
+@admin_bp.route('/inventory/units/<int:unit_id>/label')
+@login_required
+def unit_label(unit_id):
+    """Printable QR label for a single unit"""
+    unit = ItemUnit.query.get_or_404(unit_id)
+    labels = [{'unit': unit, 'qr': _unit_qr_data_uri(unit)}]
+    return render_template('admin/unit_labels.html', item=unit.item, labels=labels)
+
+
+@admin_bp.route('/inventory/<int:item_id>/labels')
+@login_required
+def unit_labels(item_id):
+    """Printable QR label sheet for all units of an item"""
+    item = Item.query.get_or_404(item_id)
+    labels = [{'unit': u, 'qr': _unit_qr_data_uri(u)} for u in item.units
+              if u.status != ItemUnit.STATUS_RETIRED]
+    return render_template('admin/unit_labels.html', item=item, labels=labels)
+
+
+@admin_bp.route('/u/<asset_tag>')
+@login_required
+def unit_lookup(asset_tag):
+    """QR code target: look up a unit by asset tag and jump to its item"""
+    unit = ItemUnit.query.filter_by(asset_tag=asset_tag).first()
+    if not unit:
+        flash(f'Keine Einheit mit Kennung "{asset_tag}" gefunden.', 'error')
+        return redirect(url_for('admin.inventory_list'))
+    return redirect(url_for('admin.inventory_edit', item_id=unit.item_id) + f'#unit-{unit.id}')
+
+
+@admin_bp.route('/api/items/<int:item_id>/availability')
+@login_required
+def item_availability_api(item_id):
+    """JSON availability check for an item in a date range"""
+    item = Item.query.get_or_404(item_id)
+    start = _parse_date_or_none(request.args.get('start'))
+    end = _parse_date_or_none(request.args.get('end'))
+    if not start or not end or end < start:
+        return jsonify({'error': 'Ungültiger Zeitraum'}), 400
+    start_dt = datetime.combine(start, datetime.min.time())
+    end_dt = datetime.combine(end, datetime.min.time())
+    if item.is_package:
+        available = get_package_available_quantity(item.id, start_dt, end_dt)
+    else:
+        available = get_available_quantity(item.id, start_dt, end_dt)
     return jsonify({
-        'id': doc.id,
-        'original_name': doc.original_name,
-        'download_url': url_for('admin.expense_download_document', doc_id=doc.id),
-        'delete_url': url_for('admin.expense_delete_document', doc_id=doc.id)
+        'item_id': item.id,
+        'start': start.isoformat(),
+        'end': end.isoformat(),
+        'available': available,
+        'total': item.operational_quantity,
     })
 
 
-@admin_bp.route('/expense/document/<int:doc_id>/download')
+# ============= SUPPLIERS (Lieferanten) =============
+
+@admin_bp.route('/suppliers', methods=['GET', 'POST'])
 @login_required
-def expense_download_document(doc_id):
-    """Download an expense document"""
-    doc = QuoteItemExpenseDocument.query.get_or_404(doc_id)
-    from flask import send_from_directory
-    return send_from_directory(get_upload_path(), doc.filename,
-                               download_name=doc.original_name, as_attachment=True)
+def suppliers():
+    """List and add suppliers"""
+    if request.method == 'POST':
+        try:
+            name = request.form.get('name', '').strip()
+            if not name:
+                flash('Name ist erforderlich.', 'error')
+            elif Supplier.query.filter_by(name=name).first():
+                flash(f'Lieferant "{name}" existiert bereits.', 'error')
+            else:
+                supplier = Supplier(
+                    name=name,
+                    email=request.form.get('email', '').strip() or None,
+                    phone=request.form.get('phone', '').strip() or None,
+                    notes=request.form.get('notes', '').strip() or None,
+                )
+                db.session.add(supplier)
+                db.session.commit()
+                flash(f'Lieferant "{name}" angelegt.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Fehler: {str(e)}', 'error')
+        return redirect(url_for('admin.suppliers'))
+
+    all_suppliers = Supplier.query.order_by(Supplier.name).all()
+    return render_template('admin/suppliers.html', suppliers=all_suppliers)
 
 
-@admin_bp.route('/expense/document/<int:doc_id>/delete', methods=['POST'])
+@admin_bp.route('/suppliers/<int:supplier_id>/update', methods=['POST'])
 @login_required
-def expense_delete_document(doc_id):
-    """Delete an expense document (AJAX)"""
-    doc = QuoteItemExpenseDocument.query.get_or_404(doc_id)
+def supplier_update(supplier_id):
+    """Update a supplier"""
+    supplier = Supplier.query.get_or_404(supplier_id)
+    try:
+        name = request.form.get('name', '').strip()
+        if not name:
+            flash('Name ist erforderlich.', 'error')
+            return redirect(url_for('admin.suppliers'))
+        existing = Supplier.query.filter(Supplier.name == name, Supplier.id != supplier.id).first()
+        if existing:
+            flash(f'Lieferant "{name}" existiert bereits.', 'error')
+            return redirect(url_for('admin.suppliers'))
+        supplier.name = name
+        supplier.email = request.form.get('email', '').strip() or None
+        supplier.phone = request.form.get('phone', '').strip() or None
+        supplier.notes = request.form.get('notes', '').strip() or None
+        db.session.commit()
+        flash(f'Lieferant "{name}" aktualisiert.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.suppliers'))
 
-    file_path = os.path.join(get_upload_path(), doc.filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
 
-    db.session.delete(doc)
-    db.session.commit()
-    return jsonify({'success': True})
+@admin_bp.route('/suppliers/<int:supplier_id>/delete', methods=['POST'])
+@login_required
+def supplier_delete(supplier_id):
+    """Delete a supplier (its item offers are removed; quote history keeps the name snapshot)"""
+    supplier = Supplier.query.get_or_404(supplier_id)
+    try:
+        name = supplier.name
+        db.session.delete(supplier)
+        db.session.commit()
+        flash(f'Lieferant "{name}" gelöscht.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.suppliers'))
 
 
 # ============= QUOTES =============
+
+def _apply_default_sources(qi, item, quote):
+    """Prefill supplier sourcing for a quote line: own stock first, then cheapest suppliers.
+    The user can redistribute manually in the quote editor."""
+    qi.sources = []
+    if not item.supplies:
+        qi.rental_cost_per_day = 0
+        return
+    own_avail = get_own_stock_available(item.id, quote.start_date, quote.end_date,
+                                        exclude_quote_id=quote.id)
+    _, breakdown = item.calculate_external_cost(qi.quantity, own_available=own_avail)
+    qi.sources = [QuoteItemSource(
+        supplier_id=s.supplier_id,
+        supplier_name=s.supplier.name,
+        quantity=q,
+        price_per_day=s.price_per_day or 0,
+    ) for s, q in breakdown]
+    qi.recalc_cost_from_sources()
+
 
 @admin_bp.route('/quotes')
 @login_required
@@ -983,19 +1254,17 @@ def quote_edit(quote_id):
                                             adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
                                         else:
                                             adjusted_price = 0
-                                        # Calculate blended external cost
-                                        ext_cost_total, _ = pc.component_item.calculate_external_cost(pc.quantity)
-                                        ext_cost_per_unit = round(ext_cost_total / pc.quantity, 2) if pc.quantity > 0 else 0
                                         qi = QuoteItem(
                                             quote_id=quote.id,
                                             item_id=pc.component_item_id,
                                             quantity=pc.quantity,
                                             rental_price_per_day=adjusted_price,
-                                            rental_cost_per_day=ext_cost_per_unit,
                                             is_custom=False,
                                             package_id=item.id
                                         )
                                         db.session.add(qi)
+                                        db.session.flush()
+                                        _apply_default_sources(qi, pc.component_item, quote)
                                     db.session.commit()
                                     flash(f'Paket {item.name} mit {len(item.package_components)} Komponenten hinzugefügt!', 'success')
                             else:
@@ -1005,19 +1274,16 @@ def quote_edit(quote_id):
                                 if existing:
                                     flash(f'{item.name} ist bereits im Angebot.', 'info')
                                 else:
-                                    # Calculate blended external cost for initial quantity
-                                    initial_qty = 1
-                                    ext_cost_total, _ = item.calculate_external_cost(initial_qty)
-                                    ext_cost_per_unit = round(ext_cost_total / initial_qty, 2) if initial_qty > 0 else 0
                                     qi = QuoteItem(
                                         quote_id=quote.id,
                                         item_id=item.id,
-                                        quantity=initial_qty,
+                                        quantity=1,
                                         rental_price_per_day=item.default_rental_price_per_day,
-                                        rental_cost_per_day=ext_cost_per_unit,
                                         is_custom=False
                                     )
                                     db.session.add(qi)
+                                    db.session.flush()
+                                    _apply_default_sources(qi, item, quote)
                                     db.session.commit()
                                     flash(f'{item.name} hinzugefügt!', 'success')
 
@@ -1051,7 +1317,6 @@ def quote_edit(quote_id):
                     if quantity_key in request.form:
                         quantity = int(request.form.get(quantity_key, 0))
                         price = round(float(request.form.get(price_key, qi.rental_price_per_day)), 2)
-                        cost = round(float(request.form.get(cost_key, qi.rental_cost_per_day)), 2)
                         exempt = request.form.get(exempt_key) == 'on'
 
                         if quantity > 0:
@@ -1067,8 +1332,40 @@ def quote_edit(quote_id):
 
                             qi.quantity = quantity
                             qi.rental_price_per_day = price
-                            qi.rental_cost_per_day = cost
                             qi.discount_exempt = exempt
+
+                            if qi.item.supplies:
+                                # Manual supplier sourcing: read per-supplier quantity inputs
+                                submitted = [s for s in qi.item.supplies
+                                             if f'src_{qi.id}_{s.id}' in request.form]
+                                if submitted:
+                                    new_sources = []
+                                    for supply in qi.item.supplies:
+                                        src_qty = request.form.get(f'src_{qi.id}_{supply.id}', type=int) or 0
+                                        if src_qty <= 0:
+                                            continue
+                                        if supply.quantity != -1 and src_qty > supply.quantity:
+                                            errors.append(f'{qi.item.name}: {supply.supplier.name} kann max. {supply.quantity} liefern ({src_qty} zugewiesen)')
+                                        new_sources.append(QuoteItemSource(
+                                            supplier_id=supply.supplier_id,
+                                            supplier_name=supply.supplier.name,
+                                            quantity=src_qty,
+                                            price_per_day=supply.price_per_day or 0,
+                                        ))
+                                    qi.sources = new_sources
+
+                                # Coverage check: own stock + sourcing must cover the quantity
+                                own_avail = get_own_stock_available(
+                                    qi.item_id, quote.start_date, quote.end_date,
+                                    exclude_quote_id=quote.id)
+                                if own_avail != -1 and own_avail + qi.sourced_quantity < quantity:
+                                    errors.append(f'{qi.item.name}: Beschaffung deckt nur {own_avail + qi.sourced_quantity} von {quantity} ab (Eigenbestand verfügbar: {own_avail})')
+
+                                qi.recalc_cost_from_sources()
+                            else:
+                                # No suppliers configured: manual cost field
+                                cost = round(float(request.form.get(cost_key, qi.rental_cost_per_day or 0)), 2)
+                                qi.rental_cost_per_day = cost
                         else:
                             db.session.delete(qi)
 
@@ -1177,15 +1474,6 @@ def quote_edit(quote_id):
                 else:
                     quote.finalized_at = datetime.utcnow()
 
-                # Create QuoteItemExpense entries for items with external costs
-                for qi in quote.quote_items:
-                    if qi.rental_cost_per_day and qi.rental_cost_per_day > 0 and not qi.expense:
-                        expense = QuoteItemExpense(
-                            quote_item_id=qi.id,
-                            amount=qi.total_external_cost,
-                        )
-                        db.session.add(expense)
-
                 db.session.commit()
                 flash('Angebot finalisiert!', 'success')
                 return redirect(url_for('admin.quote_view', quote_id=quote.id))
@@ -1206,7 +1494,7 @@ def quote_edit(quote_id):
                     item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
     else:
         for item in items:
-            item_availability[item.id] = item.total_quantity
+            item_availability[item.id] = item.operational_quantity
 
     _ss = SiteSettings.query.first()
     _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
@@ -1293,7 +1581,7 @@ def quote_unperform(quote_id):
 @admin_bp.route('/quotes/<int:quote_id>/mark_paid', methods=['POST'])
 @login_required
 def quote_mark_paid(quote_id):
-    """Mark quote as paid and update item revenue"""
+    """Mark quote as paid"""
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status != 'paid':
@@ -1305,21 +1593,9 @@ def quote_mark_paid(quote_id):
                 quote.paid_at = datetime.utcnow()
 
             quote.status = 'paid'
-
-            discount_multiplier = (100 - quote.discount_percent) / 100
-            for quote_item in quote.quote_items:
-                if not quote_item.is_custom and quote_item.item:
-                    multiplier = 1.0 if quote_item.discount_exempt else discount_multiplier
-                    item_revenue = round(quote_item.total_price * multiplier, 2)
-                    quote_item.item.total_revenue = round(quote_item.item.total_revenue + item_revenue, 2)
-                    # Accumulate external rental costs
-                    if quote_item.rental_cost_per_day:
-                        item_cost = quote_item.total_external_cost
-                        quote_item.item.total_cost = round(quote_item.item.total_cost + item_cost, 2)
-
             db.session.commit()
 
-            flash('Angebot als bezahlt markiert und Umsatz aktualisiert!', 'success')
+            flash('Angebot als bezahlt markiert!', 'success')
         else:
             flash('Angebot ist bereits als bezahlt markiert.', 'info')
     except Exception as e:
@@ -1412,21 +1688,10 @@ def quote_update_performed_date(quote_id):
 @admin_bp.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
 @login_required
 def quote_unpay(quote_id):
-    """Unpay quote and revert revenue"""
+    """Revert paid status"""
     quote = Quote.query.get_or_404(quote_id)
     try:
         if quote.status == 'paid':
-            discount_multiplier = (100 - quote.discount_percent) / 100
-            for quote_item in quote.quote_items:
-                if not quote_item.is_custom and quote_item.item:
-                    multiplier = 1.0 if quote_item.discount_exempt else discount_multiplier
-                    item_revenue = round(quote_item.total_price * multiplier, 2)
-                    quote_item.item.total_revenue = round(quote_item.item.total_revenue - item_revenue, 2)
-                    # Reverse external rental costs
-                    if quote_item.rental_cost_per_day:
-                        item_cost = quote_item.total_external_cost
-                        quote_item.item.total_cost = round(quote_item.item.total_cost - item_cost, 2)
-
             # Revert to performed if it was performed, otherwise to finalized
             if quote.performed_at:
                 quote.status = 'performed'
@@ -1434,7 +1699,7 @@ def quote_unpay(quote_id):
                 quote.status = 'finalized'
             # Keep paid_at so we can offer it when re-marking as paid
             db.session.commit()
-            flash('Zahlung aufgehoben und Umsatz zurückerstattet!', 'success')
+            flash('Zahlung aufgehoben!', 'success')
         else:
             flash('Angebot ist nicht als bezahlt markiert.', 'info')
     except Exception as e:
@@ -1534,30 +1799,28 @@ def inquiry_convert(inquiry_id):
                         else:
                             adjusted_price = 0
                         for _ in range(inq_item.quantity):
-                            ext_cost_total, _ = pc.component_item.calculate_external_cost(pc.quantity)
-                            ext_cost_per_unit = round(ext_cost_total / pc.quantity, 2) if pc.quantity > 0 else 0
                             qi = QuoteItem(
                                 quote_id=quote.id,
                                 item_id=pc.component_item_id,
                                 quantity=pc.quantity,
                                 rental_price_per_day=adjusted_price,
-                                rental_cost_per_day=ext_cost_per_unit,
                                 is_custom=False,
                                 package_id=item.id
                             )
                             db.session.add(qi)
+                            db.session.flush()
+                            _apply_default_sources(qi, pc.component_item, quote)
                 else:
-                    ext_cost_total, _ = item.calculate_external_cost(inq_item.quantity)
-                    ext_cost_per_unit = round(ext_cost_total / inq_item.quantity, 2) if inq_item.quantity > 0 else 0
                     qi = QuoteItem(
                         quote_id=quote.id,
                         item_id=item.id,
                         quantity=inq_item.quantity,
                         rental_price_per_day=item.default_rental_price_per_day,
-                        rental_cost_per_day=ext_cost_per_unit,
                         is_custom=False
                     )
                     db.session.add(qi)
+                    db.session.flush()
+                    _apply_default_sources(qi, item, quote)
 
         inquiry.status = 'converted'
         db.session.commit()
@@ -1607,8 +1870,6 @@ def user_add():
             display_name = request.form.get('display_name', '').strip()
             email = request.form.get('email', '').strip()
             is_admin = request.form.get('is_admin') == 'on'
-            can_edit_all = request.form.get('can_edit_all') == 'on'
-            is_external_user = request.form.get('is_external_user') == 'on'
 
             if not username or not password:
                 flash('Benutzername und Passwort sind erforderlich.', 'error')
@@ -1622,9 +1883,7 @@ def user_add():
                 username=username,
                 display_name=display_name or None,
                 email=email or None,
-                is_admin=is_admin if not is_external_user else False,
-                can_edit_all=can_edit_all if not is_external_user else False,
-                is_external_user=is_external_user
+                is_admin=is_admin
             )
             user.set_password(password)
             db.session.add(user)
@@ -1650,9 +1909,7 @@ def user_edit(user_id):
         try:
             user.display_name = request.form.get('display_name', '').strip() or None
             user.email = request.form.get('email', '').strip() or None
-            user.is_external_user = request.form.get('is_external_user') == 'on'
-            user.is_admin = request.form.get('is_admin') == 'on' if not user.is_external_user else False
-            user.can_edit_all = request.form.get('can_edit_all') == 'on' if not user.is_external_user else False
+            user.is_admin = request.form.get('is_admin') == 'on'
             user.active = request.form.get('active') == 'on'
 
             new_password = request.form.get('password', '').strip()
@@ -1685,11 +1942,9 @@ def user_delete(user_id):
 
     user = User.query.get_or_404(user_id)
     try:
-        # Delete ownership entries for this user
-        ItemOwnership.query.filter_by(user_id=user.id).delete()
         db.session.delete(user)
         db.session.commit()
-        flash(f'Benutzer "{user.username}" gelöscht. Artikelzuordnungen wurden entfernt.', 'success')
+        flash(f'Benutzer "{user.username}" gelöscht.', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Fehler: {str(e)}', 'error')
@@ -1772,39 +2027,6 @@ def serve_logo():
     if not os.path.exists(logo_path):
         abort(404)
     return send_file(logo_path)
-
-
-
-# ============= REPORTS =============
-
-@admin_bp.route('/reports/payoff')
-@login_required
-def report_payoff():
-    """Payoff status report"""
-    items = Item.query.order_by(Item.name).all()
-    users = User.query.filter_by(active=True).order_by(User.username).all()
-
-    misc_revenue = db.session.query(db.func.sum(
-        QuoteItem.quantity * QuoteItem.rental_price_per_day * Quote.rental_days
-    )).join(Quote).filter(
-        QuoteItem.is_custom == True,
-        Quote.status == 'paid'
-    ).scalar() or 0.0
-
-    # Separate owned and external items
-    owned_items = [i for i in items if not i.is_external]
-    external_items = [i for i in items if i.is_external]
-
-    # Get all ownerships for the report
-    all_ownerships = ItemOwnership.query.all()
-
-    return render_template('admin/payoff_report.html',
-                           items=items,
-                           owned_items=owned_items,
-                           external_items=external_items,
-                           users=users,
-                           all_ownerships=all_ownerships,
-                           misc_revenue=misc_revenue)
 
 
 @admin_bp.route('/schedule')

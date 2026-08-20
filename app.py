@@ -185,6 +185,16 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 
 # Initialize database and create default admin
 with app.app_context():
+    # Detect whether the one-time ownership→supplier conversion is needed
+    # BEFORE create_all / column migration (presence of stock_quantity = already done).
+    from sqlalchemy import text as _sql_text, inspect as _sa_inspect
+    _insp = _sa_inspect(db.engine)
+    _needs_ownership_conversion = (
+        _insp.has_table('item')
+        and 'stock_quantity' not in {c['name'] for c in _insp.get_columns('item')}
+        and _insp.has_table('item_ownership')
+    )
+
     db.create_all()
 
     # ── Auto-migrate helper: add missing columns to existing tables ───
@@ -199,6 +209,63 @@ with app.app_context():
             db.session.commit()
             print(f"  migrated: {table}.{column} ({col_type})")
 
+    # Item technical specs / logistics fields (additive, safe on live data)
+    _add_column_if_missing('item', 'manufacturer', 'TEXT')
+    _add_column_if_missing('item', 'model_name', 'TEXT')
+    _add_column_if_missing('item', 'weight_kg', 'FLOAT')
+    _add_column_if_missing('item', 'power_watts', 'FLOAT')
+    _add_column_if_missing('item', 'dimensions', 'TEXT')
+    _add_column_if_missing('item', 'storage_location', 'TEXT')
+    _add_column_if_missing('item', 'replacement_value', 'FLOAT')
+    # Single-company stock model
+    _add_column_if_missing('item', 'stock_quantity', 'INTEGER NOT NULL DEFAULT 0')
+
+    # ── One-time conversion: ItemOwnership → Item.stock_quantity + Supplier/ItemSupply ──
+    if _needs_ownership_conversion:
+        from models import Supplier, ItemSupply, Item
+        rows = db.session.execute(_sql_text(
+            'SELECT io.item_id, io.quantity, io.external_price_per_day, io.external_price_is_brutto, '
+            'u.display_name, u.username '
+            'FROM item_ownership io JOIN user u ON u.id = io.user_id'
+        )).fetchall()
+
+        stock = {}
+        suppliers_by_name = {}
+        supply_count = 0
+        for r in rows:
+            if r.external_price_per_day is None:
+                # Internal ownership → company stock
+                if r.quantity == -1:
+                    stock[r.item_id] = -1
+                elif stock.get(r.item_id) != -1:
+                    stock[r.item_id] = stock.get(r.item_id, 0) + max(0, r.quantity)
+            else:
+                # External ownership → supplier + supply row
+                name = (r.display_name or r.username or 'Unbekannt').strip()
+                supplier = suppliers_by_name.get(name)
+                if supplier is None:
+                    supplier = Supplier.query.filter_by(name=name).first()
+                    if supplier is None:
+                        supplier = Supplier(name=name)
+                        db.session.add(supplier)
+                        db.session.flush()
+                    suppliers_by_name[name] = supplier
+                db.session.add(ItemSupply(
+                    item_id=r.item_id,
+                    supplier_id=supplier.id,
+                    quantity=r.quantity,
+                    price_per_day=r.external_price_per_day or 0,
+                    price_is_brutto=bool(r.external_price_is_brutto) if r.external_price_is_brutto is not None else True,
+                ))
+                supply_count += 1
+
+        for item in Item.query.all():
+            item.stock_quantity = stock.get(item.id, 0)
+
+        db.session.commit()
+        print(f"  converted ownerships: {len(suppliers_by_name)} Lieferanten, "
+              f"{supply_count} Angebote, Bestand für {len(stock)} Artikel übernommen")
+
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
     os.makedirs(uploads_dir, exist_ok=True)
@@ -210,8 +277,7 @@ with app.app_context():
         admin = User(
             username=admin_username,
             display_name='Administrator',
-            is_admin=True,
-            can_edit_all=True
+            is_admin=True
         )
         admin.set_password(admin_password)
         db.session.add(admin)

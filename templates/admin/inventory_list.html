@@ -5,22 +5,73 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Inventar</h1>
-    <input type="text" id="inventory-search" placeholder="Suche nach Name, Kategorie, Eigentümer…" class="search-input-inline">
     <a href="{{ url_for('admin.inventory_add') }}" class="btn btn-primary">+ Artikel hinzufügen</a>
 </div>
+
+<div class="stats-grid stats-grid-compact">
+    <div class="stat-card">
+        <div class="stat-label">Artikel</div>
+        <div class="stat-value">{{ stats.total_items }}</div>
+    </div>
+    <div class="stat-card stat-muted">
+        <div class="stat-label">Einheiten gesamt</div>
+        <div class="stat-value">{{ stats.total_units }}</div>
+    </div>
+    <div class="stat-card {{ 'stat-danger' if stats.defect_units else 'stat-success' }}">
+        <div class="stat-label">Defekt / Reparatur</div>
+        <div class="stat-value">{{ stats.defect_units }}</div>
+    </div>
+    <div class="stat-card {{ 'stat-warning' if stats.inspection_due else 'stat-success' }}">
+        <div class="stat-label">Prüfungen fällig</div>
+        <div class="stat-value">{{ stats.inspection_due }}</div>
+    </div>
+    <div class="stat-card stat-muted">
+        <div class="stat-label">Nicht im Shop</div>
+        <div class="stat-value">{{ stats.hidden_items }}</div>
+    </div>
+</div>
+
+<form method="GET" action="{{ url_for('admin.inventory_list') }}" class="inventory-filter-bar" id="filter-form">
+    <input type="text" id="inventory-search" placeholder="Suche nach Name, Kategorie, Lieferant, Lagerort…" class="search-input-inline flex-1">
+    <select name="category" onchange="document.getElementById('filter-form').submit()">
+        <option value="">Alle Kategorien</option>
+        {% for cat, depth in category_tree %}
+            <option value="{{ cat.id }}" {{ 'selected' if filter_category == cat.id }}>{{ '\u00A0\u00A0\u00A0\u00A0' * depth }}{{ '↳ ' if depth > 0 }}{{ cat.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="supplier" onchange="document.getElementById('filter-form').submit()">
+        <option value="">Alle Lieferanten</option>
+        {% for s in suppliers %}
+            <option value="{{ s.id }}" {{ 'selected' if filter_supplier == s.id }}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="status" onchange="document.getElementById('filter-form').submit()">
+        <option value="">Alle Artikel</option>
+        <option value="defect" {{ 'selected' if filter_status == 'defect' }}>Mit Defekten</option>
+        <option value="inspection_due" {{ 'selected' if filter_status == 'inspection_due' }}>Prüfung fällig</option>
+        <option value="unavailable" {{ 'selected' if filter_status == 'unavailable' }}>Heute ausgebucht</option>
+        <option value="hidden" {{ 'selected' if filter_status == 'hidden' }}>Nicht im Shop</option>
+        <option value="external" {{ 'selected' if filter_status == 'external' }}>Nur extern</option>
+        <option value="packages" {{ 'selected' if filter_status == 'packages' }}>Pakete</option>
+    </select>
+    {% if filter_category or filter_supplier or filter_status %}
+        <a href="{{ url_for('admin.inventory_list') }}" class="btn btn-outline btn-sm">✕ Zurücksetzen</a>
+    {% endif %}
+</form>
 
 <table id="inventory-table">
     <thead>
         <tr>
+            <th class="col-w-30 select-cell"><input type="checkbox" id="select-all" title="Alle auswählen"></th>
             <th class="col-w-50"></th>
             <th>Name</th>
             <th>Kategorie</th>
-            <th>Eigentümer</th>
+            <th>Lieferanten</th>
+            <th>Lagerort</th>
             <th>Menge</th>
+            <th title="Verfügbar heute (Menge − defekte Einheiten − heutige Buchungen)">Verfügbar</th>
             <th>Preis/Tag</th>
-            <th>Öffentl. Preis</th>
-            <th>Sichtbar</th>
-            <th>Umsatz</th>
+            <th>Shop</th>
             <th>Aktionen</th>
         </tr>
     </thead>
@@ -31,6 +82,7 @@
         {% if cat_id != current_category.id %}
             {% set current_category.id = cat_id %}
             <tr>
+                <td class="select-cell category-header-row"><input type="checkbox" class="category-select" title="Gesamte Gruppe auswählen"></td>
                 <td colspan="10" class="category-header-row" style="padding-left: {{ (item.category.depth * 24 + 16) if item.category else 16 }}px">
                     {% if item.category %}
                         {% if item.category.ancestors %}
@@ -47,6 +99,11 @@
             </tr>
         {% endif %}
         <tr>
+            <td class="select-cell">
+                {% if current_user.can_edit_item(item) %}
+                    <input type="checkbox" class="item-select" value="{{ item.id }}">
+                {% endif %}
+            </td>
             <td class="thumb-cell">
                 {% if item.image_filename %}
                     <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}" class="thumb-img">
@@ -54,11 +111,20 @@
             </td>
             <td>
                 <strong>{{ item.name }}</strong>
+                {% if item.manufacturer or item.model_name %}
+                    <br><small class="text-muted">{{ [item.manufacturer, item.model_name] | select | join(' ') }}</small>
+                {% endif %}
                 {% if item.is_external %}
                     <span class="badge badge-external">Extern</span>
                 {% endif %}
                 {% if item.is_package %}
                     <span class="badge badge-package">Paket</span>
+                {% endif %}
+                {% if item.defect_count %}
+                    <span class="badge badge-danger" title="{{ item.defect_count }} Einheit(en) defekt oder in Reparatur">⚠ {{ item.defect_count }} defekt</span>
+                {% endif %}
+                {% if item.inspection_due_units() %}
+                    <span class="badge badge-warning" title="Prüfung (z.B. DGUV V3) fällig oder überfällig">Prüfung fällig</span>
                 {% endif %}
             </td>
             <td>
@@ -72,31 +138,52 @@
                 {% endif %}
             </td>
             <td>
-                {% if item.ownerships %}
-                    {% for o in item.ownerships %}
-                        <span{% if o.is_external %} class="text-external"{% endif %}>{{ o.user.display_name or o.user.username }}{% if o.is_external %} ↗{% endif %}</span>{% if not loop.last %}, {% endif %}
+                {% if item.supplies %}
+                    {% for s in item.supplies %}
+                        <span class="text-external">{{ s.supplier.name }} ↗</span>{% if not loop.last %}, {% endif %}
                     {% endfor %}
                 {% else %}
                     <span class="text-muted">—</span>
                 {% endif %}
             </td>
-            <td>{{ '∞' if item.total_quantity == -1 else item.total_quantity }}</td>
+            <td>{{ item.storage_location or '—' }}</td>
+            <td>
+                {% if item.is_package %}
+                    <span class="text-muted" title="Menge ergibt sich aus den Komponenten">–</span>
+                {% else %}
+                    {{ '∞' if item.total_quantity == -1 else item.total_quantity }}
+                    {% if item.supplies and item.stock_quantity != -1 %}
+                        <small class="text-muted d-block" title="Eigener Bestand">eigen: {{ '∞' if item.stock_quantity == -1 else item.stock_quantity }}</small>
+                    {% endif %}
+                {% endif %}
+            </td>
+            <td>
+                {% if item.is_package %}
+                    <span class="text-muted">–</span>
+                {% else %}
+                    {% set avail = available_today.get(item.id, 0) %}
+                    {% if avail == -1 %}
+                        <span class="text-success">∞</span>
+                    {% elif avail == 0 %}
+                        <span class="text-danger font-bold">0</span>
+                    {% elif item.total_quantity != -1 and avail < item.total_quantity %}
+                        <span class="text-warning-strong">{{ avail }}</span>
+                    {% else %}
+                        <span class="text-success">{{ avail }}</span>
+                    {% endif %}
+                {% endif %}
+            </td>
             <td>&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }}</td>
             <td>
-                {% if item.show_price_publicly %}
-                    <span class="badge badge-success">Angezeigt</span>
-                {% else %}
-                    <span class="badge badge-warning">Auf Anfrage</span>
-                {% endif %}
-            </td>
-            <td>
                 {% if item.visible_in_shop %}
-                    <span class="text-success">&#10003;</span>
+                    <span class="text-success" title="Im Shop sichtbar">&#10003;</span>
+                    {% if not item.show_price_publicly %}
+                        <small class="text-muted d-block">auf Anfrage</small>
+                    {% endif %}
                 {% else %}
-                    <span class="text-danger">&#10007;</span>
+                    <span class="text-danger" title="Nicht im Shop sichtbar">&#10007;</span>
                 {% endif %}
             </td>
-            <td>&euro;{{ "%.2f"|format(item.total_revenue) }}</td>
             <td>
                 {% if current_user.can_edit_item(item) %}
                     <a href="{{ url_for('admin.inventory_edit', item_id=item.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
@@ -110,10 +197,58 @@
         </tr>
         {% endfor %}
         {% if not items %}
-        <tr><td colspan="10" class="empty-state">Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.</td></tr>
+        <tr><td colspan="11" class="empty-state">
+            {% if filter_category or filter_supplier or filter_status %}
+                Keine Artikel für diese Filter. <a href="{{ url_for('admin.inventory_list') }}">Filter zurücksetzen</a>.
+            {% else %}
+                Noch keine Artikel. <a href="{{ url_for('admin.inventory_add') }}">Ersten Artikel hinzufügen</a>.
+            {% endif %}
+        </td></tr>
         {% endif %}
     </tbody>
 </table>
+
+<!-- ── Bulk action bar ── -->
+<form method="POST" action="{{ url_for('admin.inventory_bulk') }}" id="bulk-bar" class="bulk-bar d-none">
+    <span class="bulk-count"><strong id="bulk-count-num">0</strong> ausgewählt</span>
+    <button type="button" class="btn btn-sm btn-outline" onclick="clearSelection()">Aufheben</button>
+    <span class="bulk-sep"></span>
+
+    <div class="bulk-group">
+        <button type="submit" name="action" value="show_in_shop" class="btn btn-sm btn-outline" title="Ausgewählte im Shop anzeigen">Shop ✓</button>
+        <button type="submit" name="action" value="hide_from_shop" class="btn btn-sm btn-outline" title="Ausgewählte im Shop ausblenden">Shop ✗</button>
+    </div>
+    <div class="bulk-group">
+        <button type="submit" name="action" value="show_price" class="btn btn-sm btn-outline" title="Preis öffentlich anzeigen">Preis ✓</button>
+        <button type="submit" name="action" value="hide_price" class="btn btn-sm btn-outline" title="Preis auf Anfrage">auf Anfrage</button>
+    </div>
+    <span class="bulk-sep"></span>
+
+    <div class="bulk-group">
+        <select name="bulk_category_id" class="bulk-input">
+            <option value="">— Ohne Kategorie —</option>
+            {% for cat, depth in category_tree %}
+                <option value="{{ cat.id }}">{{ '\u00A0\u00A0\u00A0\u00A0' * depth }}{{ '↳ ' if depth > 0 }}{{ cat.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" name="action" value="set_category" class="btn btn-sm btn-outline">Verschieben</button>
+    </div>
+    <div class="bulk-group">
+        <input type="text" name="bulk_storage_location" placeholder="Lagerort…" class="bulk-input bulk-input-sm">
+        <button type="submit" name="action" value="set_storage" class="btn btn-sm btn-outline">Setzen</button>
+    </div>
+    <div class="bulk-group">
+        <select name="bulk_price_mode" class="bulk-input bulk-input-xs">
+            <option value="percent">± %</option>
+            <option value="set">= €</option>
+        </select>
+        <input type="number" name="bulk_price_value" step="0.01" placeholder="z.B. 10" class="bulk-input bulk-input-xs">
+        <button type="submit" name="action" value="adjust_price" class="btn btn-sm btn-outline" title="Preise anpassen: ±% relativ oder = € festsetzen">Preis anpassen</button>
+    </div>
+    <span class="bulk-sep"></span>
+
+    <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger" id="bulk-delete-btn">Löschen</button>
+</form>
 
 <script>
 (function() {
@@ -122,22 +257,28 @@
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
 
-    // classify rows
+    // classify rows and assign category groups
+    let groupIdx = -1;
     rows.forEach(row => {
         if (row.querySelector('.category-header-row')) {
             row.dataset.rowType = 'category';
+            groupIdx++;
+            row.dataset.group = groupIdx;
         } else if (row.querySelector('.empty-state')) {
             row.dataset.rowType = 'empty';
         } else {
             row.dataset.rowType = 'item';
+            row.dataset.group = groupIdx;
         }
     });
 
+    // ══════════ Search filter ══════════
     input.addEventListener('input', function() {
         const terms = this.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
 
         if (terms.length === 0) {
             rows.forEach(r => r.classList.remove('d-none'));
+            updateSelectionUI();
             return;
         }
 
@@ -160,6 +301,115 @@
                 hasVisibleItem = false;
             }
         }
+        updateSelectionUI();
+    });
+
+    // ══════════ Bulk selection ══════════
+    const selectAll = document.getElementById('select-all');
+    const bulkBar = document.getElementById('bulk-bar');
+    const bulkCount = document.getElementById('bulk-count-num');
+    const itemChecks = () => Array.from(tbody.querySelectorAll('.item-select'));
+    const visibleChecks = () => itemChecks().filter(cb => !cb.closest('tr').classList.contains('d-none'));
+    let lastChecked = null;
+
+    function selectedIds() {
+        return itemChecks().filter(cb => cb.checked).map(cb => cb.value);
+    }
+
+    function updateSelectionUI() {
+        const all = visibleChecks();
+        const checked = itemChecks().filter(cb => cb.checked);
+
+        // row highlight
+        itemChecks().forEach(cb => cb.closest('tr').classList.toggle('row-selected', cb.checked));
+
+        // bulk bar
+        bulkCount.textContent = checked.length;
+        bulkBar.classList.toggle('d-none', checked.length === 0);
+        document.body.classList.toggle('has-bulk-bar', checked.length > 0);
+
+        // select-all state (relative to visible rows)
+        const visChecked = all.filter(cb => cb.checked);
+        selectAll.checked = all.length > 0 && visChecked.length === all.length;
+        selectAll.indeterminate = visChecked.length > 0 && visChecked.length < all.length;
+
+        // category checkbox states
+        tbody.querySelectorAll('.category-select').forEach(catCb => {
+            const g = catCb.closest('tr').dataset.group;
+            const groupChecks = visibleChecks().filter(cb => cb.closest('tr').dataset.group === g);
+            const groupChecked = groupChecks.filter(cb => cb.checked);
+            catCb.checked = groupChecks.length > 0 && groupChecked.length === groupChecks.length;
+            catCb.indeterminate = groupChecked.length > 0 && groupChecked.length < groupChecks.length;
+        });
+    }
+
+    // item checkbox: click + shift-click range
+    tbody.addEventListener('click', function(e) {
+        if (!e.target.classList.contains('item-select')) return;
+        const cb = e.target;
+        if (e.shiftKey && lastChecked && lastChecked !== cb) {
+            const list = visibleChecks();
+            const a = list.indexOf(lastChecked), b = list.indexOf(cb);
+            if (a !== -1 && b !== -1) {
+                list.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(c => { c.checked = cb.checked; });
+            }
+        }
+        lastChecked = cb;
+        updateSelectionUI();
+    });
+
+    // category header checkbox: toggle its group (visible rows only)
+    tbody.addEventListener('change', function(e) {
+        if (!e.target.classList.contains('category-select')) return;
+        const g = e.target.closest('tr').dataset.group;
+        visibleChecks()
+            .filter(cb => cb.closest('tr').dataset.group === g)
+            .forEach(cb => { cb.checked = e.target.checked; });
+        updateSelectionUI();
+    });
+
+    // select all (visible rows only)
+    selectAll.addEventListener('change', function() {
+        visibleChecks().forEach(cb => { cb.checked = selectAll.checked; });
+        updateSelectionUI();
+    });
+
+    window.clearSelection = function() {
+        itemChecks().forEach(cb => { cb.checked = false; });
+        lastChecked = null;
+        updateSelectionUI();
+    };
+
+    // ══════════ Bulk form submit ══════════
+    let submitAction = null;
+    bulkBar.querySelectorAll('button[name="action"]').forEach(btn => {
+        btn.addEventListener('click', function() { submitAction = this.value; });
+    });
+
+    bulkBar.addEventListener('submit', function(e) {
+        const ids = selectedIds();
+        if (ids.length === 0) { e.preventDefault(); return; }
+
+        if (submitAction === 'delete') {
+            if (!confirm(ids.length + ' Artikel unwiderruflich löschen?')) {
+                e.preventDefault(); return;
+            }
+        }
+        if (submitAction === 'adjust_price') {
+            const val = bulkBar.querySelector('[name="bulk_price_value"]').value.trim();
+            if (!val) {
+                alert('Bitte einen Wert für die Preisanpassung angeben.');
+                e.preventDefault(); return;
+            }
+        }
+
+        // inject selected ids
+        bulkBar.querySelectorAll('input[name="item_ids"]').forEach(el => el.remove());
+        ids.forEach(id => {
+            const h = document.createElement('input');
+            h.type = 'hidden'; h.name = 'item_ids'; h.value = id;
+            bulkBar.appendChild(h);
+        });
     });
 })();
 </script>

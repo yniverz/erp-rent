@@ -1,0 +1,62 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Lieferanten - Verwaltung{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 class="m-0 flex-1">Lieferanten</h1>
+</div>
+<p class="help-text mb-16">Personen oder Firmen, von denen ihr Material anmietet. Lieferanten können sich nicht einloggen – sie werden Artikeln als externe Anbieter mit Preis/Tag zugeordnet.</p>
+
+<div class="card mb-16">
+    <h3>Neuen Lieferanten anlegen</h3>
+    <form method="POST" action="{{ url_for('admin.suppliers') }}" class="d-flex gap-10 flex-wrap align-center">
+        <input type="text" name="name" placeholder="Name *" required class="min-w-180">
+        <input type="email" name="email" placeholder="E-Mail" class="min-w-180">
+        <input type="text" name="phone" placeholder="Telefon" class="min-w-150">
+        <input type="text" name="notes" placeholder="Notizen" class="flex-1 min-w-180">
+        <button type="submit" class="btn btn-primary">+ Anlegen</button>
+    </form>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>E-Mail</th>
+            <th>Telefon</th>
+            <th>Notizen</th>
+            <th>Artikel</th>
+            <th>Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in suppliers %}
+        <tr>
+            <td><input form="sup-{{ s.id }}" type="text" name="name" value="{{ s.name }}" required class="w-full"></td>
+            <td><input form="sup-{{ s.id }}" type="email" name="email" value="{{ s.email or '' }}" class="w-full" placeholder="—"></td>
+            <td><input form="sup-{{ s.id }}" type="text" name="phone" value="{{ s.phone or '' }}" class="w-full" placeholder="—"></td>
+            <td><input form="sup-{{ s.id }}" type="text" name="notes" value="{{ s.notes or '' }}" class="w-full" placeholder="—"></td>
+            <td>
+                {% if s.supplies %}
+                    <a href="{{ url_for('admin.inventory_list', supplier=s.id) }}" title="Artikel dieses Lieferanten anzeigen">{{ s.supplies|length }} Artikel</a>
+                {% else %}
+                    <span class="text-muted">0</span>
+                {% endif %}
+            </td>
+            <td class="unit-actions">
+                <button form="sup-{{ s.id }}" type="submit" class="btn btn-sm btn-primary" title="Speichern">✓</button>
+                <button form="sup-del-{{ s.id }}" type="submit" class="btn btn-sm btn-danger" title="Löschen">✕</button>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not suppliers %}
+        <tr><td colspan="6" class="empty-state">Noch keine Lieferanten angelegt.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+{% for s in suppliers %}
+    <form id="sup-{{ s.id }}" method="POST" action="{{ url_for('admin.supplier_update', supplier_id=s.id) }}"></form>
+    <form id="sup-del-{{ s.id }}" method="POST" action="{{ url_for('admin.supplier_delete', supplier_id=s.id) }}" onsubmit="return confirm('Lieferant {{ s.name }} löschen? Seine Angebote werden von allen Artikeln entfernt. Bestehende Angebote/Rechnungen behalten den Namen.');"></form>
+{% endfor %}
+{% endblock %}

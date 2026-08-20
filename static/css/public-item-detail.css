@@ -172,3 +172,11 @@
         max-width: 100%;
     }
 }
+
+/* ── Technical specs ── */
+.detail-specs           { margin: 20px 0; }
+.detail-specs h3        { margin-bottom: 8px; font-size: 1.05em; }
+.specs-table            { border-collapse: collapse; width: 100%; max-width: 420px; font-size: 0.95em; }
+.specs-table th,
+.specs-table td         { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--border-color, #e5e5e5); }
+.specs-table th         { font-weight: 600; color: var(--color-text-muted, #666); width: 45%; }
