@@ -129,9 +129,29 @@ def build_lieferschein_pdf(
         from xml.sax.saxutils import escape as _esc
         return _esc(text.strip()).replace("\n", "<br/>")
 
+    def _name_with_units(name, units, bold=False):
+        """Item name plus assigned serial numbers / asset tags underneath."""
+        from xml.sax.saxutils import escape as _esc
+        label = f"<b>{_esc(name)}</b>" if bold else _esc(name)
+        if units:
+            units_str = ", ".join(_esc(u) for u in units)
+            label += f'<br/><font size="7" color="#555555">SN: {units_str}</font>'
+        return label
+
     pos_nr = 1
+    heading_row_idxs: list = []
     data_row_heights: list = []
     for item in items:
+        if item.get("is_heading"):
+            heading_row_idxs.append(len(table_data))
+            table_data.append([
+                Paragraph("", styles["table_cell"]),
+                Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
+            ])
+            data_row_heights.append(None)
+            continue
         if item.get("is_bundle"):
             # Bundle header
             desc = _fmt_desc(item.get("description"))
@@ -146,20 +166,20 @@ def build_lieferschein_pdf(
                 cdesc = _fmt_desc(comp.get("description"))
                 table_data.append([
                     Paragraph("", styles["table_cell"]),
-                    Paragraph(f"↳ {comp['name']}", styles["table_cell_indent"]),
+                    Paragraph(f"↳ {_name_with_units(comp['name'], comp.get('units'))}", styles["table_cell_indent"]),
                     Paragraph(str(comp["quantity"]), styles["table_cell_indent"]),
                     Paragraph(cdesc, styles["table_cell_indent"]),
                 ])
-                data_row_heights.append(None if cdesc else 24)
+                data_row_heights.append(None if (cdesc or comp.get("units")) else 24)
         else:
             desc = _fmt_desc(item.get("description"))
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
-                Paragraph(item["name"], styles["table_cell"]),
+                Paragraph(_name_with_units(item["name"], item.get("units")), styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
                 Paragraph(desc, styles["table_cell"]),
             ])
-            data_row_heights.append(None if desc else 24)
+            data_row_heights.append(None if (desc or item.get("units")) else 24)
         pos_nr += 1
 
     # Header row auto, data rows fixed-min where empty (room for handwriting)
@@ -168,7 +188,7 @@ def build_lieferschein_pdf(
 
     table = Table(table_data, colWidths=col_widths, hAlign="LEFT",
                   repeatRows=1, rowHeights=row_heights)
-    table.setStyle(TableStyle([
+    _style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, CLR_BLACK),
@@ -179,7 +199,10 @@ def build_lieferschein_pdf(
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
+    ]
+    for ridx in heading_row_idxs:
+        _style_cmds.append(("BACKGROUND", (0, ridx), (-1, ridx), CLR_TABLE_HEADER_BG))
+    table.setStyle(TableStyle(_style_cmds))
     story.append(table)
     story.append(Spacer(1, 10))
 

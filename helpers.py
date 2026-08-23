@@ -31,7 +31,7 @@ def _booked_quantity(item_id, start_date, end_date, exclude_quote_id=None):
     booked = 0
     for quote in overlapping_quotes.all():
         for quote_item in quote.quote_items:
-            if quote_item.is_custom:
+            if quote_item.is_custom or quote_item.is_heading or quote_item.is_optional:
                 continue
             if quote_item.item_id == item_id:
                 booked += quote_item.quantity

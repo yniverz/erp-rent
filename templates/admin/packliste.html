@@ -1,0 +1,113 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Packliste {{ quote.reference_number }} - Verwaltung{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <h1 class="m-0 flex-1">Packliste: {{ quote.reference_number or 'Entwurf' }}</h1>
+    <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
+</div>
+
+<div class="card">
+    <p class="m-0"><strong>Kunde:</strong> {{ quote.customer_name }}
+    {% if quote.start_date and quote.end_date %}
+        &nbsp;·&nbsp; <strong>Zeitraum:</strong> {{ quote.start_date.strftime('%d.%m.%Y') }} – {{ quote.end_date.strftime('%d.%m.%Y') }}
+    {% endif %}
+    </p>
+    <p class="text-muted text-sm mt-8 mb-0">
+        Weisen Sie hier den Positionen konkrete Einheiten (Seriennummern) zu.
+        Die zugewiesenen Seriennummern erscheinen auf dem Lieferschein.
+    </p>
+</div>
+
+<!-- Scan -->
+<div class="card">
+    <h2>Scannen / Kennung eingeben</h2>
+    <form method="POST" action="{{ url_for('admin.packliste_scan', quote_id=quote.id) }}" class="d-flex gap-10 align-end">
+        <div class="form-group m-0 flex-1">
+            <label>Asset-Tag oder Seriennummer</label>
+            <input type="text" name="code" placeholder="z.B. U00042 – QR-Code scannen oder eintippen" autofocus autocomplete="off">
+        </div>
+        <button type="submit" class="btn btn-primary">Zuweisen</button>
+    </form>
+</div>
+
+<!-- Lines -->
+<div class="card">
+    <h2>Positionen</h2>
+    {% if not lines %}
+        <p class="text-muted">Keine Inventar-Positionen im Angebot.</p>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>Artikel</th>
+                <th>Menge</th>
+                <th>Zugewiesene Einheiten</th>
+                <th>Einheit zuweisen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for line in lines %}
+            {% set qi = line.qi %}
+            <tr>
+                <td>
+                    <strong>{{ qi.item.name }}</strong>
+                    {% if qi.package_id and qi.package %}<br><small class="text-muted">📦 {{ qi.package.name }}</small>{% endif %}
+                </td>
+                <td>
+                    {{ qi.quantity }}
+                    {% if line.tracked %}
+                        <br><small class="{{ 'text-success' if line.assigned_count >= qi.quantity else 'text-muted' }}">
+                            {{ line.assigned_count }}/{{ qi.quantity }} zugewiesen
+                        </small>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if qi.assigned_units %}
+                        {% for au in qi.assigned_units %}
+                        <form method="POST" action="{{ url_for('admin.packliste_unassign', quote_id=quote.id) }}" class="d-inline">
+                            <input type="hidden" name="assignment_id" value="{{ au.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline" title="Zuweisung entfernen">{{ au.label }} ✕</button>
+                        </form>
+                        {% endfor %}
+                    {% elif line.tracked %}
+                        <span class="text-muted">—</span>
+                    {% else %}
+                        <span class="text-muted">Keine Einheiten erfasst</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if line.tracked %}
+                        {% if line.assigned_count >= qi.quantity %}
+                            <span class="text-success">✓ Vollständig</span>
+                        {% elif line.candidates %}
+                        <form method="POST" action="{{ url_for('admin.packliste_assign', quote_id=quote.id) }}" class="d-flex gap-6 align-center">
+                            <input type="hidden" name="line_id" value="{{ qi.id }}">
+                            <select name="unit_id">
+                                {% for u in line.candidates %}
+                                <option value="{{ u.id }}">{{ u.asset_tag or ('#' ~ u.id) }}{% if u.serial_number %} · SN {{ u.serial_number }}{% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-primary">+</button>
+                        </form>
+                        {% else %}
+                            <span class="text-warning">⚠ Keine freien Einheiten</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">–</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+<div class="d-flex gap-10 flex-wrap">
+    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Zurück zum Angebot</a>
+    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-outline">Angebotsübersicht</a>
+    <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
+</div>
+{% endblock %}

@@ -118,7 +118,11 @@
             {% set shown_ids = [] %}
 
             {% for qi in quote.quote_items %}
-                {% if qi.package_id and qi.package_id not in shown_ids %}
+                {% if qi.is_heading %}
+                <tr class="package-header-row">
+                    <td colspan="6"><strong>{{ qi.custom_item_name }}</strong></td>
+                </tr>
+                {% elif qi.package_id and qi.package_id not in shown_ids %}
                     {% set pkg_components = package_items|selectattr('package_id', 'equalto', qi.package_id)|list %}
                     {% if shown_ids.append(qi.package_id) %}{% endif %}
                     <tr class="package-header-row">
@@ -135,8 +139,14 @@
                             {% if pqi.item and pqi.item.is_external %}
                                 <small class="text-external">&#x2197; Extern</small>
                             {% endif %}
+                            {% if pqi.is_optional %}
+                                <br><small class="text-muted">Optional – nicht im Gesamtpreis</small>
+                            {% endif %}
                             {% if pqi.discount_exempt and quote.discount_percent > 0 %}
                                 <br><small class="text-warning">Kein Rabatt</small>
+                            {% endif %}
+                            {% if pqi.assigned_units %}
+                                <br><small class="text-muted">SN: {{ pqi.assigned_units|map(attribute='label')|join(', ') }}</small>
                             {% endif %}
                         </td>
                         <td>
@@ -172,8 +182,14 @@
                         {% if qi.item and qi.item.is_external %}
                             <small class="text-external">&#x2197; Extern</small>
                         {% endif %}
+                        {% if qi.is_optional %}
+                            <br><small class="text-muted">Optional – nicht im Gesamtpreis</small>
+                        {% endif %}
                         {% if qi.discount_exempt and quote.discount_percent > 0 %}
                             <br><small class="text-warning">Kein Rabatt</small>
+                        {% endif %}
+                        {% if qi.assigned_units %}
+                            <br><small class="text-muted">SN: {{ qi.assigned_units|map(attribute='label')|join(', ') }}</small>
                         {% endif %}
                     </td>
                     <td>
@@ -213,6 +229,12 @@
             <span>Zwischensumme</span>
             <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
         </div>
+        {% if quote.optional_total > 0 %}
+        <div class="price-row price-row-muted">
+            <span>Optionale Positionen (nicht enthalten)</span>
+            <span>&euro;{{ "%.2f"|format(quote.optional_total) }}</span>
+        </div>
+        {% endif %}
         {% if quote.discount_percent > 0 %}
         <div class="price-row">
             <span>Rabattfähig</span>
@@ -317,6 +339,7 @@
         {% if quote.status == 'draft' %}
             <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Bearbeiten</a>
         {% endif %}
+        <a href="{{ url_for('admin.quote_packliste', quote_id=quote.id) }}" class="btn btn-outline">📦 Packliste</a>
 
         {% if quote.status == 'draft' %}
         <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?');">

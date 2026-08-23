@@ -219,6 +219,16 @@ with app.app_context():
     _add_column_if_missing('item', 'replacement_value', 'FLOAT')
     # Single-company stock model
     _add_column_if_missing('item', 'stock_quantity', 'INTEGER NOT NULL DEFAULT 0')
+    # Quote editor v2: line ordering, headings, optional positions
+    _needs_position_backfill = 'position' not in {c['name'] for c in _sa_inspect(db.engine).get_columns('quote_item')}
+    _add_column_if_missing('quote_item', 'position', 'INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing('quote_item', 'is_heading', 'BOOLEAN DEFAULT 0')
+    _add_column_if_missing('quote_item', 'is_optional', 'BOOLEAN DEFAULT 0')
+    if _needs_position_backfill:
+        # Preserve existing display order (id order keeps package components together)
+        db.session.execute(_sql_text('UPDATE quote_item SET position = id'))
+        db.session.commit()
+        print('  migrated: quote_item.position backfilled from id order')
 
     # ── One-time conversion: ItemOwnership → Item.stock_quantity + Supplier/ItemSupply ──
     if _needs_ownership_conversion:

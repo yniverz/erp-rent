@@ -2,9 +2,14 @@
 
 {% block title %}Angebot {{ quote.reference_number }} bearbeiten - Verwaltung{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quote-editor.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Angebot bearbeiten: {{ quote.reference_number or 'Entwurf' }}</h1>
+    <span class="qe-save-status" id="qe-save-status"></span>
     <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
 </div>
 
@@ -14,15 +19,18 @@
 </div>
 {% endif %}
 
-<!-- Quote Details -->
-<div class="card quote-section">
-    <h2>Angebotsdetails</h2>
-    <form method="POST">
-        <input type="hidden" name="action" value="update_quote">
+<div id="qe-warnings" class="qe-warnings d-none"></div>
+
+<div class="qe-layout">
+<div class="qe-main">
+
+    <!-- Details -->
+    <div class="card quote-section">
+        <h2>Angebotsdetails</h2>
         <div class="form-row">
             <div class="form-group autocomplete-wrapper">
                 <label>Kundenname</label>
-                <input type="text" name="customer_name" id="customer_name" value="{{ quote.customer_name }}" required autocomplete="off">
+                <input type="text" id="customer_name" data-dkey="customer_name" autocomplete="off">
                 <div class="autocomplete-list" id="customer-suggestions"></div>
             </div>
             <div class="form-group">
@@ -33,16 +41,22 @@
         <div class="form-row">
             <div class="form-group">
                 <label>Startdatum</label>
-                <input type="date" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}">
+                <input type="date" id="start_date" data-dkey="start_date">
             </div>
             <div class="form-group">
                 <label>Enddatum</label>
-                <input type="date" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
+                <input type="date" id="end_date" data-dkey="end_date">
             </div>
+        </div>
+        <div class="d-flex gap-6 align-center mb-14">
+            <span class="text-muted" id="qe-days-label">Mietzeitraum: –</span>
+            <label class="text-muted text-sm m-0">— Überschreiben:</label>
+            <input type="number" id="rental_days_override" data-dkey="rental_days_override" min="1" step="1" class="w-80" placeholder="—">
+            <span class="text-muted text-sm">Tage</span>
         </div>
         <div class="form-group">
             <label>Empfängeradresse</label>
-            <textarea name="recipient_lines" id="recipient_lines" rows="3">{{ quote.recipient_lines or '' }}</textarea>
+            <textarea id="recipient_lines" data-dkey="recipient_lines" rows="3"></textarea>
         </div>
         <div class="mb-16">
             <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
@@ -51,465 +65,686 @@
         </div>
         <div class="form-group">
             <label>Interne Notizen</label>
-            <textarea name="notes" rows="3" placeholder="Nur intern sichtbar, nicht auf der Rechnung">{{ quote.notes or '' }}</textarea>
+            <textarea id="notes" data-dkey="notes" rows="2" placeholder="Nur intern sichtbar, nicht auf der Rechnung"></textarea>
         </div>
-        <div class="form-group">
+        <div class="form-group m-0">
             <label>Bemerkungen (auf Rechnung/Angebot)</label>
-            <textarea name="public_notes" rows="3" placeholder="Wird auf Angebot, Rechnung und Lieferschein gedruckt">{{ quote.public_notes or '' }}</textarea>
+            <textarea id="public_notes" data-dkey="public_notes" rows="2" placeholder="Wird auf Angebot, Rechnung und Lieferschein gedruckt"></textarea>
         </div>
-        <button type="submit" class="btn btn-primary">Details speichern</button>
-    </form>
-</div>
+    </div>
 
-<!-- Inventory Items -->
-<div class="card quote-section">
-    <h2>Inventar-Artikel</h2>
-    {% if not quote.start_date or not quote.end_date %}
-        <p class="text-warning">&#9888; Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen.</p>
-    {% else %}
-        <form method="POST" class="d-flex gap-10 align-end mb-14">
-            <input type="hidden" name="action" value="update_quote">
-            <input type="hidden" name="customer_name" value="{{ quote.customer_name }}">
-            <input type="hidden" name="start_date" value="{{ quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '' }}">
-            <input type="hidden" name="end_date" value="{{ quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '' }}">
-            <input type="hidden" name="recipient_lines" value="{{ quote.recipient_lines or '' }}">
-            <input type="hidden" name="notes" value="{{ quote.notes or '' }}">
-            <input type="hidden" name="public_notes" value="{{ quote.public_notes or '' }}">
-            <div class="d-flex gap-6 align-center">
-                <span class="text-muted">Mietzeitraum: {{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }}{% if quote.rental_days_override %} <strong class="text-accent">(manuell)</strong>{% endif %}</span>
-                <label class="text-muted text-sm m-0">— Überschreiben:</label>
-                <input type="number" name="rental_days_override" value="{{ quote.rental_days_override or '' }}" min="1" step="1" class="w-80" placeholder="—">
-                <span class="text-muted text-sm">Tage</span>
-                <button type="submit" class="btn btn-sm btn-outline">Speichern</button>
-            </div>
-        </form>
-
-        <!-- Add Item Dropdown -->
-        <form method="POST" class="d-flex gap-10 align-end mb-20">
-            <input type="hidden" name="action" value="add_item">
-            <div class="form-group m-0 flex-1">
-                <label>Artikel hinzufügen</label>
-                <select name="item_id" class="w-full">
-                    <option value="">— Artikel auswählen —</option>
-                    {% set existing_ids = quote.quote_items|rejectattr('is_custom')|rejectattr('package_id')|map(attribute='item_id')|list %}
-                    {% set existing_package_ids = quote.quote_items|selectattr('package_id')|map(attribute='package_id')|unique|list %}
-
-                    {# Items grouped by category (hierarchical) #}
-                    {% for cat, depth in category_tree %}
-                        {% set cat_items = items|selectattr('category')|selectattr('category.id', 'equalto', cat.id)|list %}
-                        {% if cat_items %}
-                        {% set prefix = '—' * depth ~ ' ' if depth > 0 else '' %}
-                        <optgroup label="{{ prefix }}{{ cat.name }}">
-                            {% for item in cat_items %}
-                                {% if item.is_package %}
-                                    {% if item.id not in existing_package_ids %}
-                                        {% set avail = item_availability.get(item.id, 0) %}
-                                        <option value="{{ item.id }}">
-                                            {{ '⚠ ' if avail == 0 }}📦 {{ item.name }}
-                                            ({{ '∞' if avail == -1 else avail }} verf.)
-                                            — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
-                                        </option>
-                                    {% endif %}
-                                {% elif item.id not in existing_ids %}
-                                    {% set avail = item_availability.get(item.id, 0) %}
-                                    <option value="{{ item.id }}">
-                                        {{ '⚠ ' if avail == 0 }}{{ item.name }}
-                                        {% if item.is_external %} ↗ Extern{% endif %}
-                                        ({{ '∞' if avail == -1 else avail }} verf.)
-                                        — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
-                                    </option>
-                                {% endif %}
-                            {% endfor %}
-                        </optgroup>
-                        {% endif %}
-                    {% endfor %}
-
-                    {# Items without category #}
-                    {% set uncategorized = items|rejectattr('category')|list %}
-                    {% if uncategorized %}
-                    <optgroup label="Ohne Kategorie">
-                        {% for item in uncategorized %}
-                            {% if item.is_package %}
-                                {% if item.id not in existing_package_ids %}
-                                    {% set avail = item_availability.get(item.id, 0) %}
-                                    <option value="{{ item.id }}">
-                                        {{ '⚠ ' if avail == 0 }}📦 {{ item.name }}
-                                        ({{ '∞' if avail == -1 else avail }} verf.)
-                                        — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
-                                    </option>
-                                {% endif %}
-                            {% elif item.id not in existing_ids %}
-                                {% set avail = item_availability.get(item.id, 0) %}
-                                <option value="{{ item.id }}">
-                                    {{ '⚠ ' if avail == 0 }}{{ item.name }}
-                                    {% if item.is_external %} ↗ Extern{% endif %}
-                                    ({{ '∞' if avail == -1 else avail }} verf.)
-                                    — €{{ "%.2f"|format(item.default_rental_price_per_day) }}/Tag
-                                </option>
-                            {% endif %}
-                        {% endfor %}
-                    </optgroup>
-                    {% endif %}
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary">Hinzufügen</button>
-        </form>
-
-        <!-- Current Items in Quote -->
-        {% set inventory_items = quote.quote_items|rejectattr('is_custom')|list %}
-        {% set standalone_items = inventory_items|rejectattr('package_id')|list %}
-        {% set package_items = inventory_items|selectattr('package_id')|list %}
-        {% set package_ids = package_items|map(attribute='package_id')|unique|list %}
-        {% if inventory_items %}
-        {% macro cost_cell(qi, cost_name) %}
-            {% if qi.item.supplies %}
-                <div class="sourcing-box">
-                    <div class="sourcing-cost" title="Durchschnittliche Kosten pro Stück/Tag aus der Beschaffung">Ø &euro;{{ "%.2f"|format(qi.rental_cost_per_day or 0) }}</div>
-                    <small class="text-muted d-block">Eigen: {{ '∞' if qi.item.stock_quantity == -1 else qi.item.stock_quantity }} St.</small>
-                    {% for s in qi.item.supplies_sorted %}
-                        {% set src = (qi.sources | selectattr('supplier_id', 'equalto', s.supplier_id) | list | first) %}
-                        <label class="sourcing-row" title="{{ s.supplier.name }}: max. {{ '∞' if s.quantity == -1 else s.quantity }} Stück zu €{{ '%.2f'|format(s.price_per_day) }}/Tag">
-                            <input type="number" name="src_{{ qi.id }}_{{ s.id }}" value="{{ src.quantity if src else 0 }}" min="0" {% if s.quantity != -1 %}max="{{ s.quantity }}"{% endif %} class="w-60">
-                            <span class="sourcing-label">{{ s.supplier.name }} <small class="text-muted">@{{ '%.2f'|format(s.price_per_day) }}€</small></span>
-                        </label>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <input type="number" name="{{ cost_name }}" value="{{ '%.2f'|format(qi.rental_cost_per_day or 0) }}" step="0.01" min="0" class="w-100">
-            {% endif %}
-        {% endmacro %}
-        <form method="POST">
-            <input type="hidden" name="action" value="update_items">
-            <table>
+    <!-- Positions -->
+    <div class="card quote-section">
+        <h2>Positionen</h2>
+        <div id="qe-no-dates" class="text-warning d-none">&#9888; Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen.</div>
+        <div id="qe-lines-wrap">
+            <table class="qe-lines-table">
                 <thead>
                     <tr>
-                        <th>Artikel</th>
+                        <th></th>
+                        <th>Position</th>
                         <th>Verfügbar</th>
                         <th>Menge</th>
                         <th>Preis/Tag</th>
-                        <th>Kosten/Tag &amp; Beschaffung</th>
-                        <th>Kein Rabatt</th>
                         <th>Summe</th>
+                        <th></th>
                         <th></th>
                     </tr>
                 </thead>
-                <tbody>
-                    {# Package grouped items #}
-                    {% for pkg_id in package_ids %}
-                    {% set pkg_components = package_items|selectattr('package_id', 'equalto', pkg_id)|list %}
-                    {% if pkg_components %}
-                    {% set pkg = pkg_components[0].package %}
-                    <tr class="package-header-row">
-                        <td colspan="6">
-                            <strong>📦 {{ pkg.name }}</strong>
-                            <span class="badge badge-package">Paket</span>
-                        </td>
-                        <td>
-                            &euro;{{ "%.2f"|format(pkg_components|sum(attribute='total_price')) }}
-                        </td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-danger" title="Ganzes Paket entfernen" onclick="removePackage({{ pkg_id }})">✕ Paket</button>
-                        </td>
-                    </tr>
-                    {% for qi in pkg_components %}
-                    {% set avail = item_availability.get(qi.item_id, 0) %}
-                    <tr class="package-component-row{{ ' overstock-row' if avail != -1 and qi.quantity > avail }}">
-                        <td class="pl-30">
-                            ↳ {{ qi.item.name }}
-                            {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
-                            {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
-                        </td>
-                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}{% if avail != -1 and qi.quantity > avail %}<br><small class="text-warning">⚠ Überbestand</small>{% endif %}</td>
-                        <td><input type="number" name="quantity_pkg_{{ qi.id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
-                        <td><input type="number" name="price_pkg_{{ qi.id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
-                        <td>
-                            {{ cost_cell(qi, 'cost_pkg_' ~ qi.id) }}
-                        </td>
-                        <td class="text-center">
-                            <label class="exempt-label" title="Vom Rabatt ausgenommen">
-                                <input type="checkbox" name="discount_exempt_pkg_{{ qi.id }}" {{ 'checked' if qi.discount_exempt }}>
-                            </label>
-                        </td>
-                        <td>
-                            &euro;{{ "%.2f"|format(qi.total_price) }}
-                            {% if qi.rental_cost_per_day %}
-                                <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-danger" title="Komponente entfernen" onclick="removeQuoteItem({{ qi.id }})">✕</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    {% endif %}
-                    {% endfor %}
-
-                    {# Standalone items (non-package) #}
-                    {% for qi in standalone_items %}
-                    {% set avail = item_availability.get(qi.item_id, 0) %}
-                    <tr class="{{ 'overstock-row' if avail != -1 and qi.quantity > avail }}">
-                        <td>
-                            <strong>{{ qi.item.name }}</strong>
-                            {% if qi.item.is_external %}<br><small class="text-external">&#x2197; Extern</small>{% endif %}
-                            {% if qi.item.category %}<br><small class="text-muted">{{ qi.item.category.name }}</small>{% endif %}
-                        </td>
-                        <td>{{ '∞' if avail == -1 else avail }} / {{ '∞' if qi.item.total_quantity == -1 else qi.item.total_quantity }}{% if avail != -1 and qi.quantity > avail %}<br><small class="text-warning">⚠ Überbestand</small>{% endif %}</td>
-                        <td><input type="number" name="quantity_{{ qi.item_id }}" value="{{ qi.quantity }}" min="0" class="w-80"></td>
-                        <td><input type="number" name="price_{{ qi.item_id }}" value="{{ '%.2f'|format(qi.rental_price_per_day) }}" step="0.01" min="0" class="w-100"></td>
-                        <td>
-                            {{ cost_cell(qi, 'cost_' ~ qi.item_id) }}
-                        </td>
-                        <td class="text-center">
-                            <label class="exempt-label" title="Vom Rabatt ausgenommen">
-                                <input type="checkbox" name="discount_exempt_{{ qi.item_id }}" {{ 'checked' if qi.discount_exempt }}>
-                            </label>
-                        </td>
-                        <td>
-                            &euro;{{ "%.2f"|format(qi.total_price) }}
-                            {% if qi.rental_cost_per_day %}
-                                <br><small class="text-danger">Kosten: &euro;{{ "%.2f"|format(qi.total_external_cost) }}</small>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-danger" title="Entfernen" onclick="removeQuoteItem({{ qi.id }})">✕</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                <tbody id="qe-lines"></tbody>
             </table>
-            <button type="submit" class="btn btn-primary">Artikel speichern</button>
-        </form>
-        {% else %}
-            <p class="text-muted mt-10">Noch keine Artikel hinzugefügt. Verwenden Sie das Dropdown oben.</p>
-        {% endif %}
-    {% endif %}
-</div>
-
-<!-- Custom Items -->
-<div class="card quote-section">
-    <h2>Eigene Positionen</h2>
-    {% set custom_items = quote.quote_items|selectattr('is_custom')|list %}
-    {% if custom_items %}
-        <form method="POST">
-            <input type="hidden" name="action" value="update_items">
-            <table>
-                <thead>
-                    <tr><th>Name</th><th>Menge</th><th>Preis/Tag</th><th>Kein Rabatt</th><th>Summe</th><th></th></tr>
-                </thead>
-                <tbody>
-                    {% for qi in custom_items %}
-                    <tr>
-                        <td>{{ qi.custom_item_name }}</td>
-                        <td>{{ qi.quantity }}</td>
-                        <td>&euro;{{ "%.2f"|format(qi.rental_price_per_day) }}</td>
-                        <td class="text-center">
-                            <label class="exempt-label" title="Vom Rabatt ausgenommen">
-                                <input type="checkbox" name="discount_exempt_custom_{{ qi.id }}" {{ 'checked' if qi.discount_exempt }}>
-                            </label>
-                        </td>
-                        <td>&euro;{{ "%.2f"|format(qi.total_price) }}</td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-danger" onclick="removeQuoteItem({{ qi.id }})">Entfernen</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <button type="submit" class="btn btn-primary mt-10">Positionen speichern</button>
-        </form>
-    {% endif %}
-
-    <form method="POST" class="d-flex gap-10 align-end mt-14">
-        <input type="hidden" name="action" value="add_custom">
-        <div class="form-group m-0 flex-1">
-            <label>Name</label>
-            <input type="text" name="custom_name" placeholder="z.B. Aufbauzeit">
+            <p class="text-muted mt-10 d-none" id="qe-lines-empty">Noch keine Positionen. Fügen Sie Artikel über die Suche rechts hinzu.</p>
         </div>
-        <div class="form-group m-0 w-100">
-            <label>Menge</label>
-            <input type="number" name="custom_quantity" value="1" min="1">
-        </div>
-        <div class="form-group m-0 w-120">
-            <label>Preis/Tag</label>
-            <input type="number" name="custom_price" step="0.01" min="0">
-        </div>
-        <button type="submit" class="btn btn-primary">Hinzufügen</button>
-    </form>
-</div>
 
-<!-- Pricing Summary -->
-<div class="card quote-section">
-    <h2>Preisübersicht</h2>
-    {% if tax_mode == 'regular' %}
-    <form method="POST" class="mb-10">
-        <input type="hidden" name="action" value="update_prices_mode">
-        <label class="d-flex gap-8 align-center text-sm checkbox-group" style="cursor:pointer;">
-            <input type="checkbox" name="prices_are_net" value="1" style="width:auto;flex:0 0 auto;"
-                   {% if quote.prices_are_net %}checked{% endif %}
-                   onchange="this.form.submit()">
+        <div class="qe-addline-bar">
+            <button type="button" class="btn btn-sm btn-outline" onclick="QE.toggleInlineForm('heading')">+ Überschrift</button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="QE.toggleInlineForm('custom')">+ Eigene Position</button>
+        </div>
+        <div class="qe-inline-form" id="qe-form-heading">
+            <div class="form-group flex-1">
+                <label>Überschrift</label>
+                <input type="text" id="qe-heading-text" placeholder="z.B. Licht, Ton, Personal …">
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" onclick="QE.addHeading()">Hinzufügen</button>
+        </div>
+        <div class="qe-inline-form" id="qe-form-custom">
+            <div class="form-group flex-1">
+                <label>Name</label>
+                <input type="text" id="qe-custom-name" placeholder="z.B. Aufbauzeit">
+            </div>
+            <div class="form-group w-80">
+                <label>Menge</label>
+                <input type="number" id="qe-custom-qty" value="1" min="1">
+            </div>
+            <div class="form-group w-120">
+                <label>Preis/Tag</label>
+                <input type="number" id="qe-custom-price" step="0.01" min="0">
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" onclick="QE.addCustom()">Hinzufügen</button>
+        </div>
+    </div>
+
+    <!-- Pricing Summary -->
+    <div class="card quote-section qe-summary">
+        <h2>Preisübersicht</h2>
+        {% if tax_mode == 'regular' %}
+        <label class="d-flex gap-8 align-center text-sm checkbox-group mb-10" style="cursor:pointer;">
+            <input type="checkbox" id="qe-prices-net" style="width:auto;flex:0 0 auto;">
             <span>Eingegebene Preise sind <strong>Nettobeträge</strong> – MwSt. wird oben drauf gerechnet</span>
         </label>
-        <small class="help-text">Standard: Bruttopreise (MwSt. ist im eingegebenen Preis enthalten).</small>
-    </form>
-    {% endif %}
-    <div class="price-summary">
-        <div class="price-row">
-            <span>Zwischensumme{% if tax_mode == 'regular' and quote.prices_are_net %} (netto){% endif %} ({{ quote.calculate_rental_days() }} Tag{{ 'e' if quote.calculate_rental_days() != 1 }})</span>
-            <span>&euro;{{ "%.2f"|format(quote.subtotal) }}</span>
-        </div>
+        {% endif %}
+        <div class="price-summary" id="qe-summary"></div>
 
-        <form method="POST" class="mb-10 mt-10">
-            <input type="hidden" name="action" value="update_discount">
+        <div class="mb-10 mt-14">
             <div class="price-row align-center">
                 <div class="d-flex gap-8 align-center">
                     <span>Rabatt</span>
-                    <input type="text" name="discount_label" value="{{ quote.discount_label or '' }}" placeholder="Bezeichnung (optional)" class="w-200 text-sm">
+                    <input type="text" id="qe-discount-label" placeholder="Bezeichnung (optional)" class="w-200 text-sm">
                 </div>
                 <div class="d-flex gap-8 align-center">
-                    <input type="number" name="final_discount_percent" id="discount_percent" value="{{ '%.4f'|format(quote.discount_percent) }}" step="0.0001" min="0" max="100" class="w-120">
+                    <input type="number" id="qe-discount-pct" step="0.0001" min="0" max="100" class="w-120">
                     <span>%</span>
                 </div>
             </div>
             <div class="price-row align-center mt-8">
-                <span>oder {% if tax_mode == 'regular' and quote.prices_are_net %}Nettobetrag{% else %}Gesamtpreis{% endif %}</span>
+                <span>oder Zielbetrag <span id="qe-target-label"></span></span>
                 <div class="d-flex gap-8 align-center">
                     <span>&euro;</span>
-                    <input type="number" name="target_total" id="target_total" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total) }}">
-                    <button type="submit" class="btn btn-sm btn-outline">Übernehmen</button>
+                    <input type="number" id="qe-target-total" step="0.01" min="0" class="w-140">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="QE.applyDiscount()">Übernehmen</button>
                 </div>
             </div>
-            {% if tax_mode == 'regular' and quote.prices_are_net %}
-            <div class="price-row align-center mt-8">
-                <span>oder Bruttobetrag (inkl. {{ "%g"|format(tax_rate) }}% MwSt.)</span>
-                <div class="d-flex gap-8 align-center">
-                    <span>&euro;</span>
-                    <input type="number" id="target_total_gross" value="" step="0.01" min="0" class="w-140" placeholder="{{ '%.2f'|format(quote.total * (1 + tax_rate / 100)) }}">
-                    <span class="text-sm text-muted">(nur Anzeige)</span>
-                </div>
-            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card quote-section">
+        <div class="d-flex gap-10 flex-wrap">
+            <button type="button" class="btn btn-success" id="qe-finalize-btn">Angebot finalisieren</button>
+            <a href="{{ url_for('admin.quote_packliste', quote_id=quote.id) }}" class="btn btn-outline">📦 Packliste</a>
+            <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
+            <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF</a>
+            <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Rechnung PDF</a>
+            <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
+            <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
+            <span id="pk-save-quote-status" class="d-flex align-center text-sm text-muted"></span>
+            {% if quote.status == 'draft' %}
+            <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
+                <button type="submit" class="btn btn-danger">Angebot löschen</button>
+            </form>
             {% endif %}
-        </form>
+        </div>
+        <div id="qe-finalize-dialog" class="action-dialog d-none">
+            <p class="mb-10"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
+            <p class="text-muted text-09 mb-12">Dieses Angebot war zuvor finalisiert. Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
+            <div class="d-flex gap-10 flex-wrap align-center">
+                <button type="button" class="btn btn-success" id="qe-finalize-keep">Bisheriges Datum</button>
+                <button type="button" class="btn btn-outline" onclick="QE.finalize('')">Heutiges Datum</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('qe-finalize-dialog').classList.add('d-none')">Abbrechen</button>
+            </div>
+        </div>
+    </div>
 
-        <script>
-        (function() {
-            const pctInput = document.getElementById('discount_percent');
-            const totalInput = document.getElementById('target_total');
-            const grossInput = document.getElementById('target_total_gross');
-            const subtotal = {{ quote.subtotal }};
-            const discountable = {{ quote.discountable_subtotal }};
-            const taxFactor = {{ (1 + tax_rate / 100) if (tax_mode == 'regular' and quote.prices_are_net) else 1 }};
+</div><!-- /qe-main -->
 
-            // Update OTHER fields based on a known net total, never touching `source`.
-            function applyNet(net, source) {
-                if (discountable > 0 && source !== pctInput) {
-                    const pct = Math.max(0, Math.min(100, ((subtotal - net) / discountable) * 100));
-                    pctInput.value = pct.toFixed(4);
+<!-- Item Picker -->
+<aside class="qe-picker">
+    <div class="card">
+        <h2>Artikel hinzufügen</h2>
+        <div class="qe-picker-search">
+            <input type="search" id="qe-picker-q" placeholder="Suchen (Name, Hersteller, Modell) …" autocomplete="off">
+        </div>
+        <div class="qe-picker-cat">
+            <select id="qe-picker-cat">
+                <option value="">Alle Kategorien</option>
+                {% for cat, depth in category_tree %}
+                <option value="{{ cat.id }}">{{ '— ' * depth }}{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="qe-picker-results" id="qe-picker-results">
+            <div class="qe-picker-empty">Laden …</div>
+        </div>
+    </div>
+</aside>
+</div><!-- /qe-layout -->
+
+<script>
+const QE = (function() {
+    'use strict';
+
+    const BASE = "{{ url_for('admin.quote_api_state', quote_id=quote.id) }}".replace(/\/state$/, '');
+    let S = null;                 // current state from server
+    let openSourcing = new Set(); // line ids with open sourcing panel
+    let lineDebounce = {};        // line id -> {timer, patch}
+    let detailDebounce = null;
+    let pickerDebounce = null;
+    let detailsFilled = false;
+
+    const el = id => document.getElementById(id);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const eur = n => '€' + (Number(n) || 0).toFixed(2);
+    const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; };
+
+    // ── Save status indicator ──
+    let statusTimer = null;
+    function setStatus(mode, text) {
+        const s = el('qe-save-status');
+        s.className = 'qe-save-status ' + mode;
+        s.textContent = text;
+        clearTimeout(statusTimer);
+        if (mode === 'saved') statusTimer = setTimeout(() => { s.textContent = ''; }, 2500);
+    }
+
+    function showWarnings(warnings) {
+        const box = el('qe-warnings');
+        if (warnings && warnings.length) {
+            box.innerHTML = warnings.map(w => '<div>⚠ ' + esc(w) + '</div>').join('');
+            box.classList.remove('d-none');
+        } else {
+            box.classList.add('d-none');
+        }
+    }
+
+    // ── API ──
+    async function api(path, data, opts) {
+        opts = opts || {};
+        setStatus('saving', 'Speichern …');
+        try {
+            const res = await fetch(BASE + path, data === undefined ? {} : {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data),
+            });
+            const json = await res.json();
+            if (!json.ok) {
+                setStatus('error', json.error || 'Fehler beim Speichern');
+                return null;
+            }
+            if (json.redirect) { window.location = json.redirect; return json; }
+            S = json.state;
+            setStatus('saved', 'Gespeichert ✓');
+            showWarnings(json.warnings);
+            if (!opts.skipRender) renderAll(opts);
+            return json;
+        } catch (e) {
+            setStatus('error', 'Netzwerkfehler');
+            return null;
+        }
+    }
+
+    // ── Rendering ──
+    function renderAll(opts) {
+        opts = opts || {};
+        if (!detailsFilled) fillDetails();
+        el('qe-days-label').textContent = 'Mietzeitraum: ' + S.rental_days + ' Tag' + (S.rental_days !== 1 ? 'e' : '')
+            + (S.rental_days_override ? ' (manuell)' : '');
+        el('qe-no-dates').classList.toggle('d-none', S.has_dates);
+        renderLines();
+        renderSummary();
+    }
+
+    function fillDetails() {
+        el('customer_name').value = S.customer_name || '';
+        el('recipient_lines').value = S.recipient_lines || '';
+        el('start_date').value = S.start_date;
+        el('end_date').value = S.end_date;
+        el('rental_days_override').value = S.rental_days_override || '';
+        el('notes').value = S.notes;
+        el('public_notes').value = S.public_notes;
+        el('qe-discount-pct').value = S.totals.discount_percent.toFixed(4);
+        el('qe-discount-label').value = S.totals.discount_label;
+        const net = el('qe-prices-net');
+        if (net) net.checked = S.prices_are_net;
+        detailsFilled = true;
+    }
+
+    function availBadge(avail, qty) {
+        if (avail === -1) return '<span class="qe-avail ok">∞</span>';
+        let cls = 'ok';
+        if (avail <= 0 || (qty !== undefined && qty > avail)) cls = 'none';
+        else if (qty !== undefined && qty >= avail * 0.8) cls = 'low';
+        return '<span class="qe-avail ' + cls + '">' + avail + ' verf.</span>';
+    }
+
+    function lineRow(l) {
+        const overstock = l.type === 'item' && l.available !== -1 && l.quantity > l.available;
+        const optionalCls = l.is_optional ? ' qe-optional-row' : '';
+        const isPkgComp = !!l.package_id;
+        let nameCell;
+        if (l.type === 'custom') {
+            nameCell = '<input type="text" class="qe-line-name-input" data-fkey="name-' + l.id + '" value="' + esc(l.name) + '">';
+        } else {
+            nameCell = '<span class="qe-line-name">' + (isPkgComp ? '↳ ' : '') + esc(l.name) + '</span>'
+                + (l.is_optional ? '<span class="qe-optional-tag">OPTIONAL</span>' : '')
+                + (l.is_external ? '<div class="qe-line-sub text-external">↗ Extern</div>' : '')
+                + (l.category ? '<div class="qe-line-sub">' + esc(l.category) + '</div>' : '');
+        }
+        if (l.type === 'custom' && l.is_optional) nameCell += '<span class="qe-optional-tag">OPTIONAL</span>';
+
+        const hasSourcing = l.type === 'item' && (l.supplies || []).length > 0;
+        const needsManualCost = l.type === 'item' && !hasSourcing;
+        let srcBtn = '';
+        if (hasSourcing || needsManualCost) {
+            const active = openSourcing.has(l.id) ? ' active' : '';
+            const short = hasSourcing
+                ? (l.sourced_quantity > 0 ? l.sourced_quantity + '× extern' : 'Eigen')
+                : (l.cost_per_day > 0 ? 'Kosten ' + eur(l.cost_per_day) : '');
+            srcBtn = '<button type="button" class="qe-icon-btn' + active + '" title="Beschaffung / Kosten" onclick="QE.toggleSourcing(' + l.id + ')">⚙ ' + esc(short || 'Kosten') + '</button>';
+        }
+
+        const availCell = l.type === 'item'
+            ? availBadge(l.available, l.quantity) + (overstock ? '<div class="qe-line-sub qe-src-warn">⚠ Überbestand</div>' : '')
+            : '';
+
+        const totalCell = eur(l.total)
+            + (l.cost_per_day > 0 ? '<div class="qe-line-sub text-danger">Kosten: ' + eur(l.total_cost) + '</div>' : '');
+
+        const dragHandle = isPkgComp ? '' : '<span class="qe-drag-handle" title="Ziehen zum Sortieren">⠿</span>';
+        const blockKey = isPkgComp ? '' : 'line-' + l.id;
+
+        return '<tr class="' + (overstock ? 'qe-overstock' : '') + optionalCls + '" data-line="' + l.id + '"'
+            + (blockKey ? ' data-block="' + blockKey + '" draggable="true"' : '')
+            + '>'
+            + '<td>' + dragHandle + '</td>'
+            + '<td class="' + (isPkgComp ? 'qe-pkg-comp-name' : '') + '">' + nameCell + '</td>'
+            + '<td>' + availCell + '</td>'
+            + '<td><input type="number" class="qty-input" data-fkey="qty-' + l.id + '" value="' + l.quantity + '" min="1"></td>'
+            + '<td><input type="number" class="price-input" data-fkey="price-' + l.id + '" value="' + l.price_per_day.toFixed(2) + '" step="0.01" min="0"></td>'
+            + '<td data-total="' + l.id + '">' + totalCell + '</td>'
+            + '<td><div class="qe-flags">'
+            + '<label title="Vom Rabatt ausgenommen"><input type="checkbox" data-fkey="exempt-' + l.id + '" ' + (l.discount_exempt ? 'checked' : '') + '> Kein Rabatt</label>'
+            + '<label title="Auf dem Angebot als optionale Position ausweisen – zählt nicht zum Gesamtpreis"><input type="checkbox" data-fkey="opt-' + l.id + '" ' + (l.is_optional ? 'checked' : '') + '> Optional</label>'
+            + '</div></td>'
+            + '<td><div class="qe-row-actions">' + srcBtn
+            + '<button type="button" class="qe-icon-btn danger" title="Entfernen" onclick="QE.removeLine(' + l.id + ')">✕</button>'
+            + '</div></td>'
+            + '</tr>'
+            + (openSourcing.has(l.id) ? sourcingRow(l) : '');
+    }
+
+    function sourcingRow(l) {
+        let inner;
+        if ((l.supplies || []).length) {
+            const own = l.own_available === -1 ? '∞' : l.own_available;
+            const covered = (l.own_available === -1) ? l.quantity
+                : Math.min(l.own_available, Math.max(0, l.quantity - l.sourced_quantity)) + l.sourced_quantity;
+            const uncovered = l.own_available === -1 ? 0 : Math.max(0, l.quantity - l.own_available - l.sourced_quantity);
+            inner = '<div class="qe-src-col">'
+                + '<strong>Beschaffung</strong>'
+                + '<span class="qe-src-summary">Eigenbestand verfügbar: ' + own + ' St. · Ø Kosten: ' + eur(l.cost_per_day) + '/Tag</span>'
+                + (uncovered > 0 ? '<span class="qe-src-warn">⚠ ' + uncovered + ' St. nicht gedeckt</span>' : '')
+                + '</div><div class="qe-src-col">'
+                + l.supplies.map(s => {
+                    const cur = (l.sources || {})[String(s.supplier_id)] || 0;
+                    const max = s.max_quantity === -1 ? '' : ' max="' + s.max_quantity + '"';
+                    return '<label><input type="number" min="0"' + max + ' value="' + cur + '" data-fkey="src-' + l.id + '-' + s.supplier_id + '">'
+                        + esc(s.supplier_name) + ' <small class="text-muted">@' + eur(s.price_per_day) + '/Tag'
+                        + (s.max_quantity !== -1 ? ' · max. ' + s.max_quantity : '') + '</small></label>';
+                }).join('')
+                + '</div><div class="qe-src-col">'
+                + '<button type="button" class="btn btn-sm btn-outline" onclick="QE.autoSources(' + l.id + ')">Auto (günstigste zuerst)</button>'
+                + '</div>';
+        } else {
+            inner = '<div class="qe-src-col"><strong>Externe Kosten</strong>'
+                + '<label><span>Kosten/Stück/Tag:</span> <input type="number" step="0.01" min="0" value="' + (l.cost_per_day || 0).toFixed(2) + '" data-fkey="cost-' + l.id + '" class="w-100"></label>'
+                + '</div>';
+        }
+        return '<tr class="qe-src-row" data-src-for="' + l.id + '"><td colspan="8"><div class="qe-src-box">' + inner + '</div></td></tr>';
+    }
+
+    function renderLines() {
+        // preserve focus + caret across re-render
+        const active = document.activeElement;
+        const fkey = active && active.dataset ? active.dataset.fkey : null;
+        const selStart = fkey && active.selectionStart !== undefined ? active.selectionStart : null;
+
+        const tbody = el('qe-lines');
+        const seenPkgs = new Set();
+        let html = '';
+        for (const l of S.lines) {
+            if (l.type === 'heading') {
+                html += '<tr class="qe-heading-row" data-line="' + l.id + '" data-block="line-' + l.id + '" draggable="true">'
+                    + '<td><span class="qe-drag-handle" title="Ziehen zum Sortieren">⠿</span></td>'
+                    + '<td colspan="5"><input type="text" class="qe-line-name-input" data-fkey="name-' + l.id + '" value="' + esc(l.name) + '"></td>'
+                    + '<td></td>'
+                    + '<td><div class="qe-row-actions"><button type="button" class="qe-icon-btn danger" title="Entfernen" onclick="QE.removeLine(' + l.id + ')">✕</button></div></td>'
+                    + '</tr>';
+                continue;
+            }
+            if (l.package_id) {
+                if (!seenPkgs.has(l.package_id)) {
+                    seenPkgs.add(l.package_id);
+                    const comps = S.lines.filter(x => x.package_id === l.package_id);
+                    const pkgTotal = comps.reduce((a, c) => a + (c.is_optional ? 0 : c.total), 0);
+                    html += '<tr class="qe-pkg-header-row" data-block="pkg-' + l.package_id + '" draggable="true">'
+                        + '<td><span class="qe-drag-handle" title="Ziehen zum Sortieren">⠿</span></td>'
+                        + '<td colspan="4">📦 ' + esc(l.package_name || 'Paket') + ' <span class="badge badge-package">Paket</span></td>'
+                        + '<td>' + eur(pkgTotal) + '</td>'
+                        + '<td></td>'
+                        + '<td><div class="qe-row-actions"><button type="button" class="qe-icon-btn danger" title="Ganzes Paket entfernen" onclick="QE.removePackage(' + l.id + ', \'' + esc(l.package_name || 'Paket') + '\')">✕ Paket</button></div></td>'
+                        + '</tr>';
+                    for (const c of comps) html += lineRow(c);
                 }
-                if (source !== totalInput) {
-                    totalInput.value = net.toFixed(2);
-                }
-                if (grossInput && source !== grossInput) {
-                    grossInput.value = (net * taxFactor).toFixed(2);
+                continue;
+            }
+            html += lineRow(l);
+        }
+        tbody.innerHTML = html;
+        el('qe-lines-empty').classList.toggle('d-none', S.lines.length > 0);
+        document.querySelector('.qe-lines-table').classList.toggle('d-none', S.lines.length === 0);
+
+        bindLineInputs(tbody);
+        bindDragAndDrop(tbody);
+
+        if (fkey) {
+            const restored = tbody.querySelector('[data-fkey="' + fkey + '"]');
+            if (restored) {
+                restored.focus();
+                if (selStart !== null && restored.setSelectionRange) {
+                    try { restored.setSelectionRange(selStart, selStart); } catch (e) {}
                 }
             }
+        }
+    }
 
-            pctInput.addEventListener('input', function() {
-                const pct = parseFloat(this.value);
-                if (isNaN(pct) || discountable <= 0) return;
-                const net = subtotal - discountable * (pct / 100);
-                applyNet(net, pctInput);
-            });
-            totalInput.addEventListener('input', function() {
-                const net = parseFloat(this.value);
-                if (isNaN(net)) return;
-                applyNet(net, totalInput);
-            });
-            if (grossInput) {
-                grossInput.addEventListener('input', function() {
-                    const gross = parseFloat(this.value);
-                    if (isNaN(gross)) return;
-                    applyNet(gross / taxFactor, grossInput);
+    function bindLineInputs(tbody) {
+        tbody.querySelectorAll('[data-fkey]').forEach(inp => {
+            const [kind, idStr, extra] = inp.dataset.fkey.split('-');
+            const id = parseInt(idStr, 10);
+            if (kind === 'exempt' || kind === 'opt') {
+                inp.addEventListener('change', () => {
+                    queueLineUpdate(id, kind === 'exempt'
+                        ? {discount_exempt: inp.checked}
+                        : {is_optional: inp.checked}, 0);
+                });
+            } else if (kind === 'qty') {
+                inp.addEventListener('input', () => queueLineUpdate(id, {quantity: Math.max(1, parseInt(inp.value, 10) || 1)}, 600));
+            } else if (kind === 'price') {
+                inp.addEventListener('input', () => queueLineUpdate(id, {price_per_day: num(inp.value)}, 600));
+            } else if (kind === 'name') {
+                inp.addEventListener('input', () => queueLineUpdate(id, {name: inp.value}, 600));
+            } else if (kind === 'cost') {
+                inp.addEventListener('input', () => queueLineUpdate(id, {cost_per_day: num(inp.value)}, 600));
+            } else if (kind === 'src') {
+                inp.addEventListener('input', () => {
+                    // collect all sourcing inputs of this line
+                    const sources = {};
+                    tbody.querySelectorAll('[data-fkey^="src-' + id + '-"]').forEach(si => {
+                        const supplierId = si.dataset.fkey.split('-')[2];
+                        sources[supplierId] = parseInt(si.value, 10) || 0;
+                    });
+                    queueLineUpdate(id, {sources: sources}, 600);
                 });
             }
-        })();
-        </script>
+        });
+    }
 
-        {% if quote.discount_percent > 0 %}
-        <div class="price-row">
-            <span>Rabattfähig</span>
-            <span>&euro;{{ "%.2f"|format(quote.discountable_subtotal) }}</span>
-        </div>
-        <div class="price-row">
-            <span>Rabatt{{ ' – ' + quote.discount_label if quote.discount_label else '' }} ({{ "%.2f"|format(quote.discount_percent) }}%)</span>
-            <span>-&euro;{{ "%.2f"|format(quote.discount_amount) }}</span>
-        </div>
-        {% endif %}
+    function queueLineUpdate(id, patch, delay) {
+        const entry = lineDebounce[id] = lineDebounce[id] || {patch: {}};
+        Object.assign(entry.patch, patch);
+        clearTimeout(entry.timer);
+        entry.timer = setTimeout(() => {
+            const p = entry.patch;
+            delete lineDebounce[id];
+            api('/lines/' + id, p);
+        }, delay);
+    }
 
-        <div class="price-row total">
-            <span>{% if tax_mode == 'regular' and quote.prices_are_net %}Nettobetrag{% else %}Gesamt{% endif %}</span>
-            <span>&euro;{{ "%.2f"|format(quote.total) }}</span>
-        </div>
-        {% if tax_mode == 'regular' %}
-        {% if quote.prices_are_net %}
-        {% set mwst_amount = (quote.total * tax_rate / 100)|round(2) %}
-        {% set brutto_total = (quote.total + mwst_amount)|round(2) %}
-        <div class="price-row price-row-muted">
-            <span>zzgl. {{ "%g"|format(tax_rate) }}% MwSt.</span>
-            <span>&euro;{{ "%.2f"|format(mwst_amount) }}</span>
-        </div>
-        <div class="price-row total">
-            <span>Gesamtbetrag (brutto)</span>
-            <span>&euro;{{ "%.2f"|format(brutto_total) }}</span>
-        </div>
-        {% else %}
-        {% set mwst_amount = (quote.total - (quote.total / (1 + tax_rate / 100)))|round(2) %}
-        <div class="price-row price-row-muted">
-            <span>darin enthaltene {{ "%g"|format(tax_rate) }}% MwSt.</span>
-            <span>&euro;{{ "%.2f"|format(mwst_amount) }}</span>
-        </div>
-        {% endif %}
-        {% endif %}
-    </div>
+    // ── Drag & drop reorder ──
+    function bindDragAndDrop(tbody) {
+        let dragRow = null;
+        tbody.querySelectorAll('tr[data-block]').forEach(row => {
+            row.addEventListener('dragstart', e => {
+                dragRow = row;
+                row.classList.add('qe-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', row.dataset.block);
+            });
+            row.addEventListener('dragend', () => {
+                row.classList.remove('qe-dragging');
+                tbody.querySelectorAll('.qe-drop-above,.qe-drop-below').forEach(r => r.classList.remove('qe-drop-above', 'qe-drop-below'));
+            });
+            row.addEventListener('dragover', e => {
+                if (!dragRow || dragRow === row) return;
+                e.preventDefault();
+                const rect = row.getBoundingClientRect();
+                const above = (e.clientY - rect.top) < rect.height / 2;
+                tbody.querySelectorAll('.qe-drop-above,.qe-drop-below').forEach(r => r.classList.remove('qe-drop-above', 'qe-drop-below'));
+                row.classList.add(above ? 'qe-drop-above' : 'qe-drop-below');
+            });
+            row.addEventListener('drop', e => {
+                if (!dragRow || dragRow === row) return;
+                e.preventDefault();
+                const rect = row.getBoundingClientRect();
+                const above = (e.clientY - rect.top) < rect.height / 2;
+                const blocks = Array.from(tbody.querySelectorAll('tr[data-block]')).map(r => r.dataset.block);
+                const from = blocks.indexOf(dragRow.dataset.block);
+                blocks.splice(from, 1);
+                let to = blocks.indexOf(row.dataset.block);
+                if (!above) to += 1;
+                blocks.splice(to, 0, dragRow.dataset.block);
+                api('/reorder', {order: blocks});
+            });
+        });
+    }
 
-    <div class="d-flex gap-10 flex-wrap mt-20">
-        {% if quote.finalized_at %}
-        <!-- Previous finalization date exists - show warning dialog -->
-        <button type="button" class="btn btn-success" onclick="showFinalizeDialog()">Angebot finalisieren</button>
-        {% else %}
-        <form method="POST" class="d-inline">
-            <input type="hidden" name="action" value="finalize">
-            <button type="submit" class="btn btn-success" onclick="return confirm('Angebot finalisieren?');">Angebot finalisieren</button>
-        </form>
-        {% endif %}
-        <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
-        <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF (Entwurf)</a>
-        <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Rechnung PDF (Entwurf)</a>
-        <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
-        <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
-        <span id="pk-save-quote-status" class="d-flex align-center text-sm text-muted"></span>
-        {% if quote.status == 'draft' %}
-        <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
-            <button type="submit" class="btn btn-danger">Angebot löschen</button>
-        </form>
-        {% endif %}
-    </div>
+    // ── Summary ──
+    function renderSummary() {
+        const t = S.totals;
+        const isRegular = S.tax_mode === 'regular';
+        const isNet = isRegular && S.prices_are_net;
+        const taxFactor = 1 + S.tax_rate / 100;
+        let html = '';
+        html += '<div class="price-row"><span>Zwischensumme' + (isNet ? ' (netto)' : '') + ' (' + S.rental_days + ' Tag' + (S.rental_days !== 1 ? 'e' : '') + ')</span><span>' + eur(t.subtotal) + '</span></div>';
+        if (t.discount_percent > 0) {
+            html += '<div class="price-row"><span>Rabattfähig</span><span>' + eur(t.discountable) + '</span></div>';
+            html += '<div class="price-row"><span>Rabatt' + (t.discount_label ? ' – ' + esc(t.discount_label) : '') + ' (' + t.discount_percent.toFixed(2) + '%)</span><span>-' + eur(t.discount_amount) + '</span></div>';
+        }
+        html += '<div class="price-row total"><span>' + (isNet ? 'Nettobetrag' : 'Gesamt') + '</span><span>' + eur(t.total) + '</span></div>';
+        if (isRegular) {
+            if (isNet) {
+                const mwst = Math.round(t.total * S.tax_rate) / 100;
+                html += '<div class="price-row price-row-muted"><span>zzgl. ' + S.tax_rate + '% MwSt.</span><span>' + eur(mwst) + '</span></div>';
+                html += '<div class="price-row total"><span>Gesamtbetrag (brutto)</span><span>' + eur(t.total + mwst) + '</span></div>';
+            } else {
+                const mwst = t.total - t.total / taxFactor;
+                html += '<div class="price-row price-row-muted"><span>darin enthaltene ' + S.tax_rate + '% MwSt.</span><span>' + eur(mwst) + '</span></div>';
+            }
+        }
+        if (t.optional_total > 0) {
+            html += '<div class="price-row price-row-muted"><span>Optionale Positionen (nicht enthalten)</span><span>' + eur(t.optional_total) + '</span></div>';
+        }
+        el('qe-summary').innerHTML = html;
+        el('qe-target-total').placeholder = t.total.toFixed(2);
+        el('qe-target-label').textContent = isNet ? '(netto)' : '';
+        // keep discount inputs in sync unless focused
+        if (document.activeElement !== el('qe-discount-pct')) el('qe-discount-pct').value = t.discount_percent.toFixed(4);
+        if (document.activeElement !== el('qe-discount-label')) el('qe-discount-label').value = t.discount_label;
+    }
 
-    {% if quote.finalized_at %}
-    <div id="finalize-dialog" class="action-dialog d-none">
-        <form method="POST" id="finalize-form">
-            <input type="hidden" name="action" value="finalize">
-            <p class="mb-10"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
-            <p class="text-muted text-09 mb-12">Dieses Angebot war zuvor finalisiert ({{ quote.finalized_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
-            <div class="d-flex gap-10 flex-wrap align-center">
-                <button type="submit" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" class="btn btn-success">Bisheriges Datum ({{ quote.finalized_at.strftime('%d.%m.%Y') }})</button>
-                <button type="submit" class="btn btn-outline">Heutiges Datum</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('finalize-dialog').classList.add('d-none')">Abbrechen</button>
-            </div>
-        </form>
-    </div>
-    {% endif %}
-</div>
+    // ── Details autosave ──
+    function bindDetails() {
+        document.querySelectorAll('[data-dkey]').forEach(inp => {
+            const key = inp.dataset.dkey;
+            const send = () => {
+                clearTimeout(detailDebounce);
+                detailDebounce = setTimeout(() => {
+                    api('/details', {[key]: inp.value});
+                }, inp.type === 'date' ? 0 : 600);
+            };
+            inp.addEventListener(inp.type === 'date' ? 'change' : 'input', send);
+        });
+        const net = el('qe-prices-net');
+        if (net) net.addEventListener('change', () => api('/prices_mode', {prices_are_net: net.checked}));
+    }
 
+    // ── Picker ──
+    async function loadPicker() {
+        const q = el('qe-picker-q').value.trim();
+        const cat = el('qe-picker-cat').value;
+        const res = await fetch(BASE + '/picker?q=' + encodeURIComponent(q) + (cat ? '&cat=' + cat : ''));
+        const json = await res.json();
+        if (!json.ok) return;
+        renderPicker(json.items);
+    }
+
+    function renderPicker(items) {
+        const box = el('qe-picker-results');
+        if (!items.length) {
+            box.innerHTML = '<div class="qe-picker-empty">Keine Artikel gefunden.</div>';
+            return;
+        }
+        box.innerHTML = items.map(it => {
+            const thumb = it.image
+                ? '<img class="qe-picker-thumb" src="' + esc(it.image) + '" alt="" loading="lazy">'
+                : '<div class="qe-picker-thumb placeholder">' + (it.is_package ? '📦' : '🎛') + '</div>';
+            const meta = [
+                it.category,
+                eur(it.price_per_day) + '/Tag',
+                it.is_external ? '↗ Extern' : null,
+            ].filter(Boolean).join(' · ');
+            const disabled = it.in_quote || !S.has_dates;
+            return '<div class="qe-picker-item' + (it.in_quote ? ' in-quote' : '') + '" data-item="' + it.id + '">'
+                + thumb
+                + '<div class="qe-picker-info">'
+                + '<div class="qe-picker-name">' + (it.is_package ? '📦 ' : '') + esc(it.name) + '</div>'
+                + '<div class="qe-picker-meta">' + esc(meta) + ' ' + availBadge(it.available) + '</div>'
+                + '</div>'
+                + '<div class="qe-picker-add">'
+                + (it.in_quote
+                    ? '<small class="text-muted">im Angebot</small>'
+                    : '<input type="number" value="1" min="1"><button type="button" class="btn btn-sm btn-primary"' + (disabled ? ' disabled' : '') + '>+</button>')
+                + '</div>'
+                + '</div>';
+        }).join('');
+        box.querySelectorAll('.qe-picker-item').forEach(div => {
+            const btn = div.querySelector('button');
+            if (!btn) return;
+            const add = () => {
+                const qty = parseInt(div.querySelector('input').value, 10) || 1;
+                addItem(parseInt(div.dataset.item, 10), qty);
+            };
+            btn.addEventListener('click', add);
+            div.querySelector('input').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+        });
+    }
+
+    async function addItem(itemId, qty) {
+        const res = await api('/lines', {type: 'item', item_id: itemId, quantity: qty});
+        if (res) loadPicker();
+    }
+
+    // ── Public actions ──
+    function toggleInlineForm(which) {
+        ['heading', 'custom'].forEach(w => {
+            const f = el('qe-form-' + w);
+            f.classList.toggle('open', w === which ? !f.classList.contains('open') : false);
+        });
+        if (which === 'heading') el('qe-heading-text').focus();
+        if (which === 'custom') el('qe-custom-name').focus();
+    }
+
+    async function addHeading() {
+        const text = el('qe-heading-text').value.trim();
+        if (!text) return;
+        const res = await api('/lines', {type: 'heading', name: text});
+        if (res) { el('qe-heading-text').value = ''; el('qe-form-heading').classList.remove('open'); }
+    }
+
+    async function addCustom() {
+        const name = el('qe-custom-name').value.trim();
+        if (!name) return;
+        const res = await api('/lines', {
+            type: 'custom', name: name,
+            quantity: parseInt(el('qe-custom-qty').value, 10) || 1,
+            price: num(el('qe-custom-price').value),
+        });
+        if (res) {
+            el('qe-custom-name').value = '';
+            el('qe-custom-qty').value = '1';
+            el('qe-custom-price').value = '';
+            el('qe-form-custom').classList.remove('open');
+        }
+    }
+
+    async function removeLine(id) {
+        openSourcing.delete(id);
+        const res = await api('/lines/' + id + '/delete', {});
+        if (res) loadPicker();
+    }
+
+    async function removePackage(lineId, name) {
+        if (!confirm('Paket "' + name + '" mit allen Komponenten entfernen?')) return;
+        const res = await api('/lines/' + lineId + '/delete', {whole_package: true});
+        if (res) loadPicker();
+    }
+
+    function toggleSourcing(id) {
+        if (openSourcing.has(id)) openSourcing.delete(id); else openSourcing.add(id);
+        renderLines();
+    }
+
+    function autoSources(id) {
+        api('/lines/' + id, {auto_sources: true});
+    }
+
+    function applyDiscount() {
+        const target = el('qe-target-total').value.trim();
+        if (target !== '') {
+            api('/discount', {target_total: num(target), label: el('qe-discount-label').value});
+            el('qe-target-total').value = '';
+        } else {
+            api('/discount', {percent: num(el('qe-discount-pct').value), label: el('qe-discount-label').value});
+        }
+    }
+
+    async function finalize(dateStr) {
+        el('qe-finalize-dialog').classList.add('d-none');
+        await api('/finalize', {finalized_at: dateStr || ''});
+    }
+
+    function bindActions() {
+        el('qe-finalize-btn').addEventListener('click', () => {
+            if (S && S.finalized_at) {
+                el('qe-finalize-keep').onclick = () => finalize(S.finalized_at);
+                el('qe-finalize-dialog').classList.remove('d-none');
+            } else if (confirm('Angebot finalisieren?')) {
+                finalize('');
+            }
+        });
+        // discount inputs: Enter applies
+        ['qe-discount-pct', 'qe-discount-label', 'qe-target-total'].forEach(id => {
+            el(id).addEventListener('keydown', e => { if (e.key === 'Enter') applyDiscount(); });
+        });
+        el('qe-picker-q').addEventListener('input', () => {
+            clearTimeout(pickerDebounce);
+            pickerDebounce = setTimeout(loadPicker, 250);
+        });
+        el('qe-picker-cat').addEventListener('change', loadPicker);
+    }
+
+    // ── Init ──
+    async function init() {
+        bindDetails();
+        bindActions();
+        const res = await fetch(BASE + '/state');
+        const json = await res.json();
+        S = json.state;
+        renderAll();
+        loadPicker();
+    }
+    document.addEventListener('DOMContentLoaded', init);
+
+    // exposed for papierkram export
+    function currentState() { return S; }
+
+    return {toggleInlineForm, addHeading, addCustom, removeLine, removePackage,
+            toggleSourcing, autoSources, applyDiscount, finalize, currentState};
+})();
+</script>
+
+<!-- Customer autocomplete & save -->
 <script>
 (function() {
     const nameInput = document.getElementById('customer_name');
@@ -541,13 +776,9 @@
     });
 
     function fetchSuggestions(q) {
-        const url = '{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(q);
-        fetch(url)
+        fetch('{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(q))
             .then(r => r.json())
-            .then(data => {
-                suggestions = data;
-                renderSuggestions(data);
-            });
+            .then(data => { suggestions = data; renderSuggestions(data); });
     }
 
     function renderSuggestions(data) {
@@ -568,6 +799,9 @@
         nameInput.value = c.name;
         addrInput.value = c.recipient_lines || '';
         hideSuggestions();
+        nameInput.dispatchEvent(new Event('input'));
+        addrInput.dispatchEvent(new Event('input'));
+        checkCustomerExists();
     }
 
     function highlight(items) {
@@ -582,7 +816,6 @@
         feedback.classList.toggle('text-success', !isError);
     }
 
-    // Local customer mode
     const saveBtn = document.getElementById('save-customer-btn');
     const deleteBtn = document.getElementById('delete-customer-btn');
 
@@ -602,8 +835,6 @@
                     setFeedback(data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!', false);
                     if (deleteBtn) deleteBtn.classList.remove('d-none');
                     setTimeout(() => feedback.textContent = '', 3000);
-                    const quoteForm = saveBtn.closest('form');
-                    if (quoteForm) quoteForm.submit();
                 }
             })
             .catch(() => { setFeedback('Fehler beim Speichern.', true); });
@@ -647,67 +878,35 @@
             })
             .catch(() => {});
     }
-    checkCustomerExists();
+    setTimeout(checkCustomerExists, 800);
     nameInput.addEventListener('change', checkCustomerExists);
 })();
-
-function removeQuoteItem(quoteItemId) {
-    const f = document.createElement('form');
-    f.method = 'POST';
-    f.className = 'd-none';
-    f.innerHTML = '<input name="action" value="remove_item"><input name="quote_item_id" value="' + quoteItemId + '">';
-    document.body.appendChild(f);
-    f.submit();
-}
-
-function removePackage(packageId) {
-    if (!confirm('Alle Komponenten dieses Pakets entfernen?')) return;
-    const f = document.createElement('form');
-    f.method = 'POST';
-    f.className = 'd-none';
-    f.innerHTML = '<input name="action" value="remove_package"><input name="package_id" value="' + packageId + '">';
-    document.body.appendChild(f);
-    f.submit();
-}
-
-function showFinalizeDialog() {
-    document.getElementById('finalize-dialog').classList.remove('d-none');
-}
 </script>
 
 <!--
   Papierkram export: sends the current quote to the browser extension
-  (source "erp-to-papierkram"). The quote data is rendered server-side
-  below, so it reflects the last SAVED state of the quote. Save your
-  changes before exporting.
+  (source "erp-to-papierkram"). Data is taken from the live editor state,
+  so it always reflects the latest saved changes.
 -->
 <script>
 (function () {
-  // Quote data rendered from the server (last saved state).
-  {% set rental_days = quote.calculate_rental_days() %}
-  const quoteData = {
-    label: {{ ('Angebot ' + (quote.reference_number or quote.customer_name or 'Entwurf')) | tojson }},
-    discountPercentage: {{ (quote.discount_percent or 0) | tojson }},
-    discountName: {{ (quote.discount_label or None) | tojson }},
-    items: [
-      {% for qi in quote.quote_items %}
-      {
-        name: {{ (qi.custom_item_name if qi.is_custom else qi.item.name) | tojson }},
-        count: {{ (qi.quantity or 0) | tojson }},
-        price: {{ ((qi.rental_price_per_day or 0) * rental_days) | tojson }}
-      }{{ ',' if not loop.last }}
-      {% endfor %}
-    ]
-  };
-
   function collectQuote() {
-    const items = quoteData.items.filter((i) => i.name);
+    const S = QE.currentState();
+    if (!S) return null;
+    const days = S.rental_days;
+    const items = S.lines
+      .filter((l) => l.type !== 'heading' && !l.is_optional && l.name)
+      .map((l) => ({
+        name: l.name,
+        count: l.quantity || 0,
+        price: (l.price_per_day || 0) * days,
+      }));
     if (!items.length) return null;
     return {
-      label: quoteData.label,
+      label: 'Angebot ' + (S.reference_number || S.customer_name || 'Entwurf'),
       items: items,
-      discountPercentage: quoteData.discountPercentage,
-      discountName: quoteData.discountName,
+      discountPercentage: S.totals.discount_percent || 0,
+      discountName: S.totals.discount_label || null,
     };
   }
 

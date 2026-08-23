@@ -385,7 +385,8 @@ class Quote(db.Model):
     prices_are_net = db.Column(db.Boolean, default=False, nullable=False)
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
-    quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan')
+    quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan',
+                                  order_by='QuoteItem.position, QuoteItem.id')
     inquiry = db.relationship('Inquiry', foreign_keys=[inquiry_id], back_populates='converted_quote')
 
     def generate_reference_number(self):
@@ -409,13 +410,24 @@ class Quote(db.Model):
         return self.rental_days or 1
 
     @property
+    def billable_items(self):
+        """Quote lines that count towards totals (no headings, no optional lines)."""
+        return [qi for qi in self.quote_items if not qi.is_heading and not qi.is_optional]
+
+    @property
     def subtotal(self):
-        return round(sum(qi.total_price for qi in self.quote_items), 2)
+        return round(sum(qi.total_price for qi in self.billable_items), 2)
+
+    @property
+    def optional_total(self):
+        """Sum of optional line totals (shown on Angebot, not part of the total)."""
+        return round(sum(qi.total_price for qi in self.quote_items
+                         if qi.is_optional and not qi.is_heading), 2)
 
     @property
     def discountable_subtotal(self):
         """Sum of line totals for items that are NOT exempt from discount"""
-        return round(sum(qi.total_price for qi in self.quote_items if not qi.discount_exempt), 2)
+        return round(sum(qi.total_price for qi in self.billable_items if not qi.discount_exempt), 2)
 
     @property
     def discount_amount(self):
@@ -438,12 +450,18 @@ class QuoteItem(db.Model):
     custom_item_name = db.Column(db.String(200), nullable=True)
     is_custom = db.Column(db.Boolean, default=False)
     package_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)  # If this is a component expanded from a package
+    # Ordering & presentation
+    position = db.Column(db.Integer, nullable=False, default=0)  # manual sort order within the quote
+    is_heading = db.Column(db.Boolean, default=False)  # free-text section heading (uses custom_item_name)
+    is_optional = db.Column(db.Boolean, default=False)  # shown on Angebot, excluded from totals
 
     quote = db.relationship('Quote', back_populates='quote_items')
     item = db.relationship('Item', foreign_keys=[item_id], back_populates='quote_items')
     package = db.relationship('Item', foreign_keys=[package_id])  # The package this component belongs to
     sources = db.relationship('QuoteItemSource', back_populates='quote_item',
                               cascade='all, delete-orphan', lazy='selectin')
+    assigned_units = db.relationship('QuoteItemUnit', back_populates='quote_item',
+                                     cascade='all, delete-orphan', lazy='selectin')
 
     @property
     def display_name(self):
@@ -471,6 +489,26 @@ class QuoteItem(db.Model):
         """Derive blended rental_cost_per_day from sourcing rows."""
         total = sum(s.quantity * (s.price_per_day or 0) for s in self.sources)
         self.rental_cost_per_day = round(total / self.quantity, 4) if self.quantity else 0
+
+
+class QuoteItemUnit(db.Model):
+    """A specific physical unit (serial number) assigned to a quote line
+    during picking (Packliste). asset_tag/serial_number are snapshotted so
+    delivery history survives unit deletion.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    quote_item_id = db.Column(db.Integer, db.ForeignKey('quote_item.id'), nullable=False)
+    item_unit_id = db.Column(db.Integer, db.ForeignKey('item_unit.id'), nullable=True)
+    asset_tag = db.Column(db.String(50), nullable=True)
+    serial_number = db.Column(db.String(200), nullable=True)
+
+    quote_item = db.relationship('QuoteItem', back_populates='assigned_units')
+    unit = db.relationship('ItemUnit')
+
+    @property
+    def label(self):
+        parts = [p for p in [self.asset_tag, self.serial_number] if p]
+        return ' / '.join(parts) if parts else f'#{self.item_unit_id or self.id}'
 
 
 class QuoteItemSource(db.Model):

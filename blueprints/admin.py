@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit
 from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
@@ -460,7 +460,7 @@ def inventory_list():
     booked_today = {}
     for q in overlapping_quotes:
         for qi in q.quote_items:
-            if qi.is_custom or not qi.item_id:
+            if qi.is_custom or qi.is_heading or qi.is_optional or not qi.item_id:
                 continue
             booked_today[qi.item_id] = booked_today.get(qi.item_id, 0) + qi.quantity
 
@@ -1180,325 +1180,648 @@ def quote_create():
     return render_template('admin/quote_create.html')
 
 
-@admin_bp.route('/quotes/<int:quote_id>/edit', methods=['GET', 'POST'])
+@admin_bp.route('/quotes/<int:quote_id>/edit')
 @login_required
 def quote_edit(quote_id):
-    """Edit quote and add items"""
+    """Quote editor (single-page; all mutations go through the JSON API below)"""
     quote = Quote.query.get_or_404(quote_id)
-    items = Item.query.order_by(Item.name).all()
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
+    _ss = SiteSettings.query.first()
+    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
+    return render_template('admin/quote_edit.html', quote=quote,
+                           category_tree=category_tree,
+                           site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
 
-    if request.method == 'POST':
-        action = request.form.get('action')
 
+# ── Quote editor JSON API ──
+
+def _next_line_position(quote):
+    return max([qi.position or 0 for qi in quote.quote_items], default=0) + 1
+
+
+def _serialize_quote_state(quote):
+    """Full editor state as a JSON-serializable dict."""
+    site_settings = SiteSettings.query.first()
+    tax_mode, tax_rate = _effective_tax_mode_and_rate(site_settings)
+    has_dates = bool(quote.start_date and quote.end_date)
+
+    lines = []
+    for qi in quote.quote_items:
+        if qi.is_heading:
+            lines.append({
+                'id': qi.id, 'type': 'heading',
+                'name': qi.custom_item_name or '',
+                'position': qi.position or 0,
+            })
+            continue
+        line = {
+            'id': qi.id,
+            'type': 'custom' if qi.is_custom else 'item',
+            'name': qi.display_name,
+            'quantity': qi.quantity,
+            'price_per_day': round(qi.rental_price_per_day or 0, 2),
+            'cost_per_day': round(qi.rental_cost_per_day or 0, 2),
+            'discount_exempt': bool(qi.discount_exempt),
+            'is_optional': bool(qi.is_optional),
+            'position': qi.position or 0,
+            'total': qi.total_price,
+            'total_cost': qi.total_external_cost,
+            'package_id': qi.package_id,
+            'package_name': qi.package.name if qi.package_id and qi.package else None,
+        }
+        if not qi.is_custom and qi.item:
+            item = qi.item
+            if has_dates:
+                avail = get_available_quantity(qi.item_id, quote.start_date, quote.end_date,
+                                               exclude_quote_id=quote.id)
+            else:
+                avail = item.operational_quantity
+            own_avail = None
+            if item.supplies:
+                if has_dates:
+                    own_avail = get_own_stock_available(qi.item_id, quote.start_date, quote.end_date,
+                                                        exclude_quote_id=quote.id)
+                else:
+                    own_avail = item.operational_stock
+            line.update({
+                'item_id': qi.item_id,
+                'category': item.category.name if item.category else None,
+                'is_external': item.is_external,
+                'available': avail,
+                'total_quantity': item.total_quantity,
+                'own_stock': item.stock_quantity,
+                'own_available': own_avail,
+                'sourced_quantity': qi.sourced_quantity,
+                'supplies': [{
+                    'supplier_id': s.supplier_id,
+                    'supplier_name': s.supplier.name if s.supplier else '?',
+                    'max_quantity': s.quantity,
+                    'price_per_day': round(s.price_per_day or 0, 2),
+                } for s in item.supplies_sorted],
+                'sources': {str(src.supplier_id): src.quantity for src in qi.sources if src.supplier_id},
+            })
+        lines.append(line)
+
+    return {
+        'id': quote.id,
+        'status': quote.status,
+        'reference_number': quote.reference_number,
+        'customer_name': quote.customer_name,
+        'recipient_lines': quote.recipient_lines or '',
+        'notes': quote.notes or '',
+        'public_notes': quote.public_notes or '',
+        'start_date': quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '',
+        'end_date': quote.end_date.strftime('%Y-%m-%d') if quote.end_date else '',
+        'rental_days': quote.calculate_rental_days(),
+        'rental_days_override': quote.rental_days_override,
+        'date_based_days': quote.date_based_rental_days(),
+        'has_dates': has_dates,
+        'finalized_at': quote.finalized_at.strftime('%Y-%m-%d') if quote.finalized_at else None,
+        'prices_are_net': bool(quote.prices_are_net),
+        'tax_mode': tax_mode,
+        'tax_rate': tax_rate,
+        'lines': lines,
+        'totals': {
+            'subtotal': quote.subtotal,
+            'discountable': quote.discountable_subtotal,
+            'discount_percent': round(quote.discount_percent or 0, 4),
+            'discount_label': quote.discount_label or '',
+            'discount_amount': quote.discount_amount,
+            'optional_total': quote.optional_total,
+            'total': quote.total,
+        },
+    }
+
+
+def _api_ok(quote, warnings=None):
+    return jsonify({'ok': True, 'state': _serialize_quote_state(quote), 'warnings': warnings or []})
+
+
+def _api_error(message, code=400):
+    return jsonify({'ok': False, 'error': message}), code
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/state')
+@login_required
+def quote_api_state(quote_id):
+    quote = Quote.query.get_or_404(quote_id)
+    return _api_ok(quote)
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/details', methods=['POST'])
+@login_required
+def quote_api_details(quote_id):
+    """Update quote master data (customer, dates, notes)."""
+    quote = Quote.query.get_or_404(quote_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        if 'customer_name' in data:
+            name = (data.get('customer_name') or '').strip()
+            if name:
+                quote.customer_name = name
+        if 'start_date' in data or 'end_date' in data:
+            start_str = (data.get('start_date') or '').strip()
+            end_str = (data.get('end_date') or '').strip()
+            start = datetime.strptime(start_str, '%Y-%m-%d') if start_str else None
+            end = datetime.strptime(end_str, '%Y-%m-%d') if end_str else None
+            if start and end and start > end:
+                return _api_error('Enddatum muss nach oder gleich dem Startdatum sein.')
+            quote.start_date = start
+            quote.end_date = end
+            if start and end:
+                quote.rental_days = max(1, (end - start).days + 1)
+        if 'rental_days_override' in data:
+            override = data.get('rental_days_override')
+            quote.rental_days_override = int(override) if override else None
+        if 'recipient_lines' in data:
+            quote.recipient_lines = data.get('recipient_lines') or ''
+        if 'notes' in data:
+            quote.notes = data.get('notes') or ''
+        if 'public_notes' in data:
+            quote.public_notes = data.get('public_notes') or ''
+        db.session.commit()
+        return _api_ok(quote)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/picker')
+@login_required
+def quote_api_picker(quote_id):
+    """Item search for the quote editor side panel, with live availability."""
+    quote = Quote.query.get_or_404(quote_id)
+    q = (request.args.get('q') or '').strip().lower()
+    cat_id = request.args.get('cat', type=int)
+
+    cat_ids = None
+    if cat_id:
+        cat = Category.query.get(cat_id)
+        if cat:
+            cat_ids = cat.all_descendant_ids()
+
+    existing_item_ids = {qi.item_id for qi in quote.quote_items
+                         if qi.item_id and not qi.package_id and not qi.is_custom}
+    existing_package_ids = {qi.package_id for qi in quote.quote_items if qi.package_id}
+
+    results = []
+    for item in Item.query.order_by(Item.name).all():
+        if cat_ids is not None:
+            item_cat_ids = set()
+            if item.category_id:
+                item_cat_ids.add(item.category_id)
+            item_cat_ids |= {c.id for c in item.subcategories}
+            if not (item_cat_ids & cat_ids):
+                continue
+        if q:
+            hay = ' '.join(filter(None, [
+                item.name, item.manufacturer, item.model_name,
+                item.category.name if item.category else '',
+            ])).lower()
+            if not all(tok in hay for tok in q.split()):
+                continue
+        if quote.start_date and quote.end_date:
+            if item.is_package:
+                avail = get_package_available_quantity(item.id, quote.start_date, quote.end_date,
+                                                       exclude_quote_id=quote.id)
+            else:
+                avail = get_available_quantity(item.id, quote.start_date, quote.end_date,
+                                               exclude_quote_id=quote.id)
+        else:
+            avail = item.operational_quantity
+        results.append({
+            'id': item.id,
+            'name': item.name,
+            'category': item.category.name if item.category else None,
+            'price_per_day': round(item.default_rental_price_per_day or 0, 2),
+            'is_package': item.is_package,
+            'is_external': item.is_external,
+            'available': avail,
+            'in_quote': (item.id in existing_package_ids) if item.is_package else (item.id in existing_item_ids),
+            'image': url_for('public.uploaded_file', filename=item.image_filename) if item.image_filename else None,
+        })
+    return jsonify({'ok': True, 'items': results})
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/lines', methods=['POST'])
+@login_required
+def quote_api_line_add(quote_id):
+    """Add a line: inventory item, package, custom position or heading."""
+    quote = Quote.query.get_or_404(quote_id)
+    data = request.get_json(silent=True) or {}
+    ltype = data.get('type', 'item')
+    try:
+        pos = _next_line_position(quote)
+        if ltype == 'heading':
+            text = (data.get('name') or '').strip()
+            if not text:
+                return _api_error('Text fehlt.')
+            db.session.add(QuoteItem(
+                quote_id=quote.id, is_custom=True, is_heading=True,
+                custom_item_name=text, quantity=0, rental_price_per_day=0, position=pos))
+        elif ltype == 'custom':
+            name = (data.get('name') or '').strip()
+            if not name:
+                return _api_error('Name fehlt.')
+            db.session.add(QuoteItem(
+                quote_id=quote.id, is_custom=True, custom_item_name=name,
+                quantity=max(1, int(data.get('quantity') or 1)),
+                rental_price_per_day=round(float(data.get('price') or 0), 2),
+                position=pos))
+        else:
+            if not quote.start_date or not quote.end_date:
+                return _api_error('Bitte zuerst Start- und Enddatum setzen.')
+            item = Item.query.get(data.get('item_id') or 0)
+            if not item:
+                return _api_error('Artikel nicht gefunden.')
+            qty = max(1, int(data.get('quantity') or 1))
+            if item.is_package:
+                if any(qi.package_id == item.id for qi in quote.quote_items):
+                    return _api_error(f'{item.name} ist bereits im Angebot.')
+                component_price_sum = item.component_price_sum
+                for pc in item.package_components:
+                    if component_price_sum > 0:
+                        comp_share = (pc.component_item.default_rental_price_per_day * pc.quantity) / component_price_sum
+                        adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
+                    else:
+                        adjusted_price = 0
+                    qi = QuoteItem(
+                        quote_id=quote.id, item_id=pc.component_item_id,
+                        quantity=pc.quantity * qty, rental_price_per_day=adjusted_price,
+                        is_custom=False, package_id=item.id, position=pos)
+                    pos += 1
+                    db.session.add(qi)
+                    db.session.flush()
+                    _apply_default_sources(qi, pc.component_item, quote)
+            else:
+                existing = next((qi for qi in quote.quote_items
+                                 if qi.item_id == item.id and not qi.is_custom and not qi.package_id), None)
+                if existing:
+                    existing.quantity += qty
+                    if item.supplies:
+                        _apply_default_sources(existing, item, quote)
+                else:
+                    qi = QuoteItem(
+                        quote_id=quote.id, item_id=item.id, quantity=qty,
+                        rental_price_per_day=item.default_rental_price_per_day,
+                        is_custom=False, position=pos)
+                    db.session.add(qi)
+                    db.session.flush()
+                    _apply_default_sources(qi, item, quote)
+        db.session.commit()
+        return _api_ok(quote)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+@admin_bp.route('/quotes/<int:quote_id>/api/lines/<int:line_id>', methods=['POST'])
+@login_required
+def quote_api_line_update(quote_id, line_id):
+    """Update a single quote line (qty, price, flags, sourcing)."""
+    quote = Quote.query.get_or_404(quote_id)
+    qi = QuoteItem.query.get_or_404(line_id)
+    if qi.quote_id != quote.id:
+        return _api_error('Ungültige Position.', 404)
+    data = request.get_json(silent=True) or {}
+    warnings = []
+    try:
+        if 'name' in data and (qi.is_custom or qi.is_heading):
+            new_name = (data.get('name') or '').strip()
+            if new_name:
+                qi.custom_item_name = new_name
+        if 'quantity' in data and not qi.is_heading:
+            qi.quantity = max(1, int(data.get('quantity') or 1))
+        if 'price_per_day' in data and not qi.is_heading:
+            qi.rental_price_per_day = max(0.0, round(float(data.get('price_per_day') or 0), 2))
+        if 'discount_exempt' in data:
+            qi.discount_exempt = bool(data.get('discount_exempt'))
+        if 'is_optional' in data and not qi.is_heading:
+            qi.is_optional = bool(data.get('is_optional'))
+        if 'cost_per_day' in data and not qi.is_custom and qi.item and not qi.item.supplies:
+            qi.rental_cost_per_day = max(0.0, round(float(data.get('cost_per_day') or 0), 2))
+
+        if not qi.is_custom and not qi.is_heading and qi.item and qi.item.supplies:
+            if data.get('auto_sources'):
+                _apply_default_sources(qi, qi.item, quote)
+            elif 'sources' in data:
+                src_map = data.get('sources') or {}
+                new_sources = []
+                for supply in qi.item.supplies:
+                    try:
+                        src_qty = int(src_map.get(str(supply.supplier_id), 0) or 0)
+                    except (TypeError, ValueError):
+                        src_qty = 0
+                    if src_qty <= 0:
+                        continue
+                    if supply.quantity != -1 and src_qty > supply.quantity:
+                        warnings.append(f'{qi.item.name}: {supply.supplier.name} kann max. {supply.quantity} liefern ({src_qty} zugewiesen).')
+                    new_sources.append(QuoteItemSource(
+                        supplier_id=supply.supplier_id,
+                        supplier_name=supply.supplier.name,
+                        quantity=src_qty,
+                        price_per_day=supply.price_per_day or 0,
+                    ))
+                qi.sources = new_sources
+            qi.recalc_cost_from_sources()
+
+        # Availability / coverage warnings
+        if not qi.is_custom and not qi.is_heading and qi.item and not qi.is_optional \
+                and quote.start_date and quote.end_date:
+            if qi.item.supplies:
+                own_avail = get_own_stock_available(qi.item_id, quote.start_date, quote.end_date,
+                                                    exclude_quote_id=quote.id)
+                if own_avail != -1 and own_avail + qi.sourced_quantity < qi.quantity:
+                    warnings.append(f'{qi.item.name}: Beschaffung deckt nur {own_avail + qi.sourced_quantity} von {qi.quantity} ab (Eigenbestand verfügbar: {own_avail}).')
+            avail = get_available_quantity(qi.item_id, quote.start_date, quote.end_date,
+                                           exclude_quote_id=quote.id)
+            if avail != -1 and qi.quantity > avail:
+                warnings.append(f'{qi.item.name}: Nur {avail} verfügbar, {qi.quantity} eingeplant.')
+
+        db.session.commit()
+        return _api_ok(quote, warnings)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/lines/<int:line_id>/delete', methods=['POST'])
+@login_required
+def quote_api_line_delete(quote_id, line_id):
+    """Delete a line; with whole_package=true, delete all components of its package."""
+    quote = Quote.query.get_or_404(quote_id)
+    qi = QuoteItem.query.get_or_404(line_id)
+    if qi.quote_id != quote.id:
+        return _api_error('Ungültige Position.', 404)
+    data = request.get_json(silent=True) or {}
+    try:
+        if data.get('whole_package') and qi.package_id:
+            for comp in [c for c in quote.quote_items if c.package_id == qi.package_id]:
+                db.session.delete(comp)
+        else:
+            db.session.delete(qi)
+        db.session.commit()
+        return _api_ok(quote)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/reorder', methods=['POST'])
+@login_required
+def quote_api_reorder(quote_id):
+    """Persist manual line order. Keys: 'line-<id>' or 'pkg-<package_id>' (whole block)."""
+    quote = Quote.query.get_or_404(quote_id)
+    data = request.get_json(silent=True) or {}
+    order = data.get('order') or []
+    try:
+        lines_by_id = {qi.id: qi for qi in quote.quote_items}
+        pos = 1
+        for key in order:
+            if key.startswith('pkg-'):
+                pid = int(key[4:])
+                comps = sorted([qi for qi in quote.quote_items if qi.package_id == pid],
+                               key=lambda x: (x.position or 0, x.id))
+                for qi in comps:
+                    qi.position = pos
+                    pos += 1
+            elif key.startswith('line-'):
+                qi = lines_by_id.get(int(key[5:]))
+                if qi and not qi.package_id:
+                    qi.position = pos
+                    pos += 1
+        db.session.commit()
+        return _api_ok(quote)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+@admin_bp.route('/quotes/<int:quote_id>/api/prices_mode', methods=['POST'])
+@login_required
+def quote_api_prices_mode(quote_id):
+    quote = Quote.query.get_or_404(quote_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        quote.prices_are_net = bool(data.get('prices_are_net'))
+        db.session.commit()
+        return _api_ok(quote)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/discount', methods=['POST'])
+@login_required
+def quote_api_discount(quote_id):
+    quote = Quote.query.get_or_404(quote_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        target_total = data.get('target_total')
+        if target_total is not None and str(target_total).strip() != '':
+            target_total = float(target_total)
+            discountable = quote.discountable_subtotal
+            if discountable > 0:
+                needed_discount = quote.subtotal - target_total
+                discount_percent = max(0, min(100, (needed_discount / discountable) * 100))
+            else:
+                discount_percent = 0
+        else:
+            discount_percent = max(0, min(100, float(data.get('percent') or 0)))
+        quote.discount_percent = discount_percent
+        quote.discount_label = (data.get('label') or '').strip() or None
+        db.session.commit()
+        return _api_ok(quote)
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+
+@admin_bp.route('/quotes/<int:quote_id>/api/finalize', methods=['POST'])
+@login_required
+def quote_api_finalize(quote_id):
+    quote = Quote.query.get_or_404(quote_id)
+    data = request.get_json(silent=True) or {}
+    if not quote.start_date or not quote.end_date:
+        return _api_error('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein.')
+    try:
+        warnings = []
+        for qi in quote.quote_items:
+            if qi.is_custom or qi.is_heading or qi.is_optional or not qi.item:
+                continue
+            available = get_available_quantity(qi.item_id, quote.start_date, quote.end_date,
+                                               exclude_quote_id=quote.id)
+            if available != -1 and qi.quantity > available:
+                pkg_note = f' (Paket: {qi.package.name})' if qi.package_id else ''
+                warnings.append(f'{qi.item.name}{pkg_note}: Nur {available} verfügbar (Angebot hat {qi.quantity})')
+
+        quote.status = 'finalized'
+        finalized_date_str = (data.get('finalized_at') or '').strip()
+        if finalized_date_str:
+            quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
+        else:
+            quote.finalized_at = datetime.utcnow()
+        db.session.commit()
+
+        if warnings:
+            flash('⚠ Bestandswarnung: ' + '; '.join(warnings), 'warning')
+        flash('Angebot finalisiert!', 'success')
+        return jsonify({'ok': True, 'redirect': url_for('admin.quote_view', quote_id=quote.id)})
+    except Exception as e:
+        db.session.rollback()
+        return _api_error(str(e), 500)
+
+
+# ── Packliste: assign physical units (serial numbers) to quote lines ──
+
+def _conflicting_unit_ids(quote):
+    """ItemUnit ids already assigned to OTHER quotes overlapping this quote's period."""
+    if not quote.start_date or not quote.end_date:
+        return set()
+    overlapping = Quote.query.filter(
+        Quote.id != quote.id,
+        Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
+        Quote.start_date.isnot(None),
+        Quote.end_date.isnot(None),
+        Quote.start_date <= quote.end_date,
+        Quote.end_date >= quote.start_date,
+    ).all()
+    ids = set()
+    for q in overlapping:
+        for qi in q.quote_items:
+            for au in qi.assigned_units:
+                if au.item_unit_id:
+                    ids.add(au.item_unit_id)
+    return ids
+
+
+def _packliste_lines(quote):
+    """Pickable lines (inventory items, no headings/optional) with unit info."""
+    conflict_ids = _conflicting_unit_ids(quote)
+    lines = []
+    for qi in quote.quote_items:
+        if qi.is_custom or qi.is_heading or qi.is_optional or not qi.item:
+            continue
+        units = qi.item.units
+        assigned_unit_ids = {au.item_unit_id for au in qi.assigned_units if au.item_unit_id}
+        candidates = [u for u in units
+                      if u.status == ItemUnit.STATUS_AVAILABLE
+                      and u.id not in conflict_ids
+                      and u.id not in assigned_unit_ids]
+        lines.append({
+            'qi': qi,
+            'tracked': bool(units),
+            'candidates': candidates,
+            'assigned_count': len(qi.assigned_units),
+        })
+    return lines
+
+
+@admin_bp.route('/quotes/<int:quote_id>/packliste')
+@login_required
+def quote_packliste(quote_id):
+    """Picking view: assign specific units (serial numbers) to the quote lines."""
+    quote = Quote.query.get_or_404(quote_id)
+    return render_template('admin/packliste.html', quote=quote, lines=_packliste_lines(quote))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/packliste/assign', methods=['POST'])
+@login_required
+def packliste_assign(quote_id):
+    """Assign a specific unit to a quote line."""
+    quote = Quote.query.get_or_404(quote_id)
+    line_id = request.form.get('line_id', type=int)
+    unit_id = request.form.get('unit_id', type=int)
+    qi = QuoteItem.query.get_or_404(line_id)
+    unit = ItemUnit.query.get_or_404(unit_id)
+    try:
+        if qi.quote_id != quote.id or unit.item_id != qi.item_id:
+            flash('Ungültige Zuordnung.', 'error')
+        elif len(qi.assigned_units) >= qi.quantity:
+            flash(f'{qi.item.name}: Alle {qi.quantity} Einheiten sind bereits zugewiesen.', 'error')
+        elif any(au.item_unit_id == unit.id for au in qi.assigned_units):
+            flash(f'Einheit {unit.asset_tag or unit.id} ist bereits zugewiesen.', 'info')
+        elif unit.id in _conflicting_unit_ids(quote):
+            flash(f'Einheit {unit.asset_tag or unit.id} ist im Zeitraum bereits anderweitig eingeplant.', 'error')
+        elif unit.status != ItemUnit.STATUS_AVAILABLE:
+            flash(f'Einheit {unit.asset_tag or unit.id} ist nicht einsatzbereit ({unit.status_label}).', 'error')
+        else:
+            db.session.add(QuoteItemUnit(
+                quote_item_id=qi.id, item_unit_id=unit.id,
+                asset_tag=unit.asset_tag, serial_number=unit.serial_number))
+            db.session.commit()
+            flash(f'Einheit {unit.asset_tag or unit.id} zugewiesen.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/packliste/scan', methods=['POST'])
+@login_required
+def packliste_scan(quote_id):
+    """Scan/type an asset tag or serial number; auto-assign to the matching line."""
+    quote = Quote.query.get_or_404(quote_id)
+    code = (request.form.get('code') or '').strip()
+    if not code:
+        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+    # QR labels contain a URL ending in /u/<asset_tag> – accept those too
+    if '/u/' in code:
+        code = code.rstrip('/').rsplit('/', 1)[-1]
+    unit = ItemUnit.query.filter(
+        db.or_(ItemUnit.asset_tag.ilike(code), ItemUnit.serial_number.ilike(code))
+    ).first()
+    if not unit:
+        flash(f'Keine Einheit mit Kennung "{code}" gefunden.', 'error')
+        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+    # Find a matching quote line with free capacity
+    target = None
+    for qi in quote.quote_items:
+        if qi.is_custom or qi.is_heading or qi.is_optional or qi.item_id != unit.item_id:
+            continue
+        if any(au.item_unit_id == unit.id for au in qi.assigned_units):
+            flash(f'Einheit {unit.asset_tag or unit.id} ist bereits zugewiesen.', 'info')
+            return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+        if len(qi.assigned_units) < qi.quantity:
+            target = qi
+            break
+    if not target:
+        flash(f'Kein passender Artikel im Angebot für Einheit {unit.asset_tag or unit.id} ({unit.item.name}) – oder alle Positionen sind voll.', 'error')
+        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+    if unit.status != ItemUnit.STATUS_AVAILABLE:
+        flash(f'Einheit {unit.asset_tag or unit.id} ist nicht einsatzbereit ({unit.status_label}).', 'error')
+        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+    if unit.id in _conflicting_unit_ids(quote):
+        flash(f'Einheit {unit.asset_tag or unit.id} ist im Zeitraum bereits anderweitig eingeplant.', 'error')
+        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+    try:
+        db.session.add(QuoteItemUnit(
+            quote_item_id=target.id, item_unit_id=unit.id,
+            asset_tag=unit.asset_tag, serial_number=unit.serial_number))
+        db.session.commit()
+        flash(f'✓ {unit.item.name}: Einheit {unit.asset_tag or unit.id} zugewiesen.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {str(e)}', 'error')
+    return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/packliste/unassign', methods=['POST'])
+@login_required
+def packliste_unassign(quote_id):
+    """Remove a unit assignment."""
+    quote = Quote.query.get_or_404(quote_id)
+    assignment = QuoteItemUnit.query.get_or_404(request.form.get('assignment_id', type=int))
+    if assignment.quote_item.quote_id != quote.id:
+        flash('Ungültige Zuordnung.', 'error')
+    else:
         try:
-            if action == 'update_quote':
-                quote.customer_name = request.form.get('customer_name', '').strip()
-                start_date_str = request.form.get('start_date')
-                end_date_str = request.form.get('end_date')
-
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
-
-                if start_date and end_date and start_date > end_date:
-                    flash('Enddatum muss nach oder gleich dem Startdatum sein!', 'error')
-                    item_availability = {item.id: item.total_quantity for item in items}
-                    _ss = SiteSettings.query.first()
-                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
-
-                quote.start_date = start_date
-                quote.end_date = end_date
-
-                if start_date and end_date:
-                    delta = end_date - start_date
-                    quote.rental_days = max(1, delta.days + 1)
-                else:
-                    quote.rental_days = int(request.form.get('rental_days', 1))
-
-                # Manual rental days override
-                # Only update if the form explicitly includes the field
-                if 'rental_days_override' in request.form:
-                    override_str = request.form.get('rental_days_override', '').strip()
-                    quote.rental_days_override = int(override_str) if override_str else None
-
-                quote.recipient_lines = request.form.get('recipient_lines', '')
-                quote.notes = request.form.get('notes', '')
-                quote.public_notes = request.form.get('public_notes', '')
-                db.session.commit()
-                flash('Angebot aktualisiert!', 'success')
-
-            elif action == 'add_item':
-                if not quote.start_date or not quote.end_date:
-                    flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel hinzufügen!', 'error')
-                else:
-                    item_id = request.form.get('item_id', type=int)
-                    if item_id:
-                        item = Item.query.get(item_id)
-                        if item:
-                            if item.is_package:
-                                # Check if package already added
-                                existing_pkg = QuoteItem.query.filter_by(
-                                    quote_id=quote.id, package_id=item.id
-                                ).first()
-                                if existing_pkg:
-                                    flash(f'{item.name} ist bereits im Angebot.', 'info')
-                                else:
-                                    # Calculate proportional prices based on package price
-                                    component_price_sum = item.component_price_sum
-                                    for pc in item.package_components:
-                                        if component_price_sum > 0:
-                                            # Proportional share of package price
-                                            comp_share = (pc.component_item.default_rental_price_per_day * pc.quantity) / component_price_sum
-                                            adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
-                                        else:
-                                            adjusted_price = 0
-                                        qi = QuoteItem(
-                                            quote_id=quote.id,
-                                            item_id=pc.component_item_id,
-                                            quantity=pc.quantity,
-                                            rental_price_per_day=adjusted_price,
-                                            is_custom=False,
-                                            package_id=item.id
-                                        )
-                                        db.session.add(qi)
-                                        db.session.flush()
-                                        _apply_default_sources(qi, pc.component_item, quote)
-                                    db.session.commit()
-                                    flash(f'Paket {item.name} mit {len(item.package_components)} Komponenten hinzugefügt!', 'success')
-                            else:
-                                existing = QuoteItem.query.filter_by(
-                                    quote_id=quote.id, item_id=item.id, is_custom=False, package_id=None
-                                ).first()
-                                if existing:
-                                    flash(f'{item.name} ist bereits im Angebot.', 'info')
-                                else:
-                                    qi = QuoteItem(
-                                        quote_id=quote.id,
-                                        item_id=item.id,
-                                        quantity=1,
-                                        rental_price_per_day=item.default_rental_price_per_day,
-                                        is_custom=False
-                                    )
-                                    db.session.add(qi)
-                                    db.session.flush()
-                                    _apply_default_sources(qi, item, quote)
-                                    db.session.commit()
-                                    flash(f'{item.name} hinzugefügt!', 'success')
-
-            elif action == 'update_items':
-                if not quote.start_date or not quote.end_date:
-                    flash('Bitte setzen Sie Start- und Enddatum, bevor Sie Artikel bearbeiten!', 'error')
-                    item_availability = {item.id: item.total_quantity for item in items}
-                    _ss = SiteSettings.query.first()
-                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
-
-                errors = []
-                for qi in quote.quote_items:
-                    if qi.is_custom:
-                        continue
-                    if not qi.item:
-                        continue
-
-                    # Use qi.id as unique key for package components
-                    if qi.package_id:
-                        quantity_key = f'quantity_pkg_{qi.id}'
-                        price_key = f'price_pkg_{qi.id}'
-                        cost_key = f'cost_pkg_{qi.id}'
-                        exempt_key = f'discount_exempt_pkg_{qi.id}'
-                    else:
-                        quantity_key = f'quantity_{qi.item_id}'
-                        price_key = f'price_{qi.item_id}'
-                        cost_key = f'cost_{qi.item_id}'
-                        exempt_key = f'discount_exempt_{qi.item_id}'
-
-                    if quantity_key in request.form:
-                        quantity = int(request.form.get(quantity_key, 0))
-                        price = round(float(request.form.get(price_key, qi.rental_price_per_day)), 2)
-                        exempt = request.form.get(exempt_key) == 'on'
-
-                        if quantity > 0:
-                            available = get_available_quantity(
-                                qi.item_id,
-                                quote.start_date,
-                                quote.end_date,
-                                exclude_quote_id=quote.id
-                            )
-
-                            if available != -1 and quantity > available:
-                                errors.append(f'{qi.item.name}: Nur {available} verfügbar (gesamt: {qi.item.total_quantity}), aber {quantity} zugewiesen')
-
-                            qi.quantity = quantity
-                            qi.rental_price_per_day = price
-                            qi.discount_exempt = exempt
-
-                            if qi.item.supplies:
-                                # Manual supplier sourcing: read per-supplier quantity inputs
-                                submitted = [s for s in qi.item.supplies
-                                             if f'src_{qi.id}_{s.id}' in request.form]
-                                if submitted:
-                                    new_sources = []
-                                    for supply in qi.item.supplies:
-                                        src_qty = request.form.get(f'src_{qi.id}_{supply.id}', type=int) or 0
-                                        if src_qty <= 0:
-                                            continue
-                                        if supply.quantity != -1 and src_qty > supply.quantity:
-                                            errors.append(f'{qi.item.name}: {supply.supplier.name} kann max. {supply.quantity} liefern ({src_qty} zugewiesen)')
-                                        new_sources.append(QuoteItemSource(
-                                            supplier_id=supply.supplier_id,
-                                            supplier_name=supply.supplier.name,
-                                            quantity=src_qty,
-                                            price_per_day=supply.price_per_day or 0,
-                                        ))
-                                    qi.sources = new_sources
-
-                                # Coverage check: own stock + sourcing must cover the quantity
-                                own_avail = get_own_stock_available(
-                                    qi.item_id, quote.start_date, quote.end_date,
-                                    exclude_quote_id=quote.id)
-                                if own_avail != -1 and own_avail + qi.sourced_quantity < quantity:
-                                    errors.append(f'{qi.item.name}: Beschaffung deckt nur {own_avail + qi.sourced_quantity} von {quantity} ab (Eigenbestand verfügbar: {own_avail})')
-
-                                qi.recalc_cost_from_sources()
-                            else:
-                                # No suppliers configured: manual cost field
-                                cost = round(float(request.form.get(cost_key, qi.rental_cost_per_day or 0)), 2)
-                                qi.rental_cost_per_day = cost
-                        else:
-                            db.session.delete(qi)
-
-                # Also update custom items discount_exempt
-                for qi in quote.quote_items:
-                    if qi.is_custom:
-                        exempt_key = f'discount_exempt_custom_{qi.id}'
-                        qi.discount_exempt = request.form.get(exempt_key) == 'on'
-
-                if errors:
-                    flash('⚠ Bestandswarnung: ' + '; '.join(errors), 'warning')
-                db.session.commit()
-                flash('Artikel aktualisiert!', 'success')
-
-            elif action == 'remove_item':
-                quote_item_id = int(request.form.get('quote_item_id'))
-                quote_item = QuoteItem.query.get(quote_item_id)
-                if quote_item and quote_item.quote_id == quote.id:
-                    db.session.delete(quote_item)
-                    db.session.commit()
-                    flash('Artikel aus Angebot entfernt!', 'success')
-
-            elif action == 'remove_package':
-                package_id = int(request.form.get('package_id'))
-                pkg_items = QuoteItem.query.filter_by(quote_id=quote.id, package_id=package_id).all()
-                for qi in pkg_items:
-                    db.session.delete(qi)
-                db.session.commit()
-                flash('Paket aus Angebot entfernt!', 'success')
-
-            elif action == 'add_custom':
-                custom_name = request.form.get('custom_name', '').strip()
-                custom_quantity = int(request.form.get('custom_quantity', 1))
-                custom_price = round(float(request.form.get('custom_price', 0)), 2)
-
-                if custom_name and custom_price > 0:
-                    quote_item = QuoteItem(
-                        quote_id=quote.id,
-                        item_id=None,
-                        quantity=custom_quantity,
-                        rental_price_per_day=custom_price,
-                        custom_item_name=custom_name,
-                        is_custom=True
-                    )
-                    db.session.add(quote_item)
-                    db.session.commit()
-                    flash(f'Eigene Position "{custom_name}" hinzugefügt!', 'success')
-
-            elif action == 'update_prices_mode':
-                quote.prices_are_net = (request.form.get('prices_are_net') == '1')
-                db.session.commit()
-                if quote.prices_are_net:
-                    flash('Preise werden jetzt als Nettobeträge behandelt – die MwSt. wird oben drauf gerechnet.', 'success')
-                else:
-                    flash('Preise werden als Bruttobeträge behandelt (inklusive MwSt.).', 'success')
-
-            elif action == 'update_discount':
-                target_total_str = request.form.get('target_total', '').strip()
-                if target_total_str:
-                    # Calculate discount percent from target total
-                    target_total = float(target_total_str)
-                    discountable = quote.discountable_subtotal
-                    if discountable > 0:
-                        needed_discount = quote.subtotal - target_total
-                        discount_percent = max(0, min(100, (needed_discount / discountable) * 100))
-                    else:
-                        discount_percent = 0
-                else:
-                    discount_percent = float(request.form.get('final_discount_percent', 0))
-                quote.discount_percent = discount_percent
-                quote.discount_label = request.form.get('discount_label', '').strip() or None
-                db.session.commit()
-                flash(f'Rabatt auf {discount_percent:.4f}% aktualisiert (Gesamt: €{quote.total:.2f})', 'success')
-
-            elif action == 'finalize':
-                if not quote.start_date or not quote.end_date:
-                    flash('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein!', 'error')
-                    item_availability = {item.id: item.total_quantity for item in items}
-                    _ss = SiteSettings.query.first()
-                    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
-                    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
-
-                validation_warnings = []
-                for quote_item in quote.quote_items:
-                    if not quote_item.is_custom and quote_item.item:
-                        available = get_available_quantity(
-                            quote_item.item_id,
-                            quote.start_date,
-                            quote.end_date,
-                            exclude_quote_id=quote.id
-                        )
-                        if available != -1 and quote_item.quantity > available:
-                            pkg_note = f' (Paket: {quote_item.package.name})' if quote_item.package_id else ''
-                            validation_warnings.append(
-                                f'{quote_item.item.name}{pkg_note}: Nur {available} verfügbar (Angebot hat {quote_item.quantity})'
-                            )
-
-                if validation_warnings:
-                    flash('⚠ Bestandswarnung: ' + '; '.join(validation_warnings), 'warning')
-
-                quote.status = 'finalized'
-                # Use provided date (from re-finalize dialog) or current time
-                finalized_date_str = request.form.get('finalized_at', '').strip()
-                if finalized_date_str:
-                    quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
-                else:
-                    quote.finalized_at = datetime.utcnow()
-
-                db.session.commit()
-                flash('Angebot finalisiert!', 'success')
-                return redirect(url_for('admin.quote_view', quote_id=quote.id))
-
+            db.session.delete(assignment)
+            db.session.commit()
+            flash('Zuweisung entfernt.', 'success')
         except Exception as e:
             db.session.rollback()
             flash(f'Fehler: {str(e)}', 'error')
-
-    # Calculate availability
-    item_availability = {}
-    if quote.start_date and quote.end_date:
-        for item in items:
-            if item.is_package:
-                item_availability[item.id] = get_package_available_quantity(
-                    item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
-            else:
-                item_availability[item.id] = get_available_quantity(
-                    item.id, quote.start_date, quote.end_date, exclude_quote_id=quote.id)
-    else:
-        for item in items:
-            item_availability[item.id] = item.operational_quantity
-
-    _ss = SiteSettings.query.first()
-    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
-    return render_template('admin/quote_edit.html', quote=quote, items=items, categories=categories, category_tree=category_tree, item_availability=item_availability, site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
+    return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
 
 
 @admin_bp.route('/quotes/<int:quote_id>')
@@ -1786,6 +2109,7 @@ def inquiry_convert(inquiry_id):
         quote.generate_reference_number()
 
         # Add inquiry items to the quote
+        _pos = 1
         for inq_item in inquiry.items:
             item = Item.query.get(inq_item.item_id)
             if item:
@@ -1805,8 +2129,10 @@ def inquiry_convert(inquiry_id):
                                 quantity=pc.quantity,
                                 rental_price_per_day=adjusted_price,
                                 is_custom=False,
-                                package_id=item.id
+                                package_id=item.id,
+                                position=_pos
                             )
+                            _pos += 1
                             db.session.add(qi)
                             db.session.flush()
                             _apply_default_sources(qi, pc.component_item, quote)
@@ -1816,8 +2142,10 @@ def inquiry_convert(inquiry_id):
                         item_id=item.id,
                         quantity=inq_item.quantity,
                         rental_price_per_day=item.default_rental_price_per_day,
-                        is_custom=False
+                        is_custom=False,
+                        position=_pos
                     )
+                    _pos += 1
                     db.session.add(qi)
                     db.session.flush()
                     _apply_default_sources(qi, item, quote)
@@ -2183,18 +2511,27 @@ def _extract_common_pdf_data(quote, site_settings):
     }
 
 
-def _extract_positions(quote):
-    """Extract positions from a quote, grouping bundle components under their package.
+def _extract_positions(quote, *, include_optional=False, include_headings=False):
+    """Extract positions from a quote in manual order, grouping bundle components.
 
     Returns a list of dicts:
     - Regular item: { 'name', 'quantity', 'price_per_day', 'total', 'is_bundle': False }
     - Bundle: { 'name', 'quantity', 'price_per_day': 0, 'total', 'is_bundle': True,
                 'bundle_components': [{'name', 'quantity'}] }
+    - Heading (if include_headings): { 'name', 'is_heading': True }
+    - Optional items (if include_optional) carry 'is_optional': True and are
+      NOT part of the billable totals.
     """
     positions = []
     seen_package_ids = set()
 
-    for qi in quote.quote_items:
+    for qi in quote.quote_items:  # ordered by position
+        if qi.is_heading:
+            if include_headings:
+                positions.append({'name': qi.custom_item_name or '', 'is_heading': True})
+            continue
+        if qi.is_optional and not include_optional:
+            continue
         if qi.package_id:
             if qi.package_id in seen_package_ids:
                 continue
@@ -2211,6 +2548,7 @@ def _extract_positions(quote):
                 'price_per_day': 0,
                 'total': bundle_total,
                 'is_bundle': True,
+                'is_optional': bool(qi.is_optional),
                 'bundle_components': [
                     {'name': c.display_name, 'quantity': c.quantity}
                     for c in components
@@ -2223,17 +2561,24 @@ def _extract_positions(quote):
                 'price_per_day': qi.rental_price_per_day,
                 'total': qi.total_price,
                 'is_bundle': False,
+                'is_optional': bool(qi.is_optional),
             })
 
     return positions
 
 
 def _extract_items_for_lieferschein(quote):
-    """Extract items for the Lieferschein (no prices, just names and quantities)."""
+    """Extract items for the Lieferschein (no prices; includes headings, assigned
+    serial numbers, excludes optional positions)."""
     items = []
     seen_package_ids = set()
 
-    for qi in quote.quote_items:
+    for qi in quote.quote_items:  # ordered by position
+        if qi.is_heading:
+            items.append({'name': qi.custom_item_name or '', 'is_heading': True})
+            continue
+        if qi.is_optional:
+            continue
         if qi.package_id:
             if qi.package_id in seen_package_ids:
                 continue
@@ -2251,6 +2596,7 @@ def _extract_items_for_lieferschein(quote):
                         'name': c.display_name,
                         'quantity': c.quantity,
                         'description': c.item.description if c.item else None,
+                        'units': [au.label for au in c.assigned_units],
                     }
                     for c in components
                 ],
@@ -2261,6 +2607,7 @@ def _extract_items_for_lieferschein(quote):
                 'quantity': qi.quantity,
                 'is_bundle': False,
                 'description': qi.item.description if qi.item else None,
+                'units': [au.label for au in qi.assigned_units],
             })
 
     return items
@@ -2292,7 +2639,7 @@ def angebot_pdf(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     site_settings = SiteSettings.query.first()
     data = _extract_common_pdf_data(quote, site_settings)
-    positions = _extract_positions(quote)
+    positions = _extract_positions(quote, include_optional=True, include_headings=True)
 
     pdf_bytes = build_angebot_pdf(
         issuer_name=data['issuer_name'],

@@ -139,7 +139,12 @@ def build_angebot_pdf(
     is_regular = (tax_mode == "regular")
     tax_factor = 1 + tax_rate / 100
 
-    # ── Pre-compute netto values ──
+    # Split: headings stay inline, optional positions go to a separate section
+    main_positions = [p for p in positions if not p.get("is_optional")]
+    optional_positions = [p for p in positions if p.get("is_optional") and not p.get("is_heading")]
+    billable = [p for p in main_positions if not p.get("is_heading")]
+
+    # ── Pre-compute netto values (over billable positions only) ──
     if is_regular and prices_are_net:
         # Stored prices ARE net – tax is added on top
         netto_subtotal = round(subtotal, 2)
@@ -147,7 +152,7 @@ def build_angebot_pdf(
         netto_total = round(netto_subtotal - netto_discount, 2)
         brutto_total = round(netto_total * tax_factor, 2)
         mwst = round(brutto_total - netto_total, 2)
-        position_nettos = [round(item["total"], 2) for item in positions]
+        position_nettos = [round(item["total"], 2) for item in billable]
     elif is_regular:
         import math as _math
 
@@ -159,7 +164,7 @@ def build_angebot_pdf(
         netto_subtotal = round(subtotal / tax_factor, 2)
         netto_discount = round(netto_subtotal - netto_total, 2) if discount_percent > 0 else 0.0
 
-        position_bruttos = [item["total"] for item in positions]
+        position_bruttos = [item["total"] for item in billable]
         brutto_sum = sum(position_bruttos) or 1  # avoid div-by-zero
         raw_nettos = [netto_subtotal * (pb / brutto_sum) for pb in position_bruttos]
 
@@ -199,9 +204,24 @@ def build_angebot_pdf(
         Paragraph("Gesamt", styles["table_header"]),
     ]
     table_data = [header_row]
+    heading_row_idxs = []
 
     pos_nr = 1
-    for pos_idx, item in enumerate(positions):
+    alloc_i = 0  # index into position_nettos (billable positions only)
+    for item in main_positions:
+        if item.get("is_heading"):
+            heading_row_idxs.append(len(table_data))
+            table_data.append([
+                Paragraph("", styles["table_cell"]),
+                Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
+            ])
+            continue
+        pos_idx = alloc_i
+        alloc_i += 1
         if item.get("is_bundle"):
             # Bundle header row – price only as pauschal in Gesamt
             display_total = position_nettos[pos_idx] if is_regular else item["total"]
@@ -258,7 +278,7 @@ def build_angebot_pdf(
         pos_nr += 1
 
     table = Table(table_data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
-    table.setStyle(TableStyle([
+    table_style_cmds = [
         # Header
         ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -271,8 +291,66 @@ def build_angebot_pdf(
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
+    ]
+    for ridx in heading_row_idxs:
+        table_style_cmds.append(("BACKGROUND", (0, ridx), (-1, ridx), CLR_TABLE_HEADER_BG))
+        table_style_cmds.append(("TOPPADDING", (0, ridx), (-1, ridx), 5))
+    table.setStyle(TableStyle(table_style_cmds))
     story.append(table)
+
+    # ── Optional positions (not included in totals) ──
+    if optional_positions:
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("<b>Optionale Positionen</b> (nicht im Gesamtbetrag enthalten)", styles["normal"]))
+        story.append(Spacer(1, 4))
+        opt_data = [header_row]
+        for item in optional_positions:
+            if is_regular and not prices_are_net:
+                opt_ppd = round(item.get("price_per_day", 0) / tax_factor, 2)
+                opt_total = round(item["total"] / tax_factor, 2)
+            else:
+                opt_ppd = round(item.get("price_per_day", 0), 2)
+                opt_total = round(item["total"], 2)
+            if item.get("is_bundle"):
+                opt_data.append([
+                    Paragraph("+", styles["table_cell"]),
+                    Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
+                    Paragraph(str(item["quantity"]), styles["table_cell"]),
+                    Paragraph("" if is_pauschale else str(rental_days), styles["table_cell"]),
+                    Paragraph("pauschal", styles["table_cell"]),
+                    Paragraph(fmt_eur(opt_total), styles["table_cell_right"]),
+                ])
+                for comp in item.get("bundle_components", []):
+                    opt_data.append([
+                        Paragraph("", styles["table_cell"]),
+                        Paragraph(f"↳ {comp['name']}", styles["table_cell_indent"]),
+                        Paragraph(str(comp["quantity"]), styles["table_cell_indent"]),
+                        Paragraph("", styles["table_cell"]),
+                        Paragraph("", styles["table_cell"]),
+                        Paragraph("", styles["table_cell"]),
+                    ])
+            else:
+                opt_data.append([
+                    Paragraph("+", styles["table_cell"]),
+                    Paragraph(item["name"], styles["table_cell"]),
+                    Paragraph(str(item["quantity"]), styles["table_cell"]),
+                    Paragraph("" if is_pauschale else str(rental_days), styles["table_cell"]),
+                    Paragraph("pauschal" if is_pauschale else fmt_eur(opt_ppd), styles["table_cell_right"]),
+                    Paragraph(fmt_eur(opt_total), styles["table_cell_right"]),
+                ])
+        opt_table = Table(opt_data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
+        opt_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, CLR_BLACK),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.3, colors.HexColor("#cccccc")),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(opt_table)
 
     if is_regular:
         story.append(Paragraph(
