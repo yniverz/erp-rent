@@ -19,6 +19,8 @@ services:
       - SMTP_FROM=${SMTP_FROM:-}
       # Optional favicon
       - FAVICON_URL=${FAVICON_URL:-}
+      # Optional REST API (comma-separated bearer tokens; API disabled if unset)
+      - API_TOKENS=${API_TOKENS:-}
     volumes:
       - ./instance:/app/instance
     restart: unless-stopped
