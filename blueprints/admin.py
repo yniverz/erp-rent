@@ -885,16 +885,19 @@ def _unit_label_lbx_bytes(unit):
     TAPE_W = 68          # 24mm tape in pt
     FORMAT = 261         # Brother format code for 24mm
     END_MARGIN = 5.6     # unprintable 2mm leader/trailer
-    SIDE_MARGIN = 2.8
+    # PT-P700 print head covers only 18mm (51.2pt) of a 24mm tape:
+    # (68 - 51.2) / 2 = 8.4pt unprintable on each side.
+    SIDE_MARGIN = 8.4
+    BAND_H = TAPE_W - 2 * SIDE_MARGIN   # 51.2pt printable across the tape
 
     lookup_url = url_for('admin.unit_lookup', asset_tag=unit.asset_tag or str(unit.id), _external=True)
     name = unit.item.name if unit.item else ''
     tag = unit.asset_tag or f'#{unit.id}'
     sn = f'SN: {unit.serial_number}' if unit.serial_number else None
 
-    qr_size = 59.0
-    text_x = END_MARGIN + qr_size + 6
-    objects = [_lbx_qrcode(lookup_url, END_MARGIN, 4.4, qr_size)]
+    qr_size = BAND_H     # square QR filling the printable band
+    text_x = END_MARGIN + qr_size + 5
+    objects = [_lbx_qrcode(lookup_url, END_MARGIN, SIDE_MARGIN, qr_size, cell_size=1.2)]
     text_widths = []
 
     def add_text(obj_name, text, y, h, size, weight=400):
@@ -902,10 +905,10 @@ def _unit_label_lbx_bytes(unit):
         text_widths.append(w)
         objects.append(_lbx_text(obj_name, text, text_x, y, w, h, size, weight))
 
-    add_text('Text1', name, 6, 11, 8)
-    add_text('Text2', tag, 19, 28, 24, weight=700)
+    add_text('Text1', name, SIDE_MARGIN + 0.5, 9.5, 7)
+    add_text('Text2', tag, SIDE_MARGIN + 11, 22, 18, weight=700)
     if sn:
-        add_text('Text3', sn, 50, 10, 7)
+        add_text('Text3', sn, SIDE_MARGIN + 34.5, 8.5, 6.5)
 
     length = text_x + max(text_widths) + 8
     bg_w = length - 2 * END_MARGIN
