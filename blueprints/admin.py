@@ -864,7 +864,7 @@ def _lbx_text(name, text, x, y, w, h, size, weight=400):
     )
 
 
-def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4):
+def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4, version='auto'):
     return (
         f'<barcode:barcode>'
         + _lbx_object_style(x, y, size_pt, size_pt, pen_style='INSIDEFRAME', name='Barcode1')
@@ -873,7 +873,7 @@ def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4):
           'margin="true" sameLengthBar="false" bearerBar="false"/>'
         + f'<barcode:qrcodeStyle model="2" eccLevel="15%" cellSize="{cell_size:g}pt" mbcs="65001" '
           'removeCharKind="0" removeCharString="" joint="1" jointSpace="8" jointVertically="false" '
-          'version="auto" changeVersionDrag="false"/>'
+          f'version="{version}" changeVersionDrag="false"/>'
         + f'<pt:data>{_lbx_esc(data)}</pt:data>'
         + '</barcode:barcode>'
     )
@@ -897,7 +897,16 @@ def _unit_label_lbx_bytes(unit):
 
     qr_size = BAND_H     # square QR filling the printable band
     text_x = END_MARGIN + qr_size + 5
-    objects = [_lbx_qrcode(lookup_url, END_MARGIN, SIDE_MARGIN, qr_size, cell_size=1.2)]
+    # Match cellSize exactly to the band: the editor renders the QR at
+    # modules × cellSize, so compute the module count (incl. 4-module quiet
+    # zone on each side) with segno at the same ECC level (M = 15%) and pin
+    # the version so P-touch can't pick a different symbol size.
+    import segno
+    qr = segno.make(lookup_url, error='m', micro=False)
+    modules = qr.symbol_size(scale=1, border=0)[0] + 8
+    cell = int(BAND_H / modules * 100) / 100.0
+    objects = [_lbx_qrcode(lookup_url, END_MARGIN, SIDE_MARGIN, qr_size,
+                           cell_size=cell, version=str(qr.version))]
     text_widths = []
 
     def add_text(obj_name, text, y, h, size, weight=400):
