@@ -919,10 +919,11 @@ def _unit_label_lbx_bytes(unit):
         text_widths.append(w)
         objects.append(_lbx_text(obj_name, text, text_x, y, w, h, size, weight))
 
-    add_text('Text1', name, SIDE_MARGIN + 0.5, 9.5, 7)
-    add_text('Text2', tag, SIDE_MARGIN + 11, 22, 18, weight=700)
+    # Spread the text lines over the full band height (8.4 .. 59.6)
+    add_text('Text1', name, SIDE_MARGIN, 11, 9)
+    add_text('Text2', tag, SIDE_MARGIN + 11.2, 27, 22, weight=700)
     if sn:
-        add_text('Text3', sn, SIDE_MARGIN + 34.5, 8.5, 6.5)
+        add_text('Text3', sn, SIDE_MARGIN + 39.4, 11, 8)
 
     length = text_x + max(text_widths) + 8
     bg_w = length - 2 * END_MARGIN
