@@ -705,7 +705,7 @@ def unit_label(unit_id):
     """Printable QR label for a single unit"""
     unit = ItemUnit.query.get_or_404(unit_id)
     labels = [{'unit': unit, 'qr': _unit_qr_data_uri(unit)}]
-    return render_template('admin/unit_labels.html', item=unit.item, labels=labels)
+    return render_template('admin/unit_labels.html', item=unit.item, labels=labels, single_unit=unit)
 
 
 @admin_bp.route('/inventory/<int:item_id>/labels')
@@ -817,6 +817,187 @@ def unit_labels_zip(item_id):
             zf.writestr(fname, _unit_label_png_bytes(u))
     buf.seek(0)
     zip_name = 'etiketten-' + _safe_filename(item.name) + '.zip'
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=zip_name)
+
+
+# ── Brother P-touch .lbx export (experimental) ─────────────────────────
+# Format reverse-engineered from P-touch Editor output; references:
+# github.com/orochi235/bil-lbx (MIT) and github.com/Sibyx/griminventory-api.
+# An .lbx is a ZIP (STORE) of label.xml + prop.xml. Sized for 24mm TZe tape
+# (68pt across, format code 261). Objects are native (editable in the editor).
+
+def _lbx_esc(s):
+    from xml.sax.saxutils import escape
+    return escape(str(s), {'"': '&quot;'})
+
+
+def _lbx_object_style(x, y, w, h, pen_style='NULL', name='Object'):
+    return (
+        f'<pt:objectStyle x="{x:g}pt" y="{y:g}pt" width="{w:g}pt" height="{h:g}pt" '
+        f'backColor="#FFFFFF" backPrintColorNumber="0" ropMode="COPYPEN" angle="0" anchor="TOPLEFT" flip="NONE">'
+        f'<pt:pen style="{pen_style}" widthX="0.5pt" widthY="0.5pt" color="#000000" printColorNumber="1"/>'
+        f'<pt:brush style="NULL" color="#000000" printColorNumber="1" id="0"/>'
+        f'<pt:expanded objectName="{name}" ID="0" lock="0" templateMergeTarget="LABELLIST" '
+        f'templateMergeType="NONE" templateMergeID="0" linkStatus="NONE" linkID="0"/>'
+        f'</pt:objectStyle>'
+    )
+
+
+def _lbx_text(name, text, x, y, w, h, size, weight=400):
+    font_info = (
+        f'<text:ptFontInfo>'
+        f'<text:logFont name="Helsinki" width="0" italic="false" weight="{weight}" charSet="0" pitchAndFamily="2"/>'
+        f'<text:fontExt effect="NOEFFECT" underline="0" strikeout="0" size="{size:g}pt" orgSize="28.8pt" '
+        f'textColor="#000000" textPrintColorNumber="1"/>'
+        f'</text:ptFontInfo>'
+    )
+    return (
+        f'<text:text>'
+        + _lbx_object_style(x, y, w, h, name=name)
+        + font_info
+        + '<text:textControl control="AUTOLEN" clipFrame="false" aspectNormal="true" shrink="true" autoLF="false" avoidImage="false"/>'
+        + '<text:textAlign horizontalAlignment="LEFT" verticalAlignment="CENTER" inLineAlignment="BASELINE"/>'
+        + f'<text:textStyle vertical="false" nullBlock="false" charSpace="0" lineSpace="0" orgPoint="{size:g}pt" combinedChars="false"/>'
+        + f'<pt:data>{_lbx_esc(text)}</pt:data>'
+        + f'<text:stringItem charLen="{len(text)}">{font_info}</text:stringItem>'
+        + '</text:text>'
+    )
+
+
+def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4):
+    return (
+        f'<barcode:barcode>'
+        + _lbx_object_style(x, y, size_pt, size_pt, pen_style='INSIDEFRAME', name='Barcode1')
+        + '<barcode:barcodeStyle protocol="QRCODE" lengths="0" zeroFill="false" barWidth="0.8pt" barRatio="1:3" '
+          'humanReadable="false" humanReadableAlignment="LEFT" checkDigit="false" autoLengths="true" '
+          'margin="true" sameLengthBar="false" bearerBar="false"/>'
+        + f'<barcode:qrcodeStyle model="2" eccLevel="15%" cellSize="{cell_size:g}pt" mbcs="65001" '
+          'removeCharKind="0" removeCharString="" joint="1" jointSpace="8" jointVertically="false" '
+          'version="auto" changeVersionDrag="false"/>'
+        + f'<pt:data>{_lbx_esc(data)}</pt:data>'
+        + '</barcode:barcode>'
+    )
+
+
+def _unit_label_lbx_bytes(unit):
+    """Native P-touch Editor .lbx file for one unit: QR + name + tag + serial,
+    24mm tape, auto length. Objects stay editable in the editor."""
+    TAPE_W = 68          # 24mm tape in pt
+    FORMAT = 261         # Brother format code for 24mm
+    END_MARGIN = 5.6     # unprintable 2mm leader/trailer
+    SIDE_MARGIN = 2.8
+
+    lookup_url = url_for('admin.unit_lookup', asset_tag=unit.asset_tag or str(unit.id), _external=True)
+    name = unit.item.name if unit.item else ''
+    tag = unit.asset_tag or f'#{unit.id}'
+    sn = f'SN: {unit.serial_number}' if unit.serial_number else None
+
+    qr_size = 59.0
+    text_x = END_MARGIN + qr_size + 6
+    objects = [_lbx_qrcode(lookup_url, END_MARGIN, 4.4, qr_size)]
+    text_widths = []
+
+    def add_text(obj_name, text, y, h, size, weight=400):
+        w = max(30.0, len(text) * size * 0.62)
+        text_widths.append(w)
+        objects.append(_lbx_text(obj_name, text, text_x, y, w, h, size, weight))
+
+    add_text('Text1', name, 6, 11, 8)
+    add_text('Text2', tag, 19, 28, 24, weight=700)
+    if sn:
+        add_text('Text3', sn, 50, 10, 7)
+
+    length = text_x + max(text_widths) + 8
+    bg_w = length - 2 * END_MARGIN
+    bg_h = TAPE_W - 2 * SIDE_MARGIN
+
+    label_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<pt:document xmlns:pt="http://schemas.brother.info/ptouch/2007/lbx/main" '
+        'xmlns:style="http://schemas.brother.info/ptouch/2007/lbx/style" '
+        'xmlns:text="http://schemas.brother.info/ptouch/2007/lbx/text" '
+        'xmlns:draw="http://schemas.brother.info/ptouch/2007/lbx/draw" '
+        'xmlns:image="http://schemas.brother.info/ptouch/2007/lbx/image" '
+        'xmlns:barcode="http://schemas.brother.info/ptouch/2007/lbx/barcode" '
+        'xmlns:database="http://schemas.brother.info/ptouch/2007/lbx/database" '
+        'xmlns:table="http://schemas.brother.info/ptouch/2007/lbx/table" '
+        'xmlns:cable="http://schemas.brother.info/ptouch/2007/lbx/cable" '
+        'version="1.10" generator="erp-rent">'
+        '<pt:body currentSheet="Sheet 1" direction="LTR">'
+        '<style:sheet name="Sheet 1">'
+        f'<style:paper media="0" width="{TAPE_W}pt" height="2834.4pt" '
+        f'marginLeft="{SIDE_MARGIN}pt" marginTop="{END_MARGIN}pt" marginRight="{SIDE_MARGIN}pt" marginBottom="{END_MARGIN}pt" '
+        f'orientation="landscape" autoLength="true" monochromeDisplay="true" printColorDisplay="false" '
+        f'printColorsID="0" paperColor="#FFFFFF" paperInk="#000000" split="1" format="{FORMAT}" '
+        f'backgroundTheme="0" printerID="30256" printerName="Brother PT-P700"/>'
+        '<style:cutLine regularCut="0pt" freeCut=""/>'
+        f'<style:backGround x="{END_MARGIN}pt" y="{SIDE_MARGIN}pt" width="{bg_w:g}pt" height="{bg_h:g}pt" '
+        'brushStyle="NULL" brushId="0" userPattern="NONE" userPatternId="0" color="#000000" '
+        'printColorNumber="1" backColor="#FFFFFF" backPrintColorNumber="0"/>'
+        '<pt:objects>' + ''.join(objects) + '</pt:objects>'
+        '</style:sheet>'
+        '</pt:body>'
+        '</pt:document>'
+    )
+
+    now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    prop_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<meta:properties xmlns:meta="http://schemas.brother.info/ptouch/2007/lbx/meta" '
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">'
+        '<meta:appName>P-touch Editor</meta:appName>'
+        f'<dc:title>{_lbx_esc(tag)}</dc:title>'
+        '<dc:subject></dc:subject>'
+        '<dc:creator>erp-rent</dc:creator>'
+        '<meta:keyword></meta:keyword>'
+        '<dc:description></dc:description>'
+        '<meta:template></meta:template>'
+        f'<dcterms:created>{now}</dcterms:created>'
+        f'<dcterms:modified>{now}</dcterms:modified>'
+        '<meta:lastPrinted></meta:lastPrinted>'
+        '<meta:modifiedBy></meta:modifiedBy>'
+        '<meta:revision>1</meta:revision>'
+        '<meta:editTime>0</meta:editTime>'
+        '<meta:numPages>1</meta:numPages>'
+        '<meta:numWords>0</meta:numWords>'
+        '<meta:numChars>0</meta:numChars>'
+        '<meta:security>0</meta:security>'
+        '</meta:properties>'
+    )
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_STORED) as zf:
+        zf.writestr('label.xml', label_xml)
+        zf.writestr('prop.xml', prop_xml)
+    return buf.getvalue()
+
+
+@admin_bp.route('/inventory/units/<int:unit_id>/label.lbx')
+@login_required
+def unit_label_lbx(unit_id):
+    """Download a single unit label as P-touch Editor .lbx file (experimental)."""
+    unit = ItemUnit.query.get_or_404(unit_id)
+    data = _unit_label_lbx_bytes(unit)
+    fname = _safe_filename(unit.asset_tag or f'unit-{unit.id}') + '.lbx'
+    return send_file(BytesIO(data), mimetype='application/octet-stream', as_attachment=True, download_name=fname)
+
+
+@admin_bp.route('/inventory/<int:item_id>/labels-lbx.zip')
+@login_required
+def unit_labels_lbx_zip(item_id):
+    """Download all unit labels of an item as a ZIP of .lbx files."""
+    item = Item.query.get_or_404(item_id)
+    units = [u for u in item.units if u.status != ItemUnit.STATUS_RETIRED]
+    if not units:
+        flash('Keine Einheiten vorhanden.', 'error')
+        return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for u in units:
+            fname = _safe_filename(u.asset_tag or f'unit-{u.id}') + '.lbx'
+            zf.writestr(fname, _unit_label_lbx_bytes(u))
+    buf.seek(0)
+    zip_name = 'etiketten-lbx-' + _safe_filename(item.name) + '.zip'
     return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=zip_name)
 
 
