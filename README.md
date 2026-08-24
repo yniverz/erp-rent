@@ -92,7 +92,7 @@ All configuration is done through environment variables (or a `.env` file in the
 
 ## REST API (v1)
 
-A token-authenticated JSON API for quote management is available under `/api/v1`. Enable it by setting `API_TOKENS` and authenticate every request with `Authorization: Bearer <token>`. Only quotes in status `draft` can be modified (same rule as the UI). Full documentation: [docs/API.md](docs/API.md).
+A token-authenticated JSON API for quote management is available under `/api/v1`. Enable it by setting `API_TOKENS` and authenticate every request with `Authorization: Bearer <token>`. Full documentation: [docs/API.md](docs/API.md).
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -151,22 +151,19 @@ Overview of total inventory items, quotes, new inquiries, and active quotes.
 - Items can belong to one primary category and multiple subcategories.
 
 #### Quotes
-Full lifecycle management from draft to paid:
+Quotes are drafts (Entwurf) — there is a single quote type. Finalization and invoicing are handled in a separate external tool.
 
 1. **Create** — Enter customer name, recipient address, and rental period (start/end dates). A reference number is auto-generated.
 2. **Edit** — Add inventory items (availability is checked against the date range), add packages (auto-expanded into components), or add custom free-text line items. Adjust quantities, prices, and per-item external costs.
 3. **Discounts** — Set a discount percentage or enter a target total and let the system calculate the percentage. Individual items can be marked as discount-exempt. You can also add a label to the discount (e.g., "Loyalty discount").
 4. **Rental days override** — Optionally bill for a different number of days than the actual date range.
-5. **Finalize** — Lock the quote. The system checks inventory availability and warns about overbooking.
-6. **Mark as paid** — Records payment and updates cumulative revenue and cost tracking on each item.
 
-Each step can be undone (unfinalize, unpay) and quotes can be deleted at any time.
+Quotes can be edited or deleted at any time.
 
 #### PDF Documents
 Generate professional German-language PDF documents directly from any quote:
 
 - **Angebot (Quote)** — Itemized quote with positions, quantities, daily rates, totals, discount, tax handling, payment terms, and validity period. Includes AGB (terms & conditions) as an appendix if configured.
-- **Rechnung (Invoice)** — Same layout as the quote but with invoice-specific language, the service period, and payment instructions with bank details.
 - **Lieferschein / Übergabeprotokoll (Delivery Note)** — Lists items and quantities without prices. Includes a condition/comment column for handwritten notes, a deposit field, and signature sections for both handover and return.
 
 All PDFs include your company logo (if uploaded), address, contact details, tax number, and bank information as configured in settings.
@@ -181,7 +178,7 @@ All PDFs include your company logo (if uploaded), address, contact details, tax 
 - **Convert to quote** — Creates a new draft quote pre-filled with the customer's details, desired dates, and requested items.
 
 #### Schedule
-Monthly calendar view showing all quotes and open inquiries with their rental periods. Color-coded by status (draft, finalized, paid, inquiry). Navigate between months and click entries to view details.
+Monthly calendar view showing all quotes and open inquiries with their rental periods. Navigate between months and click entries to view details.
 
 #### Payoff Report
 Financial overview of your inventory:

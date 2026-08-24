@@ -315,7 +315,7 @@
     <h4 class="mt-16 mb-6">Aktuelle &amp; kommende Buchungen</h4>
     <table>
         <thead>
-            <tr><th>Zeitraum</th><th>Kunde</th><th>Menge</th><th>Status</th><th></th></tr>
+            <tr><th>Zeitraum</th><th>Kunde</th><th>Menge</th><th></th></tr>
         </thead>
         <tbody>
             {% for b in upcoming_bookings %}
@@ -323,8 +323,7 @@
                 <td>{{ b.quote.start_date.strftime('%d.%m.%Y') }} – {{ b.quote.end_date.strftime('%d.%m.%Y') }}</td>
                 <td>{{ b.quote.customer_name }}</td>
                 <td>{{ b.quantity }}</td>
-                <td><span class="badge badge-{{ b.quote.status }}">{{ b.quote.status }}</span></td>
-                <td><a href="{{ url_for('admin.quote_view', quote_id=b.quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a></td>
+                <td><a href="{{ url_for('admin.quote_edit', quote_id=b.quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a></td>
             </tr>
             {% endfor %}
         </tbody>

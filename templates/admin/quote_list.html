@@ -16,7 +16,6 @@
             <th>Zeitraum</th>
             <th>Artikel</th>
             <th>Summe</th>
-            <th>Status</th>
             <th>Erstellt von</th>
             <th>Aktionen</th>
         </tr>
@@ -41,19 +40,14 @@
             </td>
             <td>{{ quote.quote_items|length }}</td>
             <td>&euro;{{ "%.2f"|format(quote.total) }}</td>
-            <td><span class="badge badge-{{ quote.status }}">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span></td>
             <td>{{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</td>
             <td>
-                {% if quote.status == 'draft' %}
-                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
-                {% else %}
-                    <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
-                {% endif %}
+                <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
             </td>
         </tr>
         {% endfor %}
         {% if not quotes %}
-        <tr><td colspan="8" class="empty-state">Noch keine Angebote. <a href="{{ url_for('admin.quote_create') }}">Erstes Angebot erstellen</a>.</td></tr>
+        <tr><td colspan="7" class="empty-state">Noch keine Angebote. <a href="{{ url_for('admin.quote_create') }}">Erstes Angebot erstellen</a>.</td></tr>
         {% endif %}
     </tbody>
 </table>

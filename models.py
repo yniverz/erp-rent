@@ -369,12 +369,8 @@ class Quote(db.Model):
     rental_days_override = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.DateTime, nullable=True)
     end_date = db.Column(db.DateTime, nullable=True)
-    status = db.Column(db.String(50), default='draft')  # draft, finalized, performed, paid
+    status = db.Column(db.String(50), default='draft')  # only 'draft' (Entwurf); finalization happens in an external tool
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    finalized_at = db.Column(db.DateTime, nullable=True)
-    performed_at = db.Column(db.DateTime, nullable=True)  # When service was performed / Durchgeführt
-    paid_at = db.Column(db.DateTime, nullable=True)
-    payment_method = db.Column(db.String(20), nullable=True)  # 'cash' or 'bank'
     notes = db.Column(db.Text, nullable=True)  # Internal notes (not on PDF)
     public_notes = db.Column(db.Text, nullable=True)  # Shown on Angebot/Rechnung/Lieferschein
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)

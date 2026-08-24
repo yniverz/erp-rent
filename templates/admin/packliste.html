@@ -5,7 +5,7 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Packliste: {{ quote.reference_number or 'Entwurf' }}</h1>
-    <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
+    <span class="badge badge-draft badge-lg">Entwurf</span>
 </div>
 
 <div class="card">

@@ -66,9 +66,9 @@ Authorization: Bearer <token>
   [quote object](#quote-object) plus a `warnings` array with non-fatal
   problems (e.g. availability conflicts). Warnings do **not** prevent the
   change from being saved.
-- **Editing rules:** only quotes in status `draft` can be modified. Mutations
-  on `finalized` / `performed` / `paid` quotes return `409`. Status
-  transitions themselves are not part of this API — use the admin UI.
+- **Editing rules:** every quote is a draft (`Entwurf`) and always editable.
+  There is a single quote type — finalization/invoicing is handled in a
+  separate external tool, so this API has no status transitions.
 
 ---
 
@@ -84,7 +84,7 @@ Query parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `status` | string | Filter by status: `draft`, `finalized`, `performed`, `paid` |
+| `status` | string | Filter by status (only `draft` exists) |
 | `customer` | string | Case-insensitive substring match on the customer name |
 | `limit` | int | Page size, default `100`, max `500` |
 | `offset` | int | Pagination offset, default `0` |
@@ -395,7 +395,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | `400` | Invalid input (missing required field, bad date format, invalid number, unknown line type, …) |
 | `401` | Missing or invalid API token |
 | `404` | Quote, line or item not found |
-| `409` | Conflict — quote is not in `draft` status, or the package is already in the quote |
+| `409` | Conflict — the package is already in the quote |
 | `503` | API disabled (`API_TOKENS` not configured) |
 | `500` | Unexpected server error |
 

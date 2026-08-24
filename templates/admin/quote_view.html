@@ -5,7 +5,7 @@
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Angebot: {{ quote.reference_number }}</h1>
-    <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
+    <span class="badge badge-draft badge-lg">Entwurf</span>
 </div>
 
 <div class="card">
@@ -28,59 +28,11 @@
             <p><strong>Referenz:</strong> {{ quote.reference_number }}
             </p>
             <p><strong>Erstellt:</strong> {{ quote.created_at.strftime('%d.%m.%Y %H:%M') }} von {{ quote.created_by.display_name or quote.created_by.username if quote.created_by else '—' }}</p>
-            {% if quote.status in ['finalized', 'performed', 'paid'] and quote.finalized_at %}
-            <p><strong>Finalisiert:</strong> {{ quote.finalized_at.strftime('%d.%m.%Y %H:%M') }}
-                {% if quote.status in ['finalized', 'performed', 'paid'] %}
-                <button type="button" class="btn btn-sm btn-outline edit-date-btn" id="edit-finalized-date-btn" onclick="document.getElementById('edit-finalized-date').classList.remove('d-none');this.classList.add('d-none');">✏️ Datum ändern</button>
-                {% endif %}
-            </p>
-            {% if quote.status in ['finalized', 'performed', 'paid'] %}
-            <div id="edit-finalized-date" class="edit-date-wrapper d-none">
-                <form method="POST" action="{{ url_for('admin.quote_update_finalized_date', quote_id=quote.id) }}" class="edit-date-form">
-                    <input type="date" name="finalized_at" value="{{ quote.finalized_at.strftime('%Y-%m-%d') }}" required class="edit-date-input">
-                    <button type="submit" class="btn btn-sm btn-success btn-compact">Speichern</button>
-                    <button type="button" class="btn btn-sm btn-outline btn-compact" onclick="document.getElementById('edit-finalized-date').classList.add('d-none');document.getElementById('edit-finalized-date-btn').classList.remove('d-none');">Abbrechen</button>
-                </form>
-            </div>
-            {% endif %}
-            {% endif %}
-            {% if quote.status in ['performed', 'paid'] and quote.performed_at %}
-            <p><strong>Durchgeführt:</strong> {{ quote.performed_at.strftime('%d.%m.%Y %H:%M') }}
-                {% if quote.status in ['performed', 'paid'] %}
-                <button type="button" class="btn btn-sm btn-outline edit-date-btn" id="edit-performed-date-btn" onclick="document.getElementById('edit-performed-date').classList.remove('d-none');this.classList.add('d-none');">✏️ Datum ändern</button>
-                {% endif %}
-            </p>
-            {% if quote.status in ['performed', 'paid'] %}
-            <div id="edit-performed-date" class="edit-date-wrapper d-none">
-                <form method="POST" action="{{ url_for('admin.quote_update_performed_date', quote_id=quote.id) }}" class="edit-date-form">
-                    <input type="date" name="performed_at" value="{{ quote.performed_at.strftime('%Y-%m-%d') }}" required class="edit-date-input">
-                    <button type="submit" class="btn btn-sm btn-success btn-compact">Speichern</button>
-                    <button type="button" class="btn btn-sm btn-outline btn-compact" onclick="document.getElementById('edit-performed-date').classList.add('d-none');document.getElementById('edit-performed-date-btn').classList.remove('d-none');">Abbrechen</button>
-                </form>
-            </div>
-            {% endif %}
-            {% endif %}
-            {% if quote.status == 'paid' and quote.paid_at %}
-            <p><strong>Bezahlt:</strong> {{ quote.paid_at.strftime('%d.%m.%Y %H:%M') }}
-                {% if quote.status == 'paid' %}
-                <button type="button" class="btn btn-sm btn-outline edit-date-btn" id="edit-paid-date-btn" onclick="document.getElementById('edit-paid-date').classList.remove('d-none');this.classList.add('d-none');">✏️ Datum ändern</button>
-                {% endif %}
-            </p>
-            {% if quote.status == 'paid' %}
-            <div id="edit-paid-date" class="edit-date-wrapper d-none">
-                <form method="POST" action="{{ url_for('admin.quote_update_paid_date', quote_id=quote.id) }}" class="edit-date-form">
-                    <input type="date" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" required class="edit-date-input">
-                    <button type="submit" class="btn btn-sm btn-success btn-compact">Speichern</button>
-                    <button type="button" class="btn btn-sm btn-outline btn-compact" onclick="document.getElementById('edit-paid-date').classList.add('d-none');document.getElementById('edit-paid-date-btn').classList.remove('d-none');">Abbrechen</button>
-                </form>
-            </div>
-            {% endif %}
-            {% endif %}
         </div>
     </div>
 
     {% if quote.public_notes %}
-        <p class="mt-14"><strong>Bemerkungen (auf Rechnung):</strong></p>
+        <p class="mt-14"><strong>Bemerkungen (auf PDF-Dokumenten):</strong></p>
         <p class="text-muted text-pre-line">{{ quote.public_notes }}</p>
     {% endif %}
     <p class="mt-14">
@@ -96,7 +48,7 @@
     </div>
     <div id="edit-internal-notes" class="d-none">
         <form method="POST" action="{{ url_for('admin.quote_update_notes', quote_id=quote.id) }}">
-            <textarea name="notes" rows="3" placeholder="Nur intern sichtbar, nicht auf der Rechnung">{{ quote.notes or '' }}</textarea>
+            <textarea name="notes" rows="3" placeholder="Nur intern sichtbar, nicht auf PDF-Dokumenten">{{ quote.notes or '' }}</textarea>
             <div class="mt-14">
                 <button type="submit" class="btn btn-sm btn-success btn-compact">Speichern</button>
                 <button type="button" class="btn btn-sm btn-outline btn-compact" onclick="document.getElementById('edit-internal-notes').classList.add('d-none');document.getElementById('view-internal-notes').classList.remove('d-none');document.getElementById('edit-internal-notes-btn').classList.remove('d-none');">Abbrechen</button>
@@ -272,125 +224,19 @@
     </div>
 </div>
 
-<!-- Revenue Breakdown -->
-{% if quote.status == 'paid' %}
-<div class="card">
-    <h2>Kostenübersicht</h2>
-    {% set ns2 = namespace(total_ext_cost=0) %}
-    {% for qi in quote.quote_items if not qi.is_custom and qi.item and qi.rental_cost_per_day %}
-        {% set ns2.total_ext_cost = ns2.total_ext_cost + qi.total_external_cost %}
-    {% endfor %}
-    {% if ns2.total_ext_cost > 0 %}
-    <p>Externe Mietkosten: <strong>&euro;{{ "%.2f"|format(ns2.total_ext_cost) }}</strong></p>
-    <p>Netto nach ext. Kosten: <strong>&euro;{{ "%.2f"|format(quote.total - ns2.total_ext_cost) }}</strong></p>
-    {% else %}
-    <p>Keine externen Kosten.</p>
-    {% endif %}
-</div>
-{% endif %}
-
 <!-- Actions -->
 <div class="card no-print">
     <h2>Aktionen</h2>
     <div class="d-flex gap-10 flex-wrap">
-        {% if quote.status == 'finalized' %}
-            <!-- Durchführen Button -->
-            {% if quote.performed_at %}
-            <button type="button" class="btn btn-info" onclick="showPerformDialog()">Als durchgeführt markieren</button>
-            {% else %}
-            <form method="POST" action="{{ url_for('admin.quote_mark_performed', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-info" onclick="return confirm('Als durchgeführt markieren?');">Als durchgeführt markieren</button>
-            </form>
-            {% endif %}
-
-            <!-- Bezahlt direkt markieren (überspringt performed) -->
-            <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
-
-            <form method="POST" action="{{ url_for('admin.quote_unfinalize', quote_id=quote.id) }}" onsubmit="return confirm('Finalisierung aufheben?');">
-                <button type="submit" class="btn btn-warning">Finalisierung aufheben</button>
-            </form>
-
-        {% elif quote.status == 'performed' %}
-            <!-- Bezahlt markieren -->
-            <button type="button" class="btn btn-success" onclick="showPayDialog()">Als bezahlt markieren</button>
-
-            <form method="POST" action="{{ url_for('admin.quote_unperform', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-warning" onclick="return confirm('Durchführung aufheben?');">Durchführung aufheben</button>
-            </form>
-
-        {% elif quote.status == 'paid' %}
-            <form method="POST" action="{{ url_for('admin.quote_unpay', quote_id=quote.id) }}">
-                <button type="submit" class="btn btn-warning" onclick="return confirm('Zahlung zurücknehmen?');">Zahlung aufheben</button>
-            </form>
-        {% endif %}
-
-        {% if quote.status in ['finalized', 'performed', 'paid'] %}
-            <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF</a>
-            <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
-            <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
-            <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
-        {% elif quote.status == 'draft' %}
-            <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF (Entwurf)</a>
-            <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Rechnung PDF</a>
-            <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
-            <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
-        {% endif %}
-
-        {% if quote.status == 'draft' %}
-            <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Bearbeiten</a>
-        {% endif %}
+        <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Angebot PDF</a>
+        <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
+        <button type="button" class="btn btn-outline" onclick="openKautionDialog()">Lieferschein + Kaution</button>
+        <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-outline">Bearbeiten</a>
         <a href="{{ url_for('admin.quote_packliste', quote_id=quote.id) }}" class="btn btn-outline">📦 Packliste</a>
-
-        {% if quote.status == 'draft' %}
         <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" onsubmit="return confirm('Dieses Angebot löschen?');">
             <button type="submit" class="btn btn-danger">Angebot löschen</button>
         </form>
-        {% endif %}
     </div>
-
-    {% if quote.status == 'finalized' and quote.performed_at %}
-    <div id="perform-dialog" class="action-dialog d-none">
-        <form method="POST" action="{{ url_for('admin.quote_mark_performed', quote_id=quote.id) }}" id="perform-form">
-            <p class="dialog-heading"><strong>⚠ Vorheriges Durchführungsdatum vorhanden</strong></p>
-            <p class="text-muted dialog-text">Dieses Angebot war zuvor als durchgeführt markiert ({{ quote.performed_at.strftime('%d.%m.%Y') }}).</p>
-            <div class="d-flex gap-10 flex-wrap align-center">
-                <button type="submit" name="performed_at" value="{{ quote.performed_at.strftime('%Y-%m-%d') }}" class="btn btn-info">Bisheriges Datum ({{ quote.performed_at.strftime('%d.%m.%Y') }})</button>
-                <button type="submit" class="btn btn-outline">Heutiges Datum</button>
-                <span class="dialog-hint">oder:</span>
-                <input type="date" id="custom-perform-date" class="dialog-date-input">
-                <button type="button" class="btn btn-outline" onclick="submitCustomPerformDate()">Eigenes Datum</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('perform-dialog').classList.add('d-none')">Abbrechen</button>
-            </div>
-        </form>
-    </div>
-    {% endif %}
-
-    {% if quote.status in ['finalized', 'performed'] %}
-    <div id="pay-dialog" class="action-dialog d-none">
-        <form method="POST" action="{{ url_for('admin.quote_mark_paid', quote_id=quote.id) }}" id="pay-form">
-            <p class="dialog-heading"><strong>Als bezahlt markieren</strong></p>
-            {% if quote.paid_at %}
-            <p class="text-muted dialog-text">Dieses Angebot war zuvor als bezahlt markiert ({{ quote.paid_at.strftime('%d.%m.%Y') }}). Möchten Sie das bisherige Bezahldatum verwenden oder das heutige Datum?</p>
-            <div class="d-flex gap-10 flex-wrap align-center">
-                <button type="submit" name="paid_at" value="{{ quote.paid_at.strftime('%Y-%m-%d') }}" class="btn btn-success">Bisheriges Datum ({{ quote.paid_at.strftime('%d.%m.%Y') }})</button>
-                <button type="submit" class="btn btn-outline">Heutiges Datum</button>
-                <span class="dialog-hint">oder:</span>
-                <input type="date" id="custom-pay-date" class="dialog-date-input">
-                <button type="button" class="btn btn-outline" onclick="submitCustomPayDate()">Eigenes Datum</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('pay-dialog').classList.add('d-none')">Abbrechen</button>
-            </div>
-            {% else %}
-            <div class="d-flex gap-10 flex-wrap align-center">
-                <button type="submit" class="btn btn-success" onclick="return confirm('Als bezahlt markieren?');">Heutiges Datum</button>
-                <span class="dialog-hint">oder:</span>
-                <input type="date" id="custom-pay-date" class="dialog-date-input">
-                <button type="button" class="btn btn-outline" onclick="submitCustomPayDate()">Eigenes Datum</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('pay-dialog').classList.add('d-none')">Abbrechen</button>
-            </div>
-            {% endif %}
-        </form>
-    </div>
-    {% endif %}
 </div>
 
 <!-- Kaution Dialog -->
@@ -428,43 +274,5 @@ function generateLieferscheinWithKaution() {
 document.getElementById('kaution-dialog').addEventListener('click', function(e) {
     if (e.target === this) closeKautionDialog();
 });
-
-function showPayDialog() {
-    document.getElementById('pay-dialog').classList.remove('d-none');
-}
-
-function showPerformDialog() {
-    document.getElementById('perform-dialog').classList.remove('d-none');
-}
-
-function submitCustomPayDate() {
-    var dateVal = document.getElementById('custom-pay-date').value;
-    if (!dateVal) {
-        alert('Bitte ein Datum auswählen.');
-        return;
-    }
-    var form = document.getElementById('pay-form');
-    var input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'paid_at';
-    input.value = dateVal;
-    form.appendChild(input);
-    form.submit();
-}
-
-function submitCustomPerformDate() {
-    var dateVal = document.getElementById('custom-perform-date').value;
-    if (!dateVal) {
-        alert('Bitte ein Datum auswählen.');
-        return;
-    }
-    var form = document.getElementById('perform-form');
-    var input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'performed_at';
-    input.value = dateVal;
-    form.appendChild(input);
-    form.submit();
-}
 </script>
 {% endblock %}

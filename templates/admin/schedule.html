@@ -26,10 +26,7 @@
     </div>
 
     <div class="cal-legend">
-        <div class="cal-legend-item"><span class="cal-legend-dot paid"></span> Bezahlt</div>
-        <div class="cal-legend-item"><span class="cal-legend-dot performed"></span> Durchgeführt</div>
-        <div class="cal-legend-item"><span class="cal-legend-dot finalized"></span> Finalisiert</div>
-        <div class="cal-legend-item"><span class="cal-legend-dot draft"></span> Entwurf</div>
+        <div class="cal-legend-item"><span class="cal-legend-dot draft"></span> Angebot</div>
         <div class="cal-legend-item"><span class="cal-legend-dot inquiry"></span> Anfrage</div>
     </div>
 
@@ -50,9 +47,9 @@
                     <div class="cal-day-num {{ 'today-num' if cell.date == today else '' }}">{{ cell.day }}</div>
                     {% for ev in cell.events[:4] %}
                     {% if ev.type == 'quote' %}
-                    <a class="cal-event status-{{ ev.status }}"
-                       href="{{ url_for('admin.quote_view', quote_id=ev.id) if ev.status != 'draft' else url_for('admin.quote_edit', quote_id=ev.id) }}"
-                       title="{{ ev.customer }}{% if ev.notes %} – {{ ev.notes }}{% endif %} ({{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(ev.status, ev.status|capitalize) }})">
+                    <a class="cal-event status-draft"
+                       href="{{ url_for('admin.quote_edit', quote_id=ev.id) }}"
+                       title="{{ ev.customer }}{% if ev.notes %} – {{ ev.notes }}{% endif %} (Angebot)">
                         {{ ev.label }}{% if ev.notes %} – {{ ev.notes }}{% endif %}
                     </a>
                     {% else %}
@@ -85,7 +82,6 @@
                 <th>Start</th>
                 <th>Ende</th>
                 <th>Tage</th>
-                <th>Status</th>
                 <th>Artikel</th>
                 <th></th>
             </tr>
@@ -98,7 +94,6 @@
                 <td>{{ quote.start_date.strftime('%d.%m.%Y') if quote.start_date else '—' }}</td>
                 <td>{{ quote.end_date.strftime('%d.%m.%Y') if quote.end_date else '—' }}</td>
                 <td>{{ quote.calculate_rental_days() }}</td>
-                <td><span class="badge badge-{{ quote.status }}">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span></td>
                 <td>
                     {% for qi in quote.quote_items[:3] %}
                         {{ qi.display_name }}{% if not loop.last %}, {% endif %}
@@ -108,16 +103,12 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if quote.status == 'draft' %}
-                        <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
-                    {% else %}
-                        <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Ansehen</a>
-                    {% endif %}
+                    <a href="{{ url_for('admin.quote_edit', quote_id=quote.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
                 </td>
             </tr>
             {% endfor %}
             {% if not quotes %}
-            <tr><td colspan="8" class="empty-state">Keine geplanten Vermietungen.</td></tr>
+            <tr><td colspan="7" class="empty-state">Keine geplanten Vermietungen.</td></tr>
             {% endif %}
         </tbody>
     </table>

@@ -18,285 +18,6 @@ def _effective_tax_mode_and_rate(site_settings):
     return local_mode, float(local_rate)
 
 
-def _generate_rechnung_pdf_bytes(quote, *, einvoice=True):
-    """Generate the Rechnung PDF bytes for a quote.
-
-    When *einvoice* is True (default), the PDF is returned as a ZUGFeRD/Factur-X
-    PDF/A-3 with the e-invoice XML embedded.  Falls back to a plain PDF if the
-    factur-x library is not installed.
-    """
-    from generators.rechnung import build_rechnung_pdf
-    site_settings = SiteSettings.query.first()
-    data = _extract_common_pdf_data(quote, site_settings)
-    positions = _extract_positions(quote)
-    rechnungs_datum = quote.finalized_at.strftime('%d.%m.%Y') if quote.finalized_at else datetime.now().strftime('%d.%m.%Y')
-    pdf_bytes = build_rechnung_pdf(
-        issuer_name=data['issuer_name'],
-        issuer_address=data['issuer_address'],
-        contact_lines=data['contact_lines'],
-        bank_lines=data['bank_lines'],
-        tax_number=data['tax_number'],
-        vat_id=data.get('vat_id'),
-        tax_mode=data['tax_mode'],
-        tax_rate=data['tax_rate'],
-        prices_are_net=bool(getattr(quote, 'prices_are_net', False)),
-        logo_path=data['logo_path'],
-        recipient_lines=data['recipient_lines'],
-        reference_number=quote.reference_number or f'RE-{quote.id:04d}',
-        rechnungs_datum=rechnungs_datum,
-        start_date_str=data['start_date_str'],
-        end_date_str=data['end_date_str'],
-        rental_days=data['rental_days'],
-        is_pauschale=data['is_pauschale'],
-        leistungszeitraum=data.get('leistungszeitraum'),
-        positions=positions,
-        discount_percent=quote.discount_percent or 0,
-        discount_label=quote.discount_label,
-        discount_amount=quote.discount_amount,
-        subtotal=quote.subtotal,
-        total=quote.total,
-        payment_terms_days=data['payment_terms_days'],
-        notes=quote.public_notes,
-    )
-
-    if einvoice:
-        pdf_bytes = _apply_einvoice(pdf_bytes, quote, data, positions, site_settings)
-
-    return pdf_bytes
-
-
-def _apply_einvoice(pdf_bytes, quote, data, positions, site_settings):
-    """Embed ZUGFeRD / Factur-X e-invoice XML into the PDF.
-
-    Returns the enhanced PDF bytes, or the original pdf_bytes on error.
-    """
-    try:
-        from generators.einvoice import get_standard, EInvoiceData, EInvoiceLineItem
-        from generators.einvoice.embed import embed_xml_in_pdf
-    except ImportError:
-        import logging
-        logging.getLogger(__name__).warning(
-            'E-invoice libraries not available – returning plain PDF.'
-        )
-        return pdf_bytes
-
-    try:
-        einvoice_data = _build_einvoice_data(quote, data, positions, site_settings)
-        standard = get_standard()  # default = ZUGFeRD
-        xml_bytes = standard.generate_xml(einvoice_data)
-
-        pdf_metadata = {
-            'author': data['issuer_name'],
-            'title': f"{data['issuer_name']}: Rechnung {einvoice_data.invoice_number}",
-            'subject': f"Rechnung {einvoice_data.invoice_number}",
-            'keywords': 'Factur-X, Rechnung, ZUGFeRD',
-        }
-
-        pdf_bytes = embed_xml_in_pdf(
-            pdf_bytes, xml_bytes,
-            flavor='factur-x',
-            level='basic',
-            lang='de',
-            pdf_metadata=pdf_metadata,
-        )
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).error(
-            'E-invoice embedding failed, returning plain PDF: %s', exc
-        )
-
-    return pdf_bytes
-
-
-def _build_einvoice_data(quote, data, positions, site_settings):
-    """Convert internal quote/settings data to the standard-agnostic EInvoiceData."""
-    from generators.einvoice.base import EInvoiceData, EInvoiceLineItem
-    import re, math
-    from datetime import date as _date
-
-    # --- Parse dates ---
-    def _parse_de_date(s):
-        """Parse DD.MM.YYYY string to date."""
-        if not s:
-            return None
-        try:
-            parts = s.strip().split('.')
-            return _date(int(parts[2]), int(parts[1]), int(parts[0]))
-        except (ValueError, IndexError):
-            return None
-
-    invoice_date = None
-    if quote.finalized_at:
-        invoice_date = quote.finalized_at.date() if hasattr(quote.finalized_at, 'date') else quote.finalized_at
-    if not invoice_date:
-        invoice_date = _date.today()
-
-    start_date = _parse_de_date(data.get('start_date_str'))
-    end_date = _parse_de_date(data.get('end_date_str'))
-
-    # --- Parse address info ---
-    seller_postcode = ''
-    seller_city = ''
-    seller_address = []
-    for line in data.get('issuer_address', []):
-        # Try to detect postcode + city pattern (e.g. "12345 Berlin")
-        m = re.match(r'^(\d{4,5})\s+(.+)$', line.strip())
-        if m and not seller_postcode:
-            seller_postcode = m.group(1)
-            seller_city = m.group(2)
-        else:
-            seller_address.append(line.strip())
-
-    buyer_postcode = ''
-    buyer_city = ''
-    buyer_address = []
-    for line in data.get('recipient_lines', []):
-        m = re.match(r'^(\d{4,5})\s+(.+)$', line.strip())
-        if m and not buyer_postcode:
-            buyer_postcode = m.group(1)
-            buyer_city = m.group(2)
-        else:
-            buyer_address.append(line.strip())
-
-    buyer_name = buyer_address[0] if buyer_address else quote.customer_name
-    buyer_address_rest = buyer_address[1:] if len(buyer_address) > 1 else []
-
-    # --- Parse IBAN / BIC from bank_lines ---
-    bank_iban = None
-    bank_bic = None
-    bank_name = None
-    for line in data.get('bank_lines', []):
-        line_upper = line.upper().replace(' ', '')
-        # Look for IBAN
-        iban_match = re.search(r'(?:IBAN[:\s]*)?((?:DE|AT|CH|LI|LU|FR|NL|BE|IT|ES)\d{2}\d{4,30})', line_upper)
-        if iban_match and not bank_iban:
-            bank_iban = iban_match.group(1)
-        # Look for BIC
-        bic_match = re.search(r'(?:BIC|SWIFT)[:\s]*([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)', line_upper)
-        if bic_match and not bank_bic:
-            bank_bic = bic_match.group(1)
-        # Bank name: line that is not IBAN/BIC
-        if not iban_match and not bic_match and line.strip() and not bank_name:
-            bank_name = line.strip()
-
-    # --- Parse contact info ---
-    seller_email = None
-    seller_phone = None
-    for line in data.get('contact_lines', []):
-        if '@' in line and not seller_email:
-            seller_email = line.strip()
-        elif re.search(r'\+?[\d\s/-]{6,}', line) and not seller_phone:
-            seller_phone = line.strip()
-
-    # --- Tax calculations ---
-    tax_mode = data.get('tax_mode', 'kleinunternehmer')
-    tax_rate = data.get('tax_rate', 19.0)
-    is_regular = (tax_mode == 'regular')
-    tax_factor = 1 + tax_rate / 100
-
-    rental_days = data.get('rental_days', 1)
-    discount_percent = quote.discount_percent or 0
-    prices_are_net = bool(getattr(quote, 'prices_are_net', False))
-
-    if is_regular and prices_are_net:
-        # Stored prices are net; tax added on top
-        netto_subtotal = round(quote.subtotal, 2)
-        netto_discount = round(quote.discount_amount, 2) if discount_percent > 0 else 0.0
-        netto_total = round(netto_subtotal - netto_discount, 2)
-        brutto_total = round(netto_total * tax_factor, 2)
-        mwst = round(brutto_total - netto_total, 2)
-        position_nettos = [round(p['total'], 2) for p in positions]
-    elif is_regular:
-        # Legacy: stored prices are brutto; derive netto
-        brutto_subtotal = quote.subtotal
-        brutto_discount = quote.discount_amount
-        brutto_total = brutto_subtotal - brutto_discount
-        netto_total = round(brutto_total / tax_factor, 2)
-        netto_subtotal = round(brutto_subtotal / tax_factor, 2)
-        netto_discount = round(netto_subtotal - netto_total, 2) if discount_percent > 0 else 0.0
-        mwst = round(brutto_total - netto_total, 2)
-
-        # Distribute netto_subtotal across positions (largest-remainder)
-        position_bruttos = [p['total'] for p in positions]
-        brutto_sum = sum(position_bruttos) or 1
-        raw_nettos = [netto_subtotal * (pb / brutto_sum) for pb in position_bruttos]
-        floored = [math.floor(r * 100) / 100 for r in raw_nettos]
-        deficit_cents = round((netto_subtotal - sum(floored)) * 100)
-        idx_by_remainder = sorted(
-            range(len(raw_nettos)),
-            key=lambda i: -(raw_nettos[i] * 100 - math.floor(raw_nettos[i] * 100)),
-        )
-        position_nettos = list(floored)
-        for k in range(max(0, deficit_cents)):
-            position_nettos[idx_by_remainder[k]] += 0.01
-        position_nettos = [round(n, 2) for n in position_nettos]
-    else:
-        # Kleinunternehmer: brutto = netto (no VAT)
-        netto_subtotal = quote.subtotal
-        netto_discount = quote.discount_amount if discount_percent > 0 else 0.0
-        netto_total = netto_subtotal - netto_discount
-        mwst = 0.0
-        position_nettos = [p['total'] for p in positions]
-
-    # --- Build line items ---
-    line_items = []
-    for idx, pos in enumerate(positions):
-        line_net = position_nettos[idx] if idx < len(position_nettos) else pos['total']
-        ppd_net = round(line_net / max(pos.get('quantity', 1), 1) / max(rental_days, 1), 2) if not pos.get('is_bundle') else 0
-
-        li = EInvoiceLineItem(
-            position_number=idx + 1,
-            name=pos['name'],
-            quantity=pos.get('quantity', 1),
-            unit_price_net=ppd_net if not pos.get('is_bundle') else line_net,
-            line_total_net=line_net,
-            tax_rate=tax_rate if is_regular else 0.0,
-            tax_category='S' if is_regular else 'E',
-            days=rental_days,
-            is_bundle=pos.get('is_bundle', False),
-            bundle_components=pos.get('bundle_components'),
-        )
-        line_items.append(li)
-
-    return EInvoiceData(
-        invoice_number=quote.reference_number or f'RE-{quote.id:04d}',
-        invoice_date=invoice_date,
-        type_code='380',
-        currency_code='EUR',
-        seller_name=data['issuer_name'],
-        seller_address_lines=seller_address,
-        seller_postcode=seller_postcode,
-        seller_city=seller_city,
-        seller_country='DE',
-        seller_tax_number=data.get('tax_number'),
-        seller_vat_id=data.get('vat_id'),
-        seller_email=seller_email,
-        seller_phone=seller_phone,
-        buyer_name=buyer_name,
-        buyer_address_lines=buyer_address_rest,
-        buyer_postcode=buyer_postcode,
-        buyer_city=buyer_city,
-        buyer_country='DE',
-        delivery_date=start_date,
-        service_start_date=start_date,
-        service_end_date=end_date,
-        tax_mode=tax_mode,
-        tax_rate=tax_rate,
-        tax_amount=mwst,
-        line_total_net=netto_subtotal,
-        discount_amount_net=netto_discount,
-        total_net=netto_total,
-        total_gross=round(netto_total + mwst, 2),
-        payment_terms_days=data.get('payment_terms_days', 14),
-        payment_reference=quote.reference_number or f'RE-{quote.id:04d}',
-        bank_iban=bank_iban,
-        bank_bic=bank_bic,
-        bank_name=bank_name,
-        notes=quote.public_notes,
-        line_items=line_items,
-    )
-
-
 def admin_required(f):
     """Decorator to require admin privileges"""
     @wraps(f)
@@ -327,7 +48,7 @@ def dashboard():
     total_items = Item.query.count()
     total_quotes = Quote.query.count()
     new_inquiries = Inquiry.query.filter_by(status='new').count()
-    active_quotes = Quote.query.filter(Quote.status.in_(['draft', 'finalized', 'performed'])).count()
+    active_quotes = Quote.query.filter(Quote.status == 'draft').count()
     return render_template('admin/dashboard.html',
                            total_items=total_items,
                            total_quotes=total_quotes,
@@ -451,7 +172,7 @@ def inventory_list():
     # ── Booked quantities for today (single query pass) ──
     today = datetime.combine(_date.today(), datetime.min.time())
     overlapping_quotes = Quote.query.filter(
-        Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
+        Quote.status == 'draft',
         Quote.start_date.isnot(None),
         Quote.end_date.isnot(None),
         Quote.start_date <= today,
@@ -742,7 +463,7 @@ def inventory_edit(item_id):
             Quote.start_date.isnot(None),
             Quote.end_date.isnot(None),
             Quote.end_date >= _today,
-            Quote.status.in_(['draft', 'finalized', 'performed', 'paid'])
+            Quote.status == 'draft'
         ).order_by(Quote.start_date).all()
         upcoming_bookings = [{'quote': q, 'quantity': qi.quantity} for qi, q in booking_rows]
 
@@ -1277,7 +998,6 @@ def _serialize_quote_state(quote):
         'rental_days_override': quote.rental_days_override,
         'date_based_days': quote.date_based_rental_days(),
         'has_dates': has_dates,
-        'finalized_at': quote.finalized_at.strftime('%Y-%m-%d') if quote.finalized_at else None,
         'prices_are_net': bool(quote.prices_are_net),
         'tax_mode': tax_mode,
         'tax_rate': tax_rate,
@@ -1636,41 +1356,6 @@ def quote_api_discount(quote_id):
         return _api_error(str(e), 500)
 
 
-@admin_bp.route('/quotes/<int:quote_id>/api/finalize', methods=['POST'])
-@login_required
-def quote_api_finalize(quote_id):
-    quote = Quote.query.get_or_404(quote_id)
-    data = request.get_json(silent=True) or {}
-    if not quote.start_date or not quote.end_date:
-        return _api_error('Kann nicht finalisiert werden: Start- und Enddatum müssen gesetzt sein.')
-    try:
-        warnings = []
-        for qi in quote.quote_items:
-            if qi.is_custom or qi.is_heading or qi.is_optional or not qi.item:
-                continue
-            available = get_available_quantity(qi.item_id, quote.start_date, quote.end_date,
-                                               exclude_quote_id=quote.id)
-            if available != -1 and qi.quantity > available:
-                pkg_note = f' (Paket: {qi.package.name})' if qi.package_id else ''
-                warnings.append(f'{qi.item.name}{pkg_note}: Nur {available} verfügbar (Angebot hat {qi.quantity})')
-
-        quote.status = 'finalized'
-        finalized_date_str = (data.get('finalized_at') or '').strip()
-        if finalized_date_str:
-            quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
-        else:
-            quote.finalized_at = datetime.utcnow()
-        db.session.commit()
-
-        if warnings:
-            flash('⚠ Bestandswarnung: ' + '; '.join(warnings), 'warning')
-        flash('Angebot finalisiert!', 'success')
-        return jsonify({'ok': True, 'redirect': url_for('admin.quote_view', quote_id=quote.id)})
-    except Exception as e:
-        db.session.rollback()
-        return _api_error(str(e), 500)
-
-
 # ── Packliste: assign physical units (serial numbers) to quote lines ──
 
 def _conflicting_unit_ids(quote):
@@ -1679,7 +1364,7 @@ def _conflicting_unit_ids(quote):
         return set()
     overlapping = Quote.query.filter(
         Quote.id != quote.id,
-        Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
+        Quote.status == 'draft',
         Quote.start_date.isnot(None),
         Quote.end_date.isnot(None),
         Quote.start_date <= quote.end_date,
@@ -1837,118 +1522,6 @@ def quote_view(quote_id):
                            tax_mode=_eff_mode, tax_rate=_eff_rate)
 
 
-@admin_bp.route('/quotes/<int:quote_id>/unfinalize', methods=['POST'])
-@login_required
-def quote_unfinalize(quote_id):
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status == 'finalized':
-            quote.status = 'draft'
-            # Keep finalized_at so we can offer it when re-finalizing
-            db.session.commit()
-            flash('Angebot zurück in den Entwurf versetzt!', 'success')
-        elif quote.status == 'performed':
-            flash('Bitte zuerst die Durchführung aufheben.', 'info')
-        else:
-            flash('Angebot ist nicht finalisiert.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_edit', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/mark_performed', methods=['POST'])
-@login_required
-def quote_mark_performed(quote_id):
-    """Mark quote as performed (Durchgeführt)."""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status == 'finalized':
-            performed_date_str = request.form.get('performed_at', '').strip()
-            if performed_date_str:
-                quote.performed_at = datetime.strptime(performed_date_str, '%Y-%m-%d')
-            else:
-                quote.performed_at = datetime.utcnow()
-
-            quote.status = 'performed'
-
-            db.session.commit()
-            flash('Angebot als durchgeführt markiert!', 'success')
-        else:
-            flash('Angebot muss finalisiert sein.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/unperform', methods=['POST'])
-@login_required
-def quote_unperform(quote_id):
-    """Revert performed status back to finalized. Cancels receivable Journal Entry."""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status == 'performed':
-            quote.status = 'finalized'
-            # Keep performed_at for re-performing
-            db.session.commit()
-            flash('Durchführung aufgehoben!', 'success')
-        else:
-            flash('Angebot ist nicht als durchgeführt markiert.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/mark_paid', methods=['POST'])
-@login_required
-def quote_mark_paid(quote_id):
-    """Mark quote as paid"""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status != 'paid':
-            # Check if a custom paid_at date was provided
-            paid_date_str = request.form.get('paid_at', '').strip()
-            if paid_date_str:
-                quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
-            else:
-                quote.paid_at = datetime.utcnow()
-
-            quote.status = 'paid'
-            db.session.commit()
-
-            flash('Angebot als bezahlt markiert!', 'success')
-        else:
-            flash('Angebot ist bereits als bezahlt markiert.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/update_paid_date', methods=['POST'])
-@login_required
-def quote_update_paid_date(quote_id):
-    """Update the paid_at date of a paid quote and re-book payment JE if needed."""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status == 'paid':
-            paid_date_str = request.form.get('paid_at', '').strip()
-            if paid_date_str:
-                quote.paid_at = datetime.strptime(paid_date_str, '%Y-%m-%d')
-                db.session.commit()
-                flash('Bezahldatum aktualisiert!', 'success')
-            else:
-                flash('Kein Datum angegeben.', 'error')
-        else:
-            flash('Angebot ist nicht als bezahlt markiert.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
 @admin_bp.route('/quotes/<int:quote_id>/update_notes', methods=['POST'])
 @login_required
 def quote_update_notes(quote_id):
@@ -1958,73 +1531,6 @@ def quote_update_notes(quote_id):
         quote.notes = request.form.get('notes', '')
         db.session.commit()
         flash('Interne Notizen aktualisiert!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/update_finalized_date', methods=['POST'])
-@login_required
-def quote_update_finalized_date(quote_id):
-    """Update the finalized_at date of a finalized/paid quote"""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status in ('finalized', 'performed', 'paid'):
-            finalized_date_str = request.form.get('finalized_at', '').strip()
-            if finalized_date_str:
-                quote.finalized_at = datetime.strptime(finalized_date_str, '%Y-%m-%d')
-                db.session.commit()
-                flash('Finalisierungsdatum aktualisiert!', 'success')
-            else:
-                flash('Kein Datum angegeben.', 'error')
-        else:
-            flash('Angebot ist nicht finalisiert.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/update_performed_date', methods=['POST'])
-@login_required
-def quote_update_performed_date(quote_id):
-    """Update the performed_at date and re-book receivable JE if needed."""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status in ('performed', 'paid'):
-            performed_date_str = request.form.get('performed_at', '').strip()
-            if performed_date_str:
-                quote.performed_at = datetime.strptime(performed_date_str, '%Y-%m-%d')
-                db.session.commit()
-                flash('Durchführungsdatum aktualisiert!', 'success')
-            else:
-                flash('Kein Datum angegeben.', 'error')
-        else:
-            flash('Angebot ist nicht als durchgeführt markiert.', 'info')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
-@admin_bp.route('/quotes/<int:quote_id>/unpay', methods=['POST'])
-@login_required
-def quote_unpay(quote_id):
-    """Revert paid status"""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        if quote.status == 'paid':
-            # Revert to performed if it was performed, otherwise to finalized
-            if quote.performed_at:
-                quote.status = 'performed'
-            else:
-                quote.status = 'finalized'
-            # Keep paid_at so we can offer it when re-marking as paid
-            db.session.commit()
-            flash('Zahlung aufgehoben!', 'success')
-        else:
-            flash('Angebot ist nicht als bezahlt markiert.', 'info')
     except Exception as e:
         db.session.rollback()
         flash(f'Fehler: {str(e)}', 'error')
@@ -2671,17 +2177,6 @@ def angebot_pdf(quote_id):
         terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
     )
     return _send_pdf_response(pdf_bytes, f"angebot_{quote.reference_number}.pdf")
-
-
-# ── Rechnung PDF ──
-
-@admin_bp.route('/quotes/<int:quote_id>/rechnung.pdf')
-@login_required
-def rechnung_pdf(quote_id):
-    """Generate Rechnung (Invoice) PDF – ZUGFeRD/Factur-X e-invoice"""
-    quote = Quote.query.get_or_404(quote_id)
-    pdf_bytes = _generate_rechnung_pdf_bytes(quote, einvoice=True)
-    return _send_pdf_response(pdf_bytes, f"rechnung_{quote.reference_number}.pdf")
 
 
 # ── Lieferschein PDF ──

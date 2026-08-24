@@ -16,7 +16,7 @@ def get_upload_path():
 def _booked_quantity(item_id, start_date, end_date, exclude_quote_id=None):
     """Total quantity of an item booked in overlapping quotes."""
     overlapping_quotes = Quote.query.filter(
-        Quote.status.in_(['draft', 'finalized', 'performed', 'paid']),
+        Quote.status == 'draft',
         Quote.start_date.isnot(None),
         Quote.end_date.isnot(None),
         or_(

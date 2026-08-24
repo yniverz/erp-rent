@@ -10,7 +10,7 @@
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Angebot bearbeiten: {{ quote.reference_number or 'Entwurf' }}</h1>
     <span class="qe-save-status" id="qe-save-status"></span>
-    <span class="badge badge-{{ quote.status }} badge-lg">{{ {'draft':'Entwurf','finalized':'Finalisiert','performed':'Durchgeführt','paid':'Bezahlt'}.get(quote.status, quote.status|capitalize) }}</span>
+    <span class="badge badge-draft badge-lg">Entwurf</span>
 </div>
 
 {% if quote.inquiry %}
@@ -160,28 +160,15 @@
     <!-- Actions -->
     <div class="card quote-section">
         <div class="d-flex gap-10 flex-wrap">
-            <button type="button" class="btn btn-success" id="qe-finalize-btn">Angebot finalisieren</button>
             <a href="{{ url_for('admin.quote_packliste', quote_id=quote.id) }}" class="btn btn-outline">📦 Packliste</a>
             <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
             <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF</a>
-            <a href="{{ url_for('admin.rechnung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Rechnung PDF</a>
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
             <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
             <span id="pk-save-quote-status" class="d-flex align-center text-sm text-muted"></span>
-            {% if quote.status == 'draft' %}
             <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
                 <button type="submit" class="btn btn-danger">Angebot löschen</button>
             </form>
-            {% endif %}
-        </div>
-        <div id="qe-finalize-dialog" class="action-dialog d-none">
-            <p class="mb-10"><strong>⚠ Vorheriges Finalisierungsdatum vorhanden</strong></p>
-            <p class="text-muted text-09 mb-12">Dieses Angebot war zuvor finalisiert. Möchten Sie das bisherige Finalisierungsdatum verwenden oder das heutige Datum?</p>
-            <div class="d-flex gap-10 flex-wrap align-center">
-                <button type="button" class="btn btn-success" id="qe-finalize-keep">Bisheriges Datum</button>
-                <button type="button" class="btn btn-outline" onclick="QE.finalize('')">Heutiges Datum</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('qe-finalize-dialog').classList.add('d-none')">Abbrechen</button>
-            </div>
         </div>
     </div>
 
@@ -699,20 +686,7 @@ const QE = (function() {
         }
     }
 
-    async function finalize(dateStr) {
-        el('qe-finalize-dialog').classList.add('d-none');
-        await api('/finalize', {finalized_at: dateStr || ''});
-    }
-
     function bindActions() {
-        el('qe-finalize-btn').addEventListener('click', () => {
-            if (S && S.finalized_at) {
-                el('qe-finalize-keep').onclick = () => finalize(S.finalized_at);
-                el('qe-finalize-dialog').classList.remove('d-none');
-            } else if (confirm('Angebot finalisieren?')) {
-                finalize('');
-            }
-        });
         // discount inputs: Enter applies
         ['qe-discount-pct', 'qe-discount-label', 'qe-target-total'].forEach(id => {
             el(id).addEventListener('keydown', e => { if (e.key === 'Enter') applyDiscount(); });
@@ -740,7 +714,7 @@ const QE = (function() {
     function currentState() { return S; }
 
     return {toggleInlineForm, addHeading, addCustom, removeLine, removePackage,
-            toggleSourcing, autoSources, applyDiscount, finalize, currentState};
+            toggleSourcing, autoSources, applyDiscount, currentState};
 })();
 </script>
 

@@ -232,6 +232,29 @@ with app.app_context():
         db.session.commit()
         print('  migrated: quote_item.position backfilled from id order')
 
+    # ── Quote finalization removed: single quote type (Entwurf/draft) ──
+    # Reset any legacy non-draft quotes to draft and drop the workflow columns.
+    def _drop_column_if_exists(table, column):
+        """Drop a column from an existing SQLite table if it still exists."""
+        from sqlalchemy import text, inspect as sa_inspect
+        insp = sa_inspect(db.engine)
+        existing = {c['name'] for c in insp.get_columns(table)}
+        if column in existing:
+            db.session.execute(text(f'ALTER TABLE {table} DROP COLUMN {column}'))
+            db.session.commit()
+            print(f"  migrated: dropped {table}.{column}")
+
+    _quote_cols = {c['name'] for c in _sa_inspect(db.engine).get_columns('quote')}
+    if 'status' in _quote_cols:
+        _reset = db.session.execute(
+            _sql_text("UPDATE quote SET status = 'draft' WHERE status != 'draft'")
+        )
+        if _reset.rowcount:
+            print(f"  migrated: reset {_reset.rowcount} quote(s) to 'draft'")
+        db.session.commit()
+    for _col in ('finalized_at', 'performed_at', 'paid_at', 'payment_method'):
+        _drop_column_if_exists('quote', _col)
+
     # ── One-time conversion: ItemOwnership → Item.stock_quantity + Supplier/ItemSupply ──
     if _needs_ownership_conversion:
         from models import Supplier, ItemSupply, Item
