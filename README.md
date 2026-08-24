@@ -84,8 +84,38 @@ All configuration is done through environment variables (or a `.env` file in the
 | `SMTP_PASSWORD` | No | — | SMTP login password. |
 | `SMTP_FROM` | No | Same as `SMTP_USER` | Sender address for notification emails. |
 | `FAVICON_URL` | No | — | URL to an image to use as the site favicon. |
+| `API_TOKENS` | No | — | Comma-separated static token(s) for the REST API (`/api/v1`). If unset, the API is disabled. |
 
 > **Email notifications:** When a customer submits an inquiry through the public shop, a notification email is sent to the address configured in Admin → Settings. For this to work, the SMTP variables must be set.
+
+---
+
+## REST API (v1)
+
+A token-authenticated JSON API for quote management is available under `/api/v1`. Enable it by setting `API_TOKENS` and authenticate every request with `Authorization: Bearer <token>`. Only quotes in status `draft` can be modified (same rule as the UI). Full documentation: [docs/API.md](docs/API.md).
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/quotes` | List quotes. Filters: `status`, `customer` (substring), `limit`, `offset`. |
+| `POST` | `/api/v1/quotes` | Create a draft quote. Body: `customer_name` (required), `start_date`/`end_date` (`YYYY-MM-DD`), `recipient_lines`, `notes`, `public_notes`, … |
+| `GET` | `/api/v1/quotes/<id>` | Full quote incl. line items and totals. |
+| `PATCH` | `/api/v1/quotes/<id>` | Update details: `customer_name`, `start_date`, `end_date`, `rental_days_override`, `recipient_lines`, `notes`, `public_notes`, `prices_are_net`, `discount_percent`, `discount_label`. |
+| `POST` | `/api/v1/quotes/<id>/lines` | Add a line. Body: `type` (`item`/`custom`/`heading`), `item_id`, `quantity`, `name`, `price_per_day`. Packages expand into component lines; adding an existing item increments its quantity. |
+| `PATCH` | `/api/v1/quotes/<id>/lines/<line_id>` | Update a line: `quantity`, `price_per_day`, `cost_per_day`, `name` (custom/heading only), `discount_exempt`, `is_optional`, `auto_sources`. |
+| `DELETE` | `/api/v1/quotes/<id>/lines/<line_id>` | Delete a line. `?whole_package=1` removes the whole package block. |
+| `POST` | `/api/v1/quotes/<id>/lines/reorder` | Set line order. Body: `{"order": [line_id, …]}`. Package components move as a block. |
+| `GET` | `/api/v1/items` | Item lookup for adding lines. Filters: `q` (search), `start`/`end` for availability in a period. |
+
+All responses have the shape `{"ok": true, …}` or `{"ok": false, "error": "…"}`. Mutating quote endpoints return the full updated quote plus a `warnings` array (e.g. availability conflicts).
+
+Example:
+
+```bash
+curl -s -X POST http://localhost:5000/api/v1/quotes/42/lines \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "item", "item_id": 7, "quantity": 2}'
+```
 
 ---
 

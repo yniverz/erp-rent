@@ -177,10 +177,12 @@ def favicon():
 from blueprints.auth import auth_bp
 from blueprints.public import public_bp
 from blueprints.admin import admin_bp
+from blueprints.api import api_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(public_bp)
 app.register_blueprint(admin_bp, url_prefix='/admin')
+app.register_blueprint(api_bp, url_prefix='/api/v1')
 
 
 # Initialize database and create default admin
