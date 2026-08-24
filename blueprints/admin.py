@@ -6,7 +6,9 @@ from helpers import get_available_quantity, get_package_available_quantity, get_
 from datetime import datetime
 from functools import wraps
 import os
+import re
 import uuid
+import zipfile
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -714,6 +716,108 @@ def unit_labels(item_id):
     labels = [{'unit': u, 'qr': _unit_qr_data_uri(u)} for u in item.units
               if u.status != ItemUnit.STATUS_RETIRED]
     return render_template('admin/unit_labels.html', item=item, labels=labels)
+
+
+def _label_font(size, bold=False):
+    """Best available TTF font (macOS / Linux), falling back to Pillow's built-in."""
+    from PIL import ImageFont
+    candidates = [
+        '/System/Library/Fonts/Supplemental/Arial Bold.ttf' if bold else '/System/Library/Fonts/Supplemental/Arial.ttf',
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf' if bold else '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf' if bold else '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def _unit_label_png_bytes(unit):
+    """High-res label PNG (QR + item name + asset tag + serial), proportioned
+    for 24mm P-touch tape. Import in P-touch Editor via Einfügen → Bild."""
+    import segno
+    from PIL import Image, ImageDraw
+
+    H = 600  # image height; scaled down by P-touch Editor to tape height
+    MARGIN = 24
+
+    lookup_url = url_for('admin.unit_lookup', asset_tag=unit.asset_tag or str(unit.id), _external=True)
+    qr = segno.make(lookup_url, error='m')
+    n = qr.symbol_size(scale=1, border=2)[0]   # modules incl. quiet zone
+    scale = max(1, H // n)
+    qr_buf = BytesIO()
+    qr.save(qr_buf, kind='png', scale=scale, border=2)
+    qr_buf.seek(0)
+    qr_img = Image.open(qr_buf).convert('1')
+
+    name_font = _label_font(64, bold=True)
+    tag_font = _label_font(120, bold=True)
+    sn_font = _label_font(52)
+
+    name = unit.item.name if unit.item else ''
+    tag = unit.asset_tag or f'#{unit.id}'
+    sn = f'SN: {unit.serial_number}' if unit.serial_number else None
+
+    # Measure text to size the canvas
+    probe = ImageDraw.Draw(Image.new('1', (1, 1)))
+    lines = [(name, name_font), (tag, tag_font)] + ([(sn, sn_font)] if sn else [])
+    text_w = max(int(probe.textbbox((0, 0), t, font=f)[2]) for t, f in lines)
+    width = H + MARGIN + text_w + MARGIN * 2
+
+    img = Image.new('1', (width, H), 1)  # 1-bit, white — ideal for thermal tape
+    img.paste(qr_img, ((H - qr_img.width) // 2, (H - qr_img.height) // 2))
+    draw = ImageDraw.Draw(img)
+
+    x = H + MARGIN
+    total_text_h = sum(int(probe.textbbox((0, 0), t, font=f)[3]) for t, f in lines) + (len(lines) - 1) * 20
+    y = max(MARGIN, (H - total_text_h) // 2)
+    for text, font in lines:
+        draw.text((x, y), text, font=font, fill=0)
+        y += int(probe.textbbox((0, 0), text, font=font)[3]) + 20
+
+    out = BytesIO()
+    img.save(out, format='PNG', dpi=(360, 360))
+    return out.getvalue()
+
+
+def _safe_filename(base):
+    return re.sub(r'[^A-Za-z0-9_\-]+', '_', base).strip('_') or 'label'
+
+
+@admin_bp.route('/inventory/units/<int:unit_id>/label.png')
+@login_required
+def unit_label_png(unit_id):
+    """Download a single unit label as PNG (for P-touch Editor import)."""
+    unit = ItemUnit.query.get_or_404(unit_id)
+    png = _unit_label_png_bytes(unit)
+    fname = _safe_filename(unit.asset_tag or f'unit-{unit.id}') + '.png'
+    return send_file(BytesIO(png), mimetype='image/png', as_attachment=True, download_name=fname)
+
+
+@admin_bp.route('/inventory/<int:item_id>/labels.zip')
+@login_required
+def unit_labels_zip(item_id):
+    """Download all unit labels of an item as a ZIP of PNGs."""
+    item = Item.query.get_or_404(item_id)
+    units = [u for u in item.units if u.status != ItemUnit.STATUS_RETIRED]
+    if not units:
+        flash('Keine Einheiten vorhanden.', 'error')
+        return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for u in units:
+            fname = _safe_filename(u.asset_tag or f'unit-{u.id}') + '.png'
+            zf.writestr(fname, _unit_label_png_bytes(u))
+    buf.seek(0)
+    zip_name = 'etiketten-' + _safe_filename(item.name) + '.zip'
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=zip_name)
 
 
 @admin_bp.route('/u/<asset_tag>')

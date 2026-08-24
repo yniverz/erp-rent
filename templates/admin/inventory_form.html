@@ -236,6 +236,7 @@
         <h3 class="m-0 flex-1">Einheiten &amp; Seriennummern</h3>
         {% if item.units %}
             <a href="{{ url_for('admin.unit_labels', item_id=item.id) }}" target="_blank" class="btn btn-sm btn-outline">QR-Etiketten drucken</a>
+            <a href="{{ url_for('admin.unit_labels_zip', item_id=item.id) }}" class="btn btn-sm btn-outline" title="Alle Etiketten als PNG für P-touch Editor">PNG-Export (ZIP)</a>
         {% endif %}
     </div>
     <p class="help-text mb-10">Optional: einzelne Geräte mit Seriennummer, Status und Prüfterminen (z.B. DGUV V3) erfassen. Einheiten mit Status „Defekt“, „In Reparatur“ oder „Ausgemustert“ reduzieren automatisch die buchbare Menge.</p>
@@ -281,6 +282,7 @@
                 <td class="unit-actions">
                     <button form="unit-form-{{ u.id }}" type="submit" class="btn btn-sm btn-primary" title="Einheit speichern">✓</button>
                     <a href="{{ url_for('admin.unit_label', unit_id=u.id) }}" target="_blank" class="btn btn-sm btn-outline" title="QR-Etikett drucken">QR</a>
+                    <a href="{{ url_for('admin.unit_label_png', unit_id=u.id) }}" class="btn btn-sm btn-outline" title="Etikett als PNG herunterladen (P-touch Editor)">PNG</a>
                     <button form="unit-del-{{ u.id }}" type="submit" class="btn btn-sm btn-danger" title="Einheit löschen">✕</button>
                 </td>
             </tr>
