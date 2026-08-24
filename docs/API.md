@@ -376,7 +376,15 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   "position": 3,
   "package_id": null,
   "package_name": null,
-  "total": 150.0
+  "total": 150.0,
+  "assigned_units": [
+    {
+      "id": 4,
+      "item_unit_id": 12,
+      "asset_tag": "U00012",
+      "serial_number": "SN-ABC-123"
+    }
+  ]
 }
 ```
 
@@ -385,6 +393,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `total` = `quantity × price_per_day × rental_days`.
 - `package_id` / `package_name` are set on lines that were expanded from a
   package.
+- `assigned_units` lists the specific physical units (serial numbers)
+  assigned to the line on the Packliste page. Read-only: units can only be
+  assigned/removed in the admin UI, not via the API. `asset_tag` /
+  `serial_number` are snapshots; `item_unit_id` is `null` if the underlying
+  unit was deleted.
 
 ---
 

@@ -88,6 +88,15 @@ def _serialize_line(qi):
         'package_id': qi.package_id,
         'package_name': qi.package.name if qi.package_id and qi.package else None,
         'total': qi.total_price,
+        'assigned_units': [
+            {
+                'id': u.id,
+                'item_unit_id': u.item_unit_id,
+                'asset_tag': u.asset_tag,
+                'serial_number': u.serial_number,
+            }
+            for u in qi.assigned_units
+        ],
     }
 
 def _serialize_quote(quote, include_lines=False):
