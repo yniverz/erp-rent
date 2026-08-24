@@ -823,65 +823,50 @@ def unit_labels_zip(item_id):
 # ── Brother P-touch .lbx export (experimental) ─────────────────────────
 # Format reverse-engineered from P-touch Editor output; references:
 # github.com/orochi235/bil-lbx (MIT) and github.com/Sibyx/griminventory-api.
-# An .lbx is a ZIP (STORE) of label.xml + prop.xml. Sized for 24mm TZe tape
-# (68pt across, format code 261). Objects are native (editable in the editor).
+# An .lbx is a ZIP (STORE) of label.xml + prop.xml (+ ObjectN.bmp for images).
+# Sized for 24mm TZe tape (68pt across, format code 261). The label content is
+# the composed PNG embedded as ONE image object — scale it as a whole in the
+# editor.
 
 def _lbx_esc(s):
     from xml.sax.saxutils import escape
     return escape(str(s), {'"': '&quot;'})
 
 
-def _lbx_object_style(x, y, w, h, pen_style='NULL', name='Object'):
+def _lbx_object_style(x, y, w, h, pen_style='NULL', name='Object', lock=0):
     return (
         f'<pt:objectStyle x="{x:g}pt" y="{y:g}pt" width="{w:g}pt" height="{h:g}pt" '
         f'backColor="#FFFFFF" backPrintColorNumber="0" ropMode="COPYPEN" angle="0" anchor="TOPLEFT" flip="NONE">'
         f'<pt:pen style="{pen_style}" widthX="0.5pt" widthY="0.5pt" color="#000000" printColorNumber="1"/>'
         f'<pt:brush style="NULL" color="#000000" printColorNumber="1" id="0"/>'
-        f'<pt:expanded objectName="{name}" ID="0" lock="0" templateMergeTarget="LABELLIST" '
+        f'<pt:expanded objectName="{name}" ID="0" lock="{lock}" templateMergeTarget="LABELLIST" '
         f'templateMergeType="NONE" templateMergeID="0" linkStatus="NONE" linkID="0"/>'
         f'</pt:objectStyle>'
     )
 
 
-def _lbx_text(name, text, x, y, w, h, size, weight=400):
-    font_info = (
-        f'<text:ptFontInfo>'
-        f'<text:logFont name="Helsinki" width="0" italic="false" weight="{weight}" charSet="0" pitchAndFamily="2"/>'
-        f'<text:fontExt effect="NOEFFECT" underline="0" strikeout="0" size="{size:g}pt" orgSize="28.8pt" '
-        f'textColor="#000000" textPrintColorNumber="1"/>'
-        f'</text:ptFontInfo>'
-    )
+def _lbx_image(filename, x, y, w, h):
+    """Embedded-BMP image object. The BMP is already pure black/white, so use
+    a plain BINARY threshold (no dithering)."""
     return (
-        f'<text:text>'
-        + _lbx_object_style(x, y, w, h, name=name)
-        + font_info
-        + '<text:textControl control="AUTOLEN" clipFrame="false" aspectNormal="true" shrink="true" autoLF="false" avoidImage="false"/>'
-        + '<text:textAlign horizontalAlignment="LEFT" verticalAlignment="CENTER" inLineAlignment="BASELINE"/>'
-        + f'<text:textStyle vertical="false" nullBlock="false" charSpace="0" lineSpace="0" orgPoint="{size:g}pt" combinedChars="false"/>'
-        + f'<pt:data>{_lbx_esc(text)}</pt:data>'
-        + f'<text:stringItem charLen="{len(text)}">{font_info}</text:stringItem>'
-        + '</text:text>'
-    )
-
-
-def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4, version='auto', margin=True):
-    return (
-        f'<barcode:barcode>'
-        + _lbx_object_style(x, y, size_pt, size_pt, pen_style='INSIDEFRAME', name='Barcode1')
-        + '<barcode:barcodeStyle protocol="QRCODE" lengths="0" zeroFill="false" barWidth="0.8pt" barRatio="1:3" '
-          'humanReadable="false" humanReadableAlignment="LEFT" checkDigit="false" autoLengths="true" '
-          f'margin="{"true" if margin else "false"}" sameLengthBar="false" bearerBar="false"/>'
-        + f'<barcode:qrcodeStyle model="2" eccLevel="15%" cellSize="{cell_size:g}pt" mbcs="65001" '
-          'removeCharKind="0" removeCharString="" joint="1" jointSpace="8" jointVertically="false" '
-          f'version="{version}" changeVersionDrag="false"/>'
-        + f'<pt:data>{_lbx_esc(data)}</pt:data>'
-        + '</barcode:barcode>'
+        '<image:image>'
+        + _lbx_object_style(x, y, w, h, name='Image1', lock=2)
+        + f'<image:imageStyle originalName="{filename}" alignInText="NONE" firstMerge="true" IpName="" fileName="{filename}">'
+        + '<image:transparent flag="false" color="#FFFFFF"/>'
+        + '<image:trimming flag="false" shape="RECTANGLE" trimOrgX="0pt" trimOrgY="0pt" trimOrgWidth="0pt" trimOrgHeight="0pt"/>'
+        + f'<image:orgPos x="{x:g}pt" y="{y:g}pt" width="{w:g}pt" height="{h:g}pt"/>'
+        + '<image:effect effect="MONO" brightness="50" contrast="50" photoIndex="4"/>'
+        + '<image:mono operationKind="BINARY" reverse="0" ditherKind="MESH" threshold="128" gamma="100" '
+          'ditherEdge="0" rgbconvProportionRed="30" rgbconvProportionGreen="59" rgbconvProportionBlue="11" '
+          'rgbconvProportionReversed="0"/>'
+        + '</image:imageStyle>'
+        + '</image:image>'
     )
 
 
 def _unit_label_lbx_bytes(unit):
-    """Native P-touch Editor .lbx file for one unit: QR + name + tag + serial,
-    24mm tape, auto length. Objects stay editable in the editor."""
+    """P-touch Editor .lbx file for one unit: the composed label PNG embedded
+    as a single image object on 24mm tape — scale it as one piece."""
     TAPE_W = 68          # 24mm tape in pt
     FORMAT = 261         # Brother format code for 24mm
     END_MARGIN = 5.6     # unprintable 2mm leader/trailer
@@ -890,42 +875,22 @@ def _unit_label_lbx_bytes(unit):
     SIDE_MARGIN = 8.4
     BAND_H = TAPE_W - 2 * SIDE_MARGIN   # 51.2pt printable across the tape
 
-    lookup_url = url_for('admin.unit_lookup', asset_tag=unit.asset_tag or str(unit.id), _external=True)
-    name = unit.item.name if unit.item else ''
+    from PIL import Image
     tag = unit.asset_tag or f'#{unit.id}'
-    sn = f'SN: {unit.serial_number}' if unit.serial_number else None
 
-    # The editor snaps cellSize to the printer's dot grid (0.4pt @ 180dpi),
-    # so compute the largest dot-multiple cell that keeps the symbol inside
-    # the band. The internal quiet zone (margin) is disabled — the white tape
-    # around the symbol serves as quiet zone — and the version is pinned so
-    # P-touch can't re-pick a different symbol size.
-    import segno
-    DOT = 0.4
-    qr = segno.make(lookup_url, error='m', micro=False)
-    n = qr.symbol_size(scale=1, border=0)[0]
-    cell = round(max(1, int(BAND_H / n / DOT)) * DOT, 2)
-    qr_render = round(n * cell, 2)        # actual rendered symbol size
-    # P-touch centers the symbol within the object box, so a box spanning the
-    # full printable band keeps the QR vertically centered no matter how the
-    # editor rounds the rendered size.
-    text_x = END_MARGIN + qr_render + 6
-    objects = [_lbx_qrcode(lookup_url, END_MARGIN, SIDE_MARGIN, BAND_H,
-                           cell_size=cell, version=str(qr.version), margin=False)]
-    text_widths = []
+    # Compose the label once as PNG, embed as 32-bit BMP (the only raster
+    # format .lbx stores; P-touch Editor writes 32bpp).
+    img = Image.open(BytesIO(_unit_label_png_bytes(unit))).convert('RGBA')
+    bmp_buf = BytesIO()
+    img.save(bmp_buf, format='BMP')
+    bmp_name = 'Object0.bmp'
 
-    def add_text(obj_name, text, y, h, size, weight=400):
-        w = max(30.0, len(text) * size * 0.62)
-        text_widths.append(w)
-        objects.append(_lbx_text(obj_name, text, text_x, y, w, h, size, weight))
+    # Fill the printable band, keep the PNG's aspect ratio
+    img_h = BAND_H
+    img_w = round(BAND_H * img.width / img.height, 2)
+    objects = [_lbx_image(bmp_name, END_MARGIN, SIDE_MARGIN, img_w, img_h)]
 
-    # Spread the text lines over the full band height (8.4 .. 59.6)
-    add_text('Text1', name, SIDE_MARGIN, 11, 9)
-    add_text('Text2', tag, SIDE_MARGIN + 11.2, 27, 22, weight=700)
-    if sn:
-        add_text('Text3', sn, SIDE_MARGIN + 39.4, 11, 8)
-
-    length = text_x + max(text_widths) + 8
+    length = END_MARGIN + img_w + END_MARGIN
     bg_w = length - 2 * END_MARGIN
     bg_h = TAPE_W - 2 * SIDE_MARGIN
 
@@ -987,6 +952,7 @@ def _unit_label_lbx_bytes(unit):
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_STORED) as zf:
         zf.writestr('label.xml', label_xml)
         zf.writestr('prop.xml', prop_xml)
+        zf.writestr(bmp_name, bmp_buf.getvalue())
     return buf.getvalue()
 
 
