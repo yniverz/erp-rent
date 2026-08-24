@@ -2,6 +2,75 @@
 
 {% block title %}Packliste {{ quote.reference_number }} - Verwaltung{% endblock %}
 
+{% block extra_head %}
+<style>
+.scanner-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #000;
+    display: none;
+    flex-direction: column;
+}
+.scanner-overlay.open { display: flex; }
+.scanner-overlay video {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    object-fit: cover;
+}
+.scanner-topbar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    background: linear-gradient(rgba(0,0,0,.65), transparent);
+    color: #fff;
+}
+.scanner-topbar h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+.scanner-close {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.4);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 1rem;
+    padding: 8px 14px;
+    cursor: pointer;
+}
+.scanner-frame {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: min(65vw, 300px);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border: 3px solid rgba(255,255,255,.9);
+    border-radius: 16px;
+    box-shadow: 0 0 0 100vmax rgba(0,0,0,.35);
+    pointer-events: none;
+}
+.scanner-toast {
+    position: absolute;
+    left: 12px; right: 12px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-align: center;
+    color: #fff;
+    background: rgba(40,40,40,.92);
+    opacity: 0;
+    transition: opacity .25s;
+    pointer-events: none;
+}
+.scanner-toast.show { opacity: 1; }
+.scanner-toast.success { background: rgba(22,101,52,.95); }
+.scanner-toast.error { background: rgba(153,27,27,.95); }
+.scanner-toast.info { background: rgba(30,64,175,.95); }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="actions-bar">
     <h1 class="m-0 flex-1">Packliste: {{ quote.reference_number or 'Entwurf' }}</h1>
@@ -30,6 +99,9 @@
         </div>
         <button type="submit" class="btn btn-primary">Zuweisen</button>
     </form>
+    <div class="mt-8">
+        <button type="button" id="scanner-open" class="btn btn-outline">📷 QR-Code scannen</button>
+    </div>
 </div>
 
 <!-- Lines -->
@@ -110,4 +182,128 @@
     <a href="{{ url_for('admin.quote_view', quote_id=quote.id) }}" class="btn btn-outline">Angebotsübersicht</a>
     <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-primary" target="_blank">Lieferschein PDF</a>
 </div>
+
+<!-- Camera scanner overlay -->
+<div class="scanner-overlay" id="scanner-overlay">
+    <div class="scanner-topbar">
+        <h3>QR-Code scannen</h3>
+        <button type="button" class="scanner-close" id="scanner-close">Fertig ✕</button>
+    </div>
+    <video id="scanner-video" playsinline muted></video>
+    <div class="scanner-frame"></div>
+    <div class="scanner-toast" id="scanner-toast"></div>
+</div>
+
+<script src="{{ url_for('static', filename='js/jsQR.min.js') }}"></script>
+<script>
+(function () {
+    var overlay = document.getElementById('scanner-overlay');
+    var video = document.getElementById('scanner-video');
+    var toast = document.getElementById('scanner-toast');
+    var openBtn = document.getElementById('scanner-open');
+    var closeBtn = document.getElementById('scanner-close');
+    var scanUrl = {{ url_for('admin.packliste_scan', quote_id=quote.id) | tojson }};
+
+    var stream = null;
+    var running = false;
+    var busy = false;            // a scan request is in flight
+    var anyAssigned = false;     // reload page on close if true
+    var lastCode = null;
+    var lastCodeAt = 0;
+    var toastTimer = null;
+    var detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    function showToast(message, category) {
+        toast.textContent = message;
+        toast.className = 'scanner-toast show ' + (category || '');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2500);
+    }
+
+    function handleCode(code) {
+        var now = Date.now();
+        if (busy) return;
+        if (code === lastCode && (now - lastCodeAt) < 4000) return; // debounce re-reads
+        lastCode = code;
+        lastCodeAt = now;
+        busy = true;
+        fetch(scanUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'code=' + encodeURIComponent(code)
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            showToast(data.message, data.category);
+            if (data.ok) {
+                anyAssigned = true;
+                if (navigator.vibrate) navigator.vibrate(100);
+            }
+        }).catch(function () {
+            showToast('Netzwerkfehler – bitte erneut versuchen.', 'error');
+        }).finally(function () {
+            busy = false;
+        });
+    }
+
+    function tick() {
+        if (!running) return;
+        if (video.readyState >= video.HAVE_ENOUGH_DATA && !busy) {
+            if (detector) {
+                detector.detect(video).then(function (codes) {
+                    if (codes.length && codes[0].rawValue) handleCode(codes[0].rawValue.trim());
+                }).catch(function () {});
+            } else if (window.jsQR) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                var result = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+                if (result && result.data) handleCode(result.data.trim());
+            }
+        }
+        setTimeout(function () { requestAnimationFrame(tick); }, 150);
+    }
+
+    function openScanner() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert('Kamera-Zugriff wird von diesem Browser nicht unterstützt (HTTPS erforderlich).');
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false
+        }).then(function (s) {
+            stream = s;
+            video.srcObject = s;
+            video.play();
+            overlay.classList.add('open');
+            document.body.style.overflow = 'hidden';
+            running = true;
+            lastCode = null;
+            tick();
+        }).catch(function (err) {
+            alert('Kamera konnte nicht geöffnet werden: ' + err.message);
+        });
+    }
+
+    function closeScanner() {
+        running = false;
+        if (stream) {
+            stream.getTracks().forEach(function (t) { t.stop(); });
+            stream = null;
+        }
+        video.srcObject = null;
+        overlay.classList.remove('open');
+        document.body.style.overflow = '';
+        if (anyAssigned) location.reload();
+    }
+
+    openBtn.addEventListener('click', openScanner);
+    closeBtn.addEventListener('click', closeScanner);
+})();
+</script>
 {% endblock %}

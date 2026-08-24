@@ -1441,14 +1441,9 @@ def packliste_assign(quote_id):
     return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
 
 
-@admin_bp.route('/quotes/<int:quote_id>/packliste/scan', methods=['POST'])
-@login_required
-def packliste_scan(quote_id):
-    """Scan/type an asset tag or serial number; auto-assign to the matching line."""
-    quote = Quote.query.get_or_404(quote_id)
-    code = (request.form.get('code') or '').strip()
-    if not code:
-        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+def _packliste_scan_code(quote, code):
+    """Try to assign the unit identified by code to a matching line.
+    Returns (ok, category, message)."""
     # QR labels contain a URL ending in /u/<asset_tag> – accept those too
     if '/u/' in code:
         code = code.rstrip('/').rsplit('/', 1)[-1]
@@ -1456,37 +1451,50 @@ def packliste_scan(quote_id):
         db.or_(ItemUnit.asset_tag.ilike(code), ItemUnit.serial_number.ilike(code))
     ).first()
     if not unit:
-        flash(f'Keine Einheit mit Kennung "{code}" gefunden.', 'error')
-        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+        return False, 'error', f'Keine Einheit mit Kennung "{code}" gefunden.'
     # Find a matching quote line with free capacity
     target = None
     for qi in quote.quote_items:
         if qi.is_custom or qi.is_heading or qi.is_optional or qi.item_id != unit.item_id:
             continue
         if any(au.item_unit_id == unit.id for au in qi.assigned_units):
-            flash(f'Einheit {unit.asset_tag or unit.id} ist bereits zugewiesen.', 'info')
-            return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+            return False, 'info', f'Einheit {unit.asset_tag or unit.id} ist bereits zugewiesen.'
         if len(qi.assigned_units) < qi.quantity:
             target = qi
             break
     if not target:
-        flash(f'Kein passender Artikel im Angebot für Einheit {unit.asset_tag or unit.id} ({unit.item.name}) – oder alle Positionen sind voll.', 'error')
-        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+        return False, 'error', f'Kein passender Artikel im Angebot für Einheit {unit.asset_tag or unit.id} ({unit.item.name}) – oder alle Positionen sind voll.'
     if unit.status != ItemUnit.STATUS_AVAILABLE:
-        flash(f'Einheit {unit.asset_tag or unit.id} ist nicht einsatzbereit ({unit.status_label}).', 'error')
-        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+        return False, 'error', f'Einheit {unit.asset_tag or unit.id} ist nicht einsatzbereit ({unit.status_label}).'
     if unit.id in _conflicting_unit_ids(quote):
-        flash(f'Einheit {unit.asset_tag or unit.id} ist im Zeitraum bereits anderweitig eingeplant.', 'error')
-        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+        return False, 'error', f'Einheit {unit.asset_tag or unit.id} ist im Zeitraum bereits anderweitig eingeplant.'
     try:
         db.session.add(QuoteItemUnit(
             quote_item_id=target.id, item_unit_id=unit.id,
             asset_tag=unit.asset_tag, serial_number=unit.serial_number))
         db.session.commit()
-        flash(f'✓ {unit.item.name}: Einheit {unit.asset_tag or unit.id} zugewiesen.', 'success')
+        return True, 'success', f'✓ {unit.item.name}: Einheit {unit.asset_tag or unit.id} zugewiesen.'
     except Exception as e:
         db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
+        return False, 'error', f'Fehler: {str(e)}'
+
+
+@admin_bp.route('/quotes/<int:quote_id>/packliste/scan', methods=['POST'])
+@login_required
+def packliste_scan(quote_id):
+    """Scan/type an asset tag or serial number; auto-assign to the matching line.
+    Returns JSON for AJAX requests (camera scanner), otherwise flash + redirect."""
+    quote = Quote.query.get_or_404(quote_id)
+    wants_json = 'application/json' in (request.headers.get('Accept') or '')
+    code = (request.form.get('code') or '').strip()
+    if not code:
+        if wants_json:
+            return jsonify(ok=False, category='error', message='Kein Code übermittelt.'), 400
+        return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+    ok, category, message = _packliste_scan_code(quote, code)
+    if wants_json:
+        return jsonify(ok=ok, category=category, message=message)
+    flash(message, category)
     return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
 
 
