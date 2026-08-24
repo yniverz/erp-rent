@@ -214,6 +214,32 @@
     var detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    var audioCtx = null;
+
+    function initAudio() {
+        // Must be created/resumed inside a user gesture (autoplay policy)
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!audioCtx) audioCtx = new AC();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playBeep() {
+        if (!audioCtx || audioCtx.state !== 'running') return;
+        // Two quick ascending tones ("success" chirp)
+        [[880, 0], [1320, 0.09]].forEach(function (t) {
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            var start = audioCtx.currentTime + t[1];
+            osc.type = 'sine';
+            osc.frequency.value = t[0];
+            gain.gain.setValueAtTime(0.25, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+            osc.connect(gain).connect(audioCtx.destination);
+            osc.start(start);
+            osc.stop(start + 0.13);
+        });
+    }
 
     function showToast(message, category) {
         toast.textContent = message;
@@ -240,7 +266,8 @@
             showToast(data.message, data.category);
             if (data.ok) {
                 anyAssigned = true;
-                if (navigator.vibrate) navigator.vibrate(100);
+                if (navigator.vibrate) navigator.vibrate(150);
+                playBeep();
             }
         }).catch(function () {
             showToast('Netzwerkfehler – bitte erneut versuchen.', 'error');
@@ -273,6 +300,7 @@
             alert('Kamera-Zugriff wird von diesem Browser nicht unterstützt (HTTPS erforderlich).');
             return;
         }
+        initAudio();
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: 'environment' } },
             audio: false
