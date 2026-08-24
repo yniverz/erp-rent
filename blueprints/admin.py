@@ -905,10 +905,12 @@ def _unit_label_lbx_bytes(unit):
     qr = segno.make(lookup_url, error='m', micro=False)
     n = qr.symbol_size(scale=1, border=0)[0]
     cell = round(max(1, int(BAND_H / n / DOT)) * DOT, 2)
-    qr_size = round(n * cell, 2)          # actual rendered size
-    qr_y = round(SIDE_MARGIN + (BAND_H - qr_size) / 2, 2)  # center in band
-    text_x = END_MARGIN + qr_size + 6
-    objects = [_lbx_qrcode(lookup_url, END_MARGIN, qr_y, qr_size,
+    qr_render = round(n * cell, 2)        # actual rendered symbol size
+    # P-touch centers the symbol within the object box, so a box spanning the
+    # full printable band keeps the QR vertically centered no matter how the
+    # editor rounds the rendered size.
+    text_x = END_MARGIN + qr_render + 6
+    objects = [_lbx_qrcode(lookup_url, END_MARGIN, SIDE_MARGIN, BAND_H,
                            cell_size=cell, version=str(qr.version), margin=False)]
     text_widths = []
 
