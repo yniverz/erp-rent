@@ -864,13 +864,13 @@ def _lbx_text(name, text, x, y, w, h, size, weight=400):
     )
 
 
-def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4, version='auto'):
+def _lbx_qrcode(data, x, y, size_pt, cell_size=1.4, version='auto', margin=True):
     return (
         f'<barcode:barcode>'
         + _lbx_object_style(x, y, size_pt, size_pt, pen_style='INSIDEFRAME', name='Barcode1')
         + '<barcode:barcodeStyle protocol="QRCODE" lengths="0" zeroFill="false" barWidth="0.8pt" barRatio="1:3" '
           'humanReadable="false" humanReadableAlignment="LEFT" checkDigit="false" autoLengths="true" '
-          'margin="true" sameLengthBar="false" bearerBar="false"/>'
+          f'margin="{"true" if margin else "false"}" sameLengthBar="false" bearerBar="false"/>'
         + f'<barcode:qrcodeStyle model="2" eccLevel="15%" cellSize="{cell_size:g}pt" mbcs="65001" '
           'removeCharKind="0" removeCharString="" joint="1" jointSpace="8" jointVertically="false" '
           f'version="{version}" changeVersionDrag="false"/>'
@@ -895,18 +895,21 @@ def _unit_label_lbx_bytes(unit):
     tag = unit.asset_tag or f'#{unit.id}'
     sn = f'SN: {unit.serial_number}' if unit.serial_number else None
 
-    qr_size = BAND_H     # square QR filling the printable band
-    text_x = END_MARGIN + qr_size + 5
-    # Match cellSize exactly to the band: the editor renders the QR at
-    # modules × cellSize, so compute the module count (incl. 4-module quiet
-    # zone on each side) with segno at the same ECC level (M = 15%) and pin
-    # the version so P-touch can't pick a different symbol size.
+    # The editor snaps cellSize to the printer's dot grid (0.4pt @ 180dpi),
+    # so compute the largest dot-multiple cell that keeps the symbol inside
+    # the band. The internal quiet zone (margin) is disabled — the white tape
+    # around the symbol serves as quiet zone — and the version is pinned so
+    # P-touch can't re-pick a different symbol size.
     import segno
+    DOT = 0.4
     qr = segno.make(lookup_url, error='m', micro=False)
-    modules = qr.symbol_size(scale=1, border=0)[0] + 8
-    cell = int(BAND_H / modules * 100) / 100.0
-    objects = [_lbx_qrcode(lookup_url, END_MARGIN, SIDE_MARGIN, qr_size,
-                           cell_size=cell, version=str(qr.version))]
+    n = qr.symbol_size(scale=1, border=0)[0]
+    cell = round(max(1, int(BAND_H / n / DOT)) * DOT, 2)
+    qr_size = round(n * cell, 2)          # actual rendered size
+    qr_y = round(SIDE_MARGIN + (BAND_H - qr_size) / 2, 2)  # center in band
+    text_x = END_MARGIN + qr_size + 6
+    objects = [_lbx_qrcode(lookup_url, END_MARGIN, qr_y, qr_size,
+                           cell_size=cell, version=str(qr.version), margin=False)]
     text_widths = []
 
     def add_text(obj_name, text, y, h, size, weight=400):
