@@ -120,7 +120,6 @@ def _serialize_quote(quote, include_lines=False):
     }
     if include_lines:
         data.update({
-            'recipient_lines': quote.recipient_lines or '',
             'notes': quote.notes or '',
             'public_notes': quote.public_notes or '',
             'lines': [_serialize_line(qi) for qi in quote.quote_items],
@@ -163,8 +162,6 @@ def _apply_details(quote, data):
     if 'rental_days_override' in data:
         override = data.get('rental_days_override')
         quote.rental_days_override = max(1, int(override)) if override else None
-    if 'recipient_lines' in data:
-        quote.recipient_lines = data.get('recipient_lines') or ''
     if 'notes' in data:
         quote.notes = data.get('notes') or ''
     if 'public_notes' in data:

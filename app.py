@@ -255,6 +255,13 @@ with app.app_context():
     for _col in ('finalized_at', 'performed_at', 'paid_at', 'payment_method'):
         _drop_column_if_exists('quote', _col)
 
+    # ── Customer management removed: quotes keep only the customer name ──
+    _drop_column_if_exists('quote', 'recipient_lines')
+    if 'customer' in _sa_inspect(db.engine).get_table_names():
+        db.session.execute(_sql_text('DROP TABLE customer'))
+        db.session.commit()
+        print('  migrated: dropped table customer')
+
     # ── One-time conversion: ItemOwnership → Item.stock_quantity + Supplier/ItemSupply ──
     if _needs_ownership_conversion:
         from models import Supplier, ItemSupply, Item

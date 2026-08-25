@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, Customer, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit
 from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
@@ -1152,7 +1152,6 @@ def quote_create():
                 end_date=end_date,
                 rental_days=rental_days,
                 status='draft',
-                recipient_lines=request.form.get('recipient_lines', '').strip(),
             )
             db.session.add(quote)
             db.session.commit()
@@ -1170,7 +1169,7 @@ def quote_create():
     return render_template('admin/quote_create.html')
 
 
-@admin_bp.route('/quotes/<int:quote_id>/edit')
+@admin_bp.route('/quotes/<int:quote_id>')
 @login_required
 def quote_edit(quote_id):
     """Quote editor (single-page; all mutations go through the JSON API below)"""
@@ -1258,7 +1257,6 @@ def _serialize_quote_state(quote):
         'status': quote.status,
         'reference_number': quote.reference_number,
         'customer_name': quote.customer_name,
-        'recipient_lines': quote.recipient_lines or '',
         'notes': quote.notes or '',
         'public_notes': quote.public_notes or '',
         'start_date': quote.start_date.strftime('%Y-%m-%d') if quote.start_date else '',
@@ -1323,8 +1321,6 @@ def quote_api_details(quote_id):
         if 'rental_days_override' in data:
             override = data.get('rental_days_override')
             quote.rental_days_override = int(override) if override else None
-        if 'recipient_lines' in data:
-            quote.recipient_lines = data.get('recipient_lines') or ''
         if 'notes' in data:
             quote.notes = data.get('notes') or ''
         if 'public_notes' in data:
@@ -1786,34 +1782,6 @@ def packliste_unassign(quote_id):
     return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
 
 
-@admin_bp.route('/quotes/<int:quote_id>')
-@login_required
-def quote_view(quote_id):
-    """View quote details"""
-    quote = Quote.query.get_or_404(quote_id)
-    from datetime import date as date_cls
-    site_settings = SiteSettings.query.first()
-    _eff_mode, _eff_rate = _effective_tax_mode_and_rate(site_settings)
-    return render_template('admin/quote_view.html', quote=quote, today=date_cls.today().isoformat(),
-                           site_settings=site_settings,
-                           tax_mode=_eff_mode, tax_rate=_eff_rate)
-
-
-@admin_bp.route('/quotes/<int:quote_id>/update_notes', methods=['POST'])
-@login_required
-def quote_update_notes(quote_id):
-    """Update internal notes of a quote (allowed in any status)."""
-    quote = Quote.query.get_or_404(quote_id)
-    try:
-        quote.notes = request.form.get('notes', '')
-        db.session.commit()
-        flash('Interne Notizen aktualisiert!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Fehler: {str(e)}', 'error')
-    return redirect(url_for('admin.quote_view', quote_id=quote_id))
-
-
 @admin_bp.route('/quotes/<int:quote_id>/delete', methods=['POST'])
 @login_required
 def quote_delete(quote_id):
@@ -1821,7 +1789,7 @@ def quote_delete(quote_id):
     quote = Quote.query.get_or_404(quote_id)
     if quote.status != 'draft':
         flash('Nur Entwürfe können gelöscht werden.', 'error')
-        return redirect(url_for('admin.quote_view', quote_id=quote_id))
+        return redirect(url_for('admin.quote_edit', quote_id=quote_id))
     try:
         db.session.delete(quote)
         db.session.commit()
@@ -2240,12 +2208,8 @@ def _extract_common_pdf_data(quote, site_settings):
     address_lines = [l.strip() for l in (site_settings.address_lines or '').split('\n') if l.strip()] if site_settings else []
     contact_lines_list = [l.strip() for l in (site_settings.contact_lines or '').split('\n') if l.strip()] if site_settings else []
     bank_lines_list = [l.strip() for l in (site_settings.bank_lines or '').split('\n') if l.strip()] if site_settings else []
-    recipient = [l.strip() for l in (quote.recipient_lines or '').split('\n') if l.strip()]
-    # Prepend customer name above address lines
-    if quote.customer_name and quote.customer_name.strip():
-        customer_name = quote.customer_name.strip()
-        if not recipient or recipient[0] != customer_name:
-            recipient.insert(0, customer_name)
+    # Customer management removed: the recipient block is just the customer name
+    recipient = [quote.customer_name.strip()] if quote.customer_name and quote.customer_name.strip() else []
     tax_number = site_settings.tax_number if site_settings else None
     vat_id = site_settings.vat_id if site_settings else None
     tax_mode, tax_rate = _effective_tax_mode_and_rate(site_settings)
@@ -2489,62 +2453,3 @@ def lieferschein_pdf(quote_id):
         notes=quote.public_notes,
     )
     return _send_pdf_response(pdf_bytes, f"lieferschein_{quote.reference_number}.pdf")
-
-
-# ── Legacy PDF generators (kept for backwards compatibility) ──
-
-# ============= CUSTOMER DATABASE =============
-
-# ── Local customer database ──
-
-@admin_bp.route('/api/customers/search')
-@login_required
-def customer_search():
-    """Search saved customers by name (for autocomplete)."""
-    q = request.args.get('q', '').strip()
-    if len(q) < 1:
-        return jsonify([])
-
-    customers = Customer.query.filter(Customer.name.ilike(f'%{q}%')).order_by(Customer.name).limit(10).all()
-    return jsonify([{'name': c.name, 'recipient_lines': c.recipient_lines or ''} for c in customers])
-
-
-@admin_bp.route('/api/customers/save', methods=['POST'])
-@login_required
-def customer_save():
-    """Save or update a customer entry (identified by name)."""
-    data = request.get_json()
-    name = (data.get('name') or '').strip()
-    recipient_lines = (data.get('recipient_lines') or '').strip()
-
-    if not name:
-        return jsonify({'error': 'Name ist erforderlich.'}), 400
-
-    customer = Customer.query.filter(Customer.name.ilike(name)).first()
-    if customer:
-        customer.recipient_lines = recipient_lines
-        customer.name = name  # preserve exact casing from latest save
-        action = 'updated'
-    else:
-        customer = Customer(name=name, recipient_lines=recipient_lines)
-        db.session.add(customer)
-        action = 'created'
-
-    db.session.commit()
-    return jsonify({'status': 'ok', 'action': action, 'name': customer.name})
-
-
-@admin_bp.route('/api/customers/delete', methods=['POST'])
-@login_required
-def customer_delete():
-    """Delete a saved customer by name."""
-    data = request.get_json()
-    name = (data.get('name') or '').strip()
-    if not name:
-        return jsonify({'error': 'Name ist erforderlich.'}), 400
-    customer = Customer.query.filter(Customer.name.ilike(name)).first()
-    if not customer:
-        return jsonify({'error': 'Kunde nicht gefunden.'}), 404
-    db.session.delete(customer)
-    db.session.commit()
-    return jsonify({'status': 'ok', 'name': name})

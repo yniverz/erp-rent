@@ -132,7 +132,6 @@ Creates a new quote in status `draft` and assigns a reference number.
 | `start_date` | date | no | Rental start (`YYYY-MM-DD`) |
 | `end_date` | date | no | Rental end; must be ≥ `start_date` |
 | `rental_days_override` | int | no | Override the date-based billed days |
-| `recipient_lines` | string | no | Invoice address block (multiline) |
 | `notes` | string | no | Internal notes (never printed) |
 | `public_notes` | string | no | Notes printed on PDFs |
 | `prices_are_net` | bool | no | Treat stored prices as net (default `false` = gross) |
@@ -345,7 +344,6 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   "optional_total": 75.0,
   "total": 405.0,
 
-  "recipient_lines": "Meyer GmbH\nMusterstraße 1\n12345 Musterstadt",
   "notes": "internal",
   "public_notes": "printed on PDFs",
   "lines": [ { "...": "see line object" } ]
@@ -356,7 +354,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   server-side: `total = subtotal − discount_amount`; optional and heading
   lines are excluded from `subtotal`.
 - `rental_days` is the billed number of days (override, or date-based).
-- The fields below the separator (`recipient_lines`, `notes`,
+- The fields below the separator (`notes`,
   `public_notes`, `lines`) are only included in single-quote responses, not
   in the list endpoint.
 

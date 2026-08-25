@@ -7,18 +7,9 @@
 
 <div class="card">
     <form method="POST">
-        <div class="form-group autocomplete-wrapper">
+        <div class="form-group">
             <label>Kundenname *</label>
             <input type="text" name="customer_name" id="customer_name" required autocomplete="off">
-            <div class="autocomplete-list" id="customer-suggestions"></div>
-        </div>
-        <div class="form-group">
-            <label>Empfängeradresse</label>
-            <textarea name="recipient_lines" id="recipient_lines" rows="3"></textarea>
-        </div>
-        <div class="mb-16">
-            <button type="button" class="btn btn-outline btn-sm" id="save-customer-btn">Kunde speichern</button>
-            <span class="customer-save-feedback" id="save-feedback"></span>
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -36,101 +27,4 @@
         </div>
     </form>
 </div>
-
-<script>
-(function() {
-    const nameInput = document.getElementById('customer_name');
-    const addrInput = document.getElementById('recipient_lines');
-    const sugBox = document.getElementById('customer-suggestions');
-    const feedback = document.getElementById('save-feedback');
-    let debounce = null;
-    let activeIdx = -1;
-    let suggestions = [];
-
-    nameInput.addEventListener('input', function() {
-        clearTimeout(debounce);
-        const q = this.value.trim();
-        if (q.length < 1) { hideSuggestions(); return; }
-        debounce = setTimeout(() => fetchSuggestions(q), 200);
-    });
-
-    nameInput.addEventListener('keydown', function(e) {
-        const items = sugBox.querySelectorAll('div');
-        if (!items.length) return;
-        if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); highlight(items); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlight(items); }
-        else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); selectSuggestion(activeIdx); }
-        else if (e.key === 'Escape') { hideSuggestions(); }
-    });
-
-    document.addEventListener('click', function(e) {
-        if (!sugBox.contains(e.target) && e.target !== nameInput) hideSuggestions();
-    });
-
-    function fetchSuggestions(q) {
-        const url = '{{ url_for("admin.customer_search") }}?q=' + encodeURIComponent(q);
-        fetch(url)
-            .then(r => r.json())
-            .then(data => {
-                suggestions = data;
-                renderSuggestions(data);
-            });
-    }
-
-    function renderSuggestions(data) {
-        sugBox.innerHTML = '';
-        activeIdx = -1;
-        if (!data.length) { hideSuggestions(); return; }
-        data.forEach((c, i) => {
-            const d = document.createElement('div');
-            d.textContent = c.name;
-            d.addEventListener('mousedown', (e) => { e.preventDefault(); selectSuggestion(i); });
-            sugBox.appendChild(d);
-        });
-        sugBox.style.display = 'block';
-    }
-
-    function selectSuggestion(idx) {
-        const c = suggestions[idx];
-        nameInput.value = c.name;
-        addrInput.value = c.recipient_lines || '';
-        hideSuggestions();
-    }
-
-    function highlight(items) {
-        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
-    }
-
-    function hideSuggestions() { sugBox.style.display = ''; activeIdx = -1; }
-
-    function setFeedback(msg, isError) {
-        feedback.textContent = msg;
-        feedback.classList.toggle('text-danger', isError);
-        feedback.classList.toggle('text-success', !isError);
-    }
-
-    // Local customer mode
-    const saveBtn = document.getElementById('save-customer-btn');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', function() {
-            const name = nameInput.value.trim();
-            if (!name) { setFeedback('Bitte Kundenname eingeben.', true); return; }
-            fetch('{{ url_for("admin.customer_save") }}', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: name, recipient_lines: addrInput.value})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { setFeedback(data.error, true); }
-                else {
-                    setFeedback(data.action === 'updated' ? 'Kunde aktualisiert!' : 'Kunde gespeichert!', false);
-                    setTimeout(() => feedback.textContent = '', 3000);
-                }
-            })
-            .catch(() => { setFeedback('Fehler beim Speichern.', true); });
-        });
-    }
-})();
-</script>
 {% endblock %}

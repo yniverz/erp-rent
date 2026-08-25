@@ -361,7 +361,6 @@ class Quote(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     customer_name = db.Column(db.String(200), nullable=False)
-    recipient_lines = db.Column(db.Text, nullable=True)
     reference_number = db.Column(db.String(50), nullable=True)
     discount_percent = db.Column(db.Float, default=0.0)
     discount_label = db.Column(db.String(200), nullable=True)
@@ -550,14 +549,6 @@ class InquiryItem(db.Model):
 
     inquiry = db.relationship('Inquiry', back_populates='items')
     item = db.relationship('Item')
-
-
-class Customer(db.Model):
-    """Saved customer for quick lookup by name"""
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False, unique=True)
-    recipient_lines = db.Column(db.Text, nullable=True)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class SiteSettings(db.Model):

@@ -97,9 +97,9 @@ A token-authenticated JSON API for quote management is available under `/api/v1`
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/v1/quotes` | List quotes. Filters: `status`, `customer` (substring), `limit`, `offset`. |
-| `POST` | `/api/v1/quotes` | Create a draft quote. Body: `customer_name` (required), `start_date`/`end_date` (`YYYY-MM-DD`), `recipient_lines`, `notes`, `public_notes`, … |
+| `POST` | `/api/v1/quotes` | Create a draft quote. Body: `customer_name` (required), `start_date`/`end_date` (`YYYY-MM-DD`), `notes`, `public_notes`, … |
 | `GET` | `/api/v1/quotes/<id>` | Full quote incl. line items and totals. |
-| `PATCH` | `/api/v1/quotes/<id>` | Update details: `customer_name`, `start_date`, `end_date`, `rental_days_override`, `recipient_lines`, `notes`, `public_notes`, `prices_are_net`, `discount_percent`, `discount_label`. |
+| `PATCH` | `/api/v1/quotes/<id>` | Update details: `customer_name`, `start_date`, `end_date`, `rental_days_override`, `notes`, `public_notes`, `prices_are_net`, `discount_percent`, `discount_label`. |
 | `POST` | `/api/v1/quotes/<id>/lines` | Add a line. Body: `type` (`item`/`custom`/`heading`), `item_id`, `quantity`, `name`, `price_per_day`. Packages expand into component lines; adding an existing item increments its quantity. |
 | `PATCH` | `/api/v1/quotes/<id>/lines/<line_id>` | Update a line: `quantity`, `price_per_day`, `cost_per_day`, `name` (custom/heading only), `discount_exempt`, `is_optional`, `auto_sources`. |
 | `DELETE` | `/api/v1/quotes/<id>/lines/<line_id>` | Delete a line. `?whole_package=1` removes the whole package block. |
@@ -153,7 +153,7 @@ Overview of total inventory items, quotes, new inquiries, and active quotes.
 #### Quotes
 Quotes are drafts (Entwurf) — there is a single quote type. Finalization and invoicing are handled in a separate external tool.
 
-1. **Create** — Enter customer name, recipient address, and rental period (start/end dates). A reference number is auto-generated.
+1. **Create** — Enter customer name and rental period (start/end dates). A reference number is auto-generated.
 2. **Edit** — Add inventory items (availability is checked against the date range), add packages (auto-expanded into components), or add custom free-text line items. Adjust quantities, prices, and per-item external costs.
 3. **Discounts** — Set a discount percentage or enter a target total and let the system calculate the percentage. Individual items can be marked as discount-exempt. You can also add a label to the discount (e.g., "Loyalty discount").
 4. **Rental days override** — Optionally bill for a different number of days than the actual date range.
@@ -208,9 +208,3 @@ Financial overview of your inventory:
 ## Data Storage
 
 ERP-Rent uses **SQLite** as its database — no external database server needed. The database file and uploaded images are stored in the `instance/` directory. Back up this directory to preserve all your data.
-
----
-
-## Customer Database
-
-The system maintains a customer database for quick lookup. When creating a quote, you can search for existing customers to auto-fill their name and address. Customer records are saved and updated automatically.
