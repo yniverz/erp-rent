@@ -9,7 +9,7 @@ auth_bp = Blueprint('auth', __name__)
 def login():
     """Login page"""
     if current_user.is_authenticated:
-        return redirect(url_for('admin.dashboard'))
+        return redirect(url_for('admin.inventory_list'))
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
@@ -19,7 +19,7 @@ def login():
             login_user(user)
             flash('Anmeldung erfolgreich!', 'success')
             next_page = request.args.get('next')
-            return redirect(next_page or url_for('admin.dashboard'))
+            return redirect(next_page or url_for('admin.inventory_list'))
         else:
             flash('Ungültige Anmeldedaten oder Konto deaktiviert.', 'error')
 

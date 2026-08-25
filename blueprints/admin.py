@@ -27,7 +27,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_admin:
             flash('Admin-Zugang erforderlich.', 'error')
-            return redirect(url_for('admin.dashboard'))
+            return redirect(url_for('admin.inventory_list'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -41,21 +41,13 @@ def can_edit_or_admin(f):
     return decorated_function
 
 
-# ============= DASHBOARD =============
+# ============= HOME =============
 
 @admin_bp.route('/')
 @login_required
-def dashboard():
-    """Admin dashboard"""
-    total_items = Item.query.count()
-    total_quotes = Quote.query.count()
-    new_inquiries = Inquiry.query.filter_by(status='new').count()
-    active_quotes = Quote.query.filter(Quote.status == 'draft').count()
-    return render_template('admin/dashboard.html',
-                           total_items=total_items,
-                           total_quotes=total_quotes,
-                           new_inquiries=new_inquiries,
-                           active_quotes=active_quotes)
+def admin_home():
+    """Admin landing page: go straight to the inventory."""
+    return redirect(url_for('admin.inventory_list'))
 
 
 # ============= CATEGORIES =============

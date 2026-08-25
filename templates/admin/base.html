@@ -19,13 +19,11 @@
 <body>
     <nav>
         <div class="nav-inner">
-            <a href="{{ url_for('admin.dashboard') }}" class="nav-brand">{{ brand_name }} Verwaltung</a>
+            <a href="{{ url_for('admin.inventory_list') }}" class="nav-brand">{{ brand_name }} Verwaltung</a>
             <button class="nav-hamburger" aria-label="Menü" onclick="document.querySelector('.nav-links').classList.toggle('open')">
                 <span></span><span></span><span></span>
             </button>
             <div class="nav-links">
-                <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint == 'admin.dashboard' }}">Dashboard</a>
-
                 <div class="nav-dropdown {{ 'active' if 'inventory' in request.endpoint or 'supplier' in request.endpoint or request.endpoint == 'admin.categories' }}">
                     <button class="nav-dropdown-toggle">Katalog <span class="nav-arrow">▾</span></button>
                     <div class="nav-dropdown-menu">

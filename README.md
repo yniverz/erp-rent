@@ -133,10 +133,7 @@ The public-facing storefront is accessible without login at the root URL (`/`).
 
 ### Admin Panel
 
-Log in at `/admin` with your admin or staff credentials to access the back-office.
-
-#### Dashboard
-Overview of total inventory items, quotes, new inquiries, and active quotes.
+Log in at `/admin` with your admin or staff credentials to access the back-office. After login you land on the inventory.
 
 #### Inventory
 - Add, edit, and delete rental items with name, description, price, image, and category.
