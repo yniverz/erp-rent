@@ -580,17 +580,17 @@ class SiteSettings(db.Model):
     display_name = db.Column(db.String(200), nullable=True)  # Alias for website / storefront
     address_lines = db.Column(db.Text, nullable=True)
     contact_lines = db.Column(db.Text, nullable=True)
-    bank_lines = db.Column(db.Text, nullable=True)
     # Tax / invoicing
     tax_number = db.Column(db.String(100), nullable=True)  # Steuernummer (z.B. 12/345/67890)
     vat_id = db.Column(db.String(100), nullable=True)  # USt-IdNr (z.B. DE123456789)
     tax_mode = db.Column(db.String(20), default='kleinunternehmer')  # 'kleinunternehmer' or 'regular'
     tax_rate = db.Column(db.Float, default=19.0)  # MwSt-Satz in %, configurable
-    payment_terms_days = db.Column(db.Integer, default=14)
     quote_validity_days = db.Column(db.Integer, default=14)
     logo_filename = db.Column(db.String(300), nullable=True)  # Uploaded logo file
     # Public storefront
     shop_description = db.Column(db.Text, nullable=True)
+    # Unit labels: extra text printed on every label (multi-line)
+    label_extra_text = db.Column(db.Text, nullable=True)
     # Legal links
     imprint_url = db.Column(db.String(500), nullable=True)
     privacy_url = db.Column(db.String(500), nullable=True)

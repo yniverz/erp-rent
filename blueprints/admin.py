@@ -742,6 +742,7 @@ def _unit_label_png_bytes(unit):
 
     H = 600  # image height; scaled down by P-touch Editor to tape height
     MARGIN = 24
+    LINE_GAP = 20
 
     lookup_url = url_for('admin.unit_lookup', asset_tag=unit.asset_tag or str(unit.id), _external=True)
     qr = segno.make(lookup_url, error='m')
@@ -754,16 +755,24 @@ def _unit_label_png_bytes(unit):
 
     name_font = _label_font(100, bold=True)
     tag_font = _label_font(120, bold=True)
-    sn_font = _label_font(100)
+    sn_font = _label_font(80)
+    extra_font = _label_font(80, bold=True)
 
     name = unit.item.name if unit.item else ''
     tag = unit.asset_tag or f'#{unit.id}'
     sn = f'SN: {unit.serial_number}' if unit.serial_number else None
+    _settings = SiteSettings.query.first()
+    extra_lines = []
+    if _settings and _settings.label_extra_text:
+        extra_lines = [l.strip() for l in _settings.label_extra_text.replace('\r', '').split('\n') if l.strip()]
 
     # Measure text to size the canvas
     probe = ImageDraw.Draw(Image.new('1', (1, 1)))
     lines = [(name, name_font), (tag, tag_font)] + ([(sn, sn_font)] if sn else [])
+    lines += [(l, extra_font) for l in extra_lines]
     text_w = max(int(probe.textbbox((0, 0), t, font=f)[2]) for t, f in lines)
+    total_text_h = sum(int(probe.textbbox((0, 0), t, font=f)[3]) for t, f in lines) + (len(lines) - 1) * LINE_GAP
+
     width = H + MARGIN + text_w + MARGIN * 2
 
     img = Image.new('1', (width, H), 1)  # 1-bit, white — ideal for thermal tape
@@ -771,11 +780,10 @@ def _unit_label_png_bytes(unit):
     draw = ImageDraw.Draw(img)
 
     x = H + MARGIN
-    total_text_h = sum(int(probe.textbbox((0, 0), t, font=f)[3]) for t, f in lines) + (len(lines) - 1) * 20
     y = max(MARGIN, (H - total_text_h) // 2)
     for text, font in lines:
         draw.text((x, y), text, font=font, fill=0)
-        y += int(probe.textbbox((0, 0), text, font=font)[3]) + 20
+        y += int(probe.textbbox((0, 0), text, font=font)[3]) + LINE_GAP
 
     out = BytesIO()
     img.save(out, format='PNG', dpi=(360, 360))
@@ -2051,14 +2059,13 @@ def settings():
             settings_record.display_name = request.form.get('display_name', '').strip() or None
             settings_record.address_lines = request.form.get('address_lines', '')
             settings_record.contact_lines = request.form.get('contact_lines', '')
-            settings_record.bank_lines = request.form.get('bank_lines', '')
             settings_record.tax_number = request.form.get('tax_number', '').strip()
             settings_record.vat_id = request.form.get('vat_id', '').strip()
             settings_record.tax_mode = request.form.get('tax_mode', 'kleinunternehmer').strip()
             settings_record.tax_rate = float(request.form.get('tax_rate', '19.0') or 19.0)
-            settings_record.payment_terms_days = int(request.form.get('payment_terms_days', '14') or 14)
             settings_record.quote_validity_days = int(request.form.get('quote_validity_days', '14') or 14)
             settings_record.shop_description = request.form.get('shop_description', '')
+            settings_record.label_extra_text = request.form.get('label_extra_text', '').replace('\r', '').strip() or None
             settings_record.imprint_url = request.form.get('imprint_url', '').strip()
             settings_record.privacy_url = request.form.get('privacy_url', '').strip()
             settings_record.terms_and_conditions_text = request.form.get('terms_and_conditions_text', '').strip() or None
@@ -2210,13 +2217,11 @@ def _extract_common_pdf_data(quote, site_settings):
     issuer_name = site_settings.business_name if site_settings and site_settings.business_name else "Ihr Unternehmen"
     address_lines = [l.strip() for l in (site_settings.address_lines or '').split('\n') if l.strip()] if site_settings else []
     contact_lines_list = [l.strip() for l in (site_settings.contact_lines or '').split('\n') if l.strip()] if site_settings else []
-    bank_lines_list = [l.strip() for l in (site_settings.bank_lines or '').split('\n') if l.strip()] if site_settings else []
     # Customer management removed: the recipient block is just the customer name
     recipient = [quote.customer_name.strip()] if quote.customer_name and quote.customer_name.strip() else []
     tax_number = site_settings.tax_number if site_settings else None
     vat_id = site_settings.vat_id if site_settings else None
     tax_mode, tax_rate = _effective_tax_mode_and_rate(site_settings)
-    payment_terms_days = (site_settings.payment_terms_days or 14) if site_settings else 14
     quote_validity_days = (site_settings.quote_validity_days or 14) if site_settings else 14
 
     # Logo path
@@ -2244,13 +2249,11 @@ def _extract_common_pdf_data(quote, site_settings):
         'issuer_name': issuer_name,
         'issuer_address': address_lines,
         'contact_lines': contact_lines_list,
-        'bank_lines': bank_lines_list,
         'recipient_lines': recipient,
         'tax_number': tax_number,
         'vat_id': vat_id,
         'tax_mode': tax_mode,
         'tax_rate': tax_rate,
-        'payment_terms_days': payment_terms_days,
         'quote_validity_days': quote_validity_days,
         'logo_path': logo_path,
         'start_date_str': start_str,
@@ -2395,7 +2398,6 @@ def angebot_pdf(quote_id):
         issuer_name=data['issuer_name'],
         issuer_address=data['issuer_address'],
         contact_lines=data['contact_lines'],
-        bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
         vat_id=data.get('vat_id'),
         tax_mode=data['tax_mode'],
@@ -2415,7 +2417,6 @@ def angebot_pdf(quote_id):
         discount_amount=quote.discount_amount,
         subtotal=quote.subtotal,
         total=quote.total,
-        payment_terms_days=data['payment_terms_days'],
         quote_validity_days=data['quote_validity_days'],
         notes=quote.public_notes,
         terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
@@ -2443,7 +2444,6 @@ def lieferschein_pdf(quote_id):
         issuer_name=data['issuer_name'],
         issuer_address=data['issuer_address'],
         contact_lines=data['contact_lines'],
-        bank_lines=data['bank_lines'],
         tax_number=data['tax_number'],
         vat_id=data.get('vat_id'),
         logo_path=data['logo_path'],

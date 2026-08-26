@@ -19,7 +19,7 @@
         <div class="form-group">
             <label>Firmenname</label>
             <input type="text" name="business_name" value="{{ settings.business_name or '' }}">
-            <small class="help-text">Offizieller Name – erscheint auf PDFs (Rechnungen, Angebote, Lieferscheine).</small>
+            <small class="help-text">Offizieller Name – erscheint auf PDFs (Angebote, Lieferscheine).</small>
         </div>
 
         <div class="form-group">
@@ -35,21 +35,15 @@
         </div>
 
         <div class="form-group">
-            <label>Bankverbindung</label>
-            <textarea name="bank_lines" rows="3" placeholder="Bank: ...&#10;IBAN: ...&#10;BIC: ...">{{ settings.bank_lines or '' }}</textarea>
-            <small class="help-text">Maximal 5 Zeilen.</small>
-        </div>
-
-        <div class="form-group">
             <label>Steuernummer</label>
             <input type="text" name="tax_number" value="{{ settings.tax_number or '' }}" placeholder="12/345/67890">
-            <small class="help-text">Wird auf PDF-Dokumenten angezeigt und in E-Rechnungen (ZUGFeRD) eingebettet.</small>
+            <small class="help-text">Wird im Footer der PDF-Dokumente angezeigt.</small>
         </div>
 
         <div class="form-group">
             <label>USt-IdNr</label>
             <input type="text" name="vat_id" value="{{ settings.vat_id or '' }}" placeholder="DE123456789">
-            <small class="help-text">Umsatzsteuer-Identifikationsnummer. F&uuml;r E-Rechnungen (ZUGFeRD) empfohlen.</small>
+            <small class="help-text">Umsatzsteuer-Identifikationsnummer. Wird im Footer der PDF-Dokumente angezeigt.</small>
         </div>
 
         <div class="form-group">
@@ -67,10 +61,6 @@
         </div>
 
         <div class="form-row">
-            <div class="form-group">
-                <label>Zahlungsziel (Tage)</label>
-                <input type="number" name="payment_terms_days" value="{{ settings.payment_terms_days or 14 }}" min="1" max="365">
-            </div>
             <div class="form-group">
                 <label>Angebots-G&uuml;ltigkeit (Tage)</label>
                 <input type="number" name="quote_validity_days" value="{{ settings.quote_validity_days or 14 }}" min="1" max="365">
@@ -100,6 +90,16 @@
         <div class="form-group">
             <label>Shop-Beschreibung</label>
             <textarea name="shop_description" rows="2" placeholder="Kurze Beschreibung für die Storefront...">{{ settings.shop_description or '' }}</textarea>
+        </div>
+
+        <hr class="section-divider">
+
+        <h2>Etiketten</h2>
+
+        <div class="form-group">
+            <label>Zus&auml;tzlicher Etiketten-Text</label>
+            <textarea name="label_extra_text" rows="2" placeholder="z.B. Eigentum von ...&#10;Tel: +49 ...">{{ settings.label_extra_text or '' }}</textarea>
+            <small class="help-text">Wird auf jedem Einheiten-Etikett unter Kennung/Seriennummer gedruckt. Jede Eingabezeile wird zu einer eigenen Zeile auf dem Etikett.</small>
         </div>
 
         <hr class="section-divider">

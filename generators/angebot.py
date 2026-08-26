@@ -33,7 +33,6 @@ def build_angebot_pdf(
     issuer_name: str,
     issuer_address: list[str],
     contact_lines: list[str],
-    bank_lines: list[str],
     tax_number: str | None = None,
     vat_id: str | None = None,
     tax_mode: str = "kleinunternehmer",  # 'kleinunternehmer' or 'regular'
@@ -70,9 +69,6 @@ def build_angebot_pdf(
     # Totals
     subtotal: float = 0,
     total: float = 0,
-
-    # Payment
-    payment_terms_days: int = 14,
 
     # Notes
     notes: str | None = None,
@@ -115,7 +111,6 @@ def build_angebot_pdf(
                      issuer_name=issuer_name,
                      issuer_address=issuer_address,
                      contact_lines=contact_lines,
-                     bank_lines=bank_lines,
                      tax_number=tax_number,
                      vat_id=vat_id)
 
@@ -447,10 +442,6 @@ def build_angebot_pdf(
     story.append(Spacer(1, 4))
     story.append(Paragraph(
         f"Dieses Angebot ist gültig bis zum {gueltig_bis}.",
-        styles["normal"]
-    ))
-    story.append(Paragraph(
-        f"Zahlungsziel: {payment_terms_days} Tage nach Rechnungsstellung.",
         styles["normal"]
     ))
     story.append(Spacer(1, 14))

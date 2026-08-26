@@ -262,6 +262,12 @@ with app.app_context():
         db.session.commit()
         print('  migrated: dropped table customer')
 
+    # ── Invoicing moved to external tool: drop invoice-only settings ──
+    _drop_column_if_exists('site_settings', 'bank_lines')
+    _drop_column_if_exists('site_settings', 'payment_terms_days')
+    # Extra text printed on unit labels
+    _add_column_if_missing('site_settings', 'label_extra_text', 'TEXT')
+
     # ── Category names no longer unique (slug URLs disambiguate via path) ──
     # SQLite can't drop a UNIQUE constraint, so rebuild the table without it.
     _cat_indexes = db.session.execute(_sql_text("PRAGMA index_list('category')")).fetchall()
