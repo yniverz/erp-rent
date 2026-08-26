@@ -752,9 +752,9 @@ def _unit_label_png_bytes(unit):
     qr_buf.seek(0)
     qr_img = Image.open(qr_buf).convert('1')
 
-    name_font = _label_font(64, bold=True)
+    name_font = _label_font(100, bold=True)
     tag_font = _label_font(120, bold=True)
-    sn_font = _label_font(52)
+    sn_font = _label_font(100)
 
     name = unit.item.name if unit.item else ''
     tag = unit.asset_tag or f'#{unit.id}'
