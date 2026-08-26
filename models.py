@@ -2,8 +2,19 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import re
+import unicodedata
 
 db = SQLAlchemy()
+
+
+def slugify(value):
+    """Turn a name into a URL slug: lowercase, umlaut transliteration, hyphens."""
+    value = (value or '').strip().lower()
+    for src, repl in (('ä', 'ae'), ('ö', 'oe'), ('ü', 'ue'), ('ß', 'ss')):
+        value = value.replace(src, repl)
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    return re.sub(r'[^a-z0-9]+', '-', value).strip('-')
 
 
 class User(UserMixin, db.Model):
@@ -53,7 +64,7 @@ class PackageComponent(db.Model):
 class Category(db.Model):
     """Category for organizing inventory items – supports unlimited nesting"""
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    name = db.Column(db.String(100), nullable=False)
     display_order = db.Column(db.Integer, default=0)
     parent_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
     image_filename = db.Column(db.String(300), nullable=True)
@@ -71,6 +82,16 @@ class Category(db.Model):
             current = current.parent
         result.reverse()
         return result
+
+    @property
+    def slug(self):
+        """URL slug derived from the name (falls back to id for exotic names)."""
+        return slugify(self.name) or f'kat-{self.id}'
+
+    @property
+    def url_path(self):
+        """Full slug path from root, e.g. 'beschallung/kabel'."""
+        return '/'.join(c.slug for c in self.ancestors + [self])
 
     @property
     def depth(self):

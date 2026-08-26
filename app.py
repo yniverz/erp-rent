@@ -262,6 +262,28 @@ with app.app_context():
         db.session.commit()
         print('  migrated: dropped table customer')
 
+    # ── Category names no longer unique (slug URLs disambiguate via path) ──
+    # SQLite can't drop a UNIQUE constraint, so rebuild the table without it.
+    _cat_indexes = db.session.execute(_sql_text("PRAGMA index_list('category')")).fetchall()
+    if any(row[2] for row in _cat_indexes):  # row: (seq, name, unique, origin, partial)
+        db.session.execute(_sql_text(
+            'CREATE TABLE _category_new ('
+            'id INTEGER NOT NULL, '
+            'name VARCHAR(100) NOT NULL, '
+            'display_order INTEGER, '
+            'parent_id INTEGER REFERENCES category(id), '
+            'image_filename VARCHAR(300), '
+            'PRIMARY KEY (id))'
+        ))
+        db.session.execute(_sql_text(
+            'INSERT INTO _category_new (id, name, display_order, parent_id, image_filename) '
+            'SELECT id, name, display_order, parent_id, image_filename FROM category'
+        ))
+        db.session.execute(_sql_text('DROP TABLE category'))
+        db.session.execute(_sql_text('ALTER TABLE _category_new RENAME TO category'))
+        db.session.commit()
+        print('  migrated: removed UNIQUE constraint from category.name')
+
     # ── One-time conversion: ItemOwnership → Item.stock_quantity + Supplier/ItemSupply ──
     if _needs_ownership_conversion:
         from models import Supplier, ItemSupply, Item

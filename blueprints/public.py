@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, make_response
-from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings, item_subcategories
+from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings, item_subcategories, slugify
 from helpers import send_inquiry_notification, get_upload_path
 from datetime import datetime, date
 import os
@@ -19,11 +19,63 @@ def toggle_price_mode():
     return resp
 
 
+def _misc_category_ids(all_categories):
+    """Ids of parent categories that have visible items directly assigned (virtual "Sonstiges")."""
+    parent_cats = [c for c in all_categories if c.children]
+    if not parent_cats:
+        return set()
+    parent_cat_ids = [c.id for c in parent_cats]
+    direct_item_cats = db.session.query(Item.category_id).filter(
+        Item.visible_in_shop == True,
+        Item.category_id.in_(parent_cat_ids)
+    ).distinct().all()
+    return {row[0] for row in direct_item_cats}
+
+
+def _resolve_category_path(cat_path, all_categories):
+    """Resolve a slug path like 'beschallung/kabel' to a Category (case-insensitive).
+
+    Returns the matched Category or None. If the full path doesn't match,
+    falls back to the last segment matched anywhere in the tree.
+    """
+    segments = [slugify(s) for s in cat_path.split('/') if s.strip()]
+    segments = [s for s in segments if s]
+    if not segments:
+        return None
+
+    def _sorted(cats):
+        return sorted(cats, key=lambda c: (c.display_order or 0, c.name))
+
+    current = None
+    candidates = [c for c in all_categories if c.parent_id is None]
+    for seg in segments:
+        match = next((c for c in _sorted(candidates) if c.slug == seg), None)
+        if not match:
+            current = None
+            break
+        current = match
+        candidates = list(current.children)
+    if current is not None:
+        return current
+
+    # Fallback: match the last segment against all categories
+    return next((c for c in _sorted(all_categories) if c.slug == segments[-1]), None)
+
+
 @public_bp.route('/')
 def catalog():
     """Public storefront catalog"""
-    selected_category = request.args.get('category', type=int)
-    misc = request.args.get('misc', type=int, default=0)
+    # Legacy links: ?category=<id> → permanent redirect to the slug URL
+    legacy_category = request.args.get('category', type=int)
+    if legacy_category:
+        cat = Category.query.get(legacy_category)
+        if not cat:
+            return redirect(url_for('public.catalog'))
+        params = {'cat_path': cat.url_path}
+        if request.args.get('misc', type=int):
+            params['misc'] = 1
+        return redirect(url_for('public.catalog_category', **params), code=301)
+
     search_query = request.args.get('q', '').strip()
 
     # Build full category tree for sidebar
@@ -33,19 +85,7 @@ def catalog():
     # Top-level categories (for main page cards)
     top_level_categories = [c for c in all_categories if c.parent_id is None]
 
-    # Determine which parent categories have direct visible items (for virtual "Sonstiges")
-    parent_cats = [c for c in all_categories if c.children]
-    if parent_cats:
-        parent_cat_ids = [c.id for c in parent_cats]
-        # Find which of these parent categories have at least one visible item directly assigned
-        from sqlalchemy import func
-        direct_item_cats = db.session.query(Item.category_id).filter(
-            Item.visible_in_shop == True,
-            Item.category_id.in_(parent_cat_ids)
-        ).distinct().all()
-        misc_category_ids = {row[0] for row in direct_item_cats}
-    else:
-        misc_category_ids = set()
+    misc_category_ids = _misc_category_ids(all_categories)
 
     # Get cart from session
     cart = session.get('cart', {})
@@ -70,7 +110,7 @@ def catalog():
                                categories=all_categories,
                                category_tree=category_tree,
                                top_level_categories=top_level_categories,
-                               selected_category=selected_category,
+                               selected_category=None,
                                selected_cat=None,
                                cart=cart,
                                cart_count=cart_count,
@@ -80,70 +120,90 @@ def catalog():
                                has_direct_items=False,
                                misc_category_ids=misc_category_ids)
 
-    if selected_category:
-        # Find the selected category and all its descendants
-        cat = Category.query.get(selected_category)
-        if cat:
-            if misc and cat.children:
-                # "Sonstiges" virtual category: only items directly in this category
-                query = Item.query.filter_by(visible_in_shop=True).filter(
-                    db.or_(
-                        Item.category_id == cat.id,
-                        Item.subcategories.any(Category.id == cat.id)
-                    )
-                )
-            else:
-                descendant_ids = cat.all_descendant_ids()
-                query = Item.query.filter_by(visible_in_shop=True).filter(
-                    db.or_(
-                        Item.category_id.in_(descendant_ids),
-                        Item.subcategories.any(Category.id.in_(descendant_ids))
-                    )
-                )
-        else:
-            query = Item.query.filter_by(visible_in_shop=True)
-        items = query.order_by(Item.name).all()
+    # Main page: show top-level category cards
+    return render_template('public/catalog.html',
+                           items=[],
+                           categories=all_categories,
+                           category_tree=category_tree,
+                           top_level_categories=top_level_categories,
+                           selected_category=None,
+                           selected_cat=None,
+                           cart=cart,
+                           cart_count=cart_count,
+                           search_query='',
+                           show_items=False,
+                           misc=False,
+                           has_direct_items=False,
+                           misc_category_ids=misc_category_ids)
 
-        # Check if the category has items directly assigned (not only via children)
-        has_direct_items = False
-        if cat and cat.children:
-            has_direct_items = Item.query.filter_by(visible_in_shop=True).filter(
-                db.or_(
-                    Item.category_id == cat.id,
-                    Item.subcategories.any(Category.id == cat.id)
-                )
-            ).first() is not None
 
-        return render_template('public/catalog.html',
-                               items=items,
-                               categories=all_categories,
-                               category_tree=category_tree,
-                               top_level_categories=top_level_categories,
-                               selected_category=selected_category,
-                               selected_cat=cat,
-                               cart=cart,
-                               cart_count=cart_count,
-                               search_query='',
-                               show_items=True,
-                               misc=misc,
-                               has_direct_items=has_direct_items,
-                               misc_category_ids=misc_category_ids)
+@public_bp.route('/cat/<path:cat_path>')
+def catalog_category(cat_path):
+    """Category view via slug path, e.g. /cat/beschallung/kabel"""
+    misc = request.args.get('misc', type=int, default=0)
+
+    all_categories = Category.query.order_by(Category.display_order, Category.name).all()
+    cat = _resolve_category_path(cat_path, all_categories)
+    if cat is None:
+        return redirect(url_for('public.catalog'))
+
+    # Normalize casing / partial paths to the canonical URL
+    canonical = cat.url_path
+    if cat_path != canonical:
+        params = {'cat_path': canonical}
+        if misc:
+            params['misc'] = 1
+        return redirect(url_for('public.catalog_category', **params), code=301)
+
+    category_tree = Category.get_tree(all_categories)
+    top_level_categories = [c for c in all_categories if c.parent_id is None]
+    misc_category_ids = _misc_category_ids(all_categories)
+
+    cart = session.get('cart', {})
+    cart_count = sum(cart.values())
+
+    if misc and cat.children:
+        # "Sonstiges" virtual category: only items directly in this category
+        query = Item.query.filter_by(visible_in_shop=True).filter(
+            db.or_(
+                Item.category_id == cat.id,
+                Item.subcategories.any(Category.id == cat.id)
+            )
+        )
     else:
-        # Main page: show top-level category cards
-        return render_template('public/catalog.html',
-                               items=[],
-                               categories=all_categories,
-                               category_tree=category_tree,
-                               top_level_categories=top_level_categories,
-                               selected_category=None,
-                               selected_cat=None,
-                               cart=cart,
-                               cart_count=cart_count,
-                               search_query='',
-                               show_items=False,
-                               misc=False,
-                               has_direct_items=False,
-                               misc_category_ids=misc_category_ids)
+        descendant_ids = cat.all_descendant_ids()
+        query = Item.query.filter_by(visible_in_shop=True).filter(
+            db.or_(
+                Item.category_id.in_(descendant_ids),
+                Item.subcategories.any(Category.id.in_(descendant_ids))
+            )
+        )
+    items = query.order_by(Item.name).all()
+
+    # Check if the category has items directly assigned (not only via children)
+    has_direct_items = False
+    if cat.children:
+        has_direct_items = Item.query.filter_by(visible_in_shop=True).filter(
+            db.or_(
+                Item.category_id == cat.id,
+                Item.subcategories.any(Category.id == cat.id)
+            )
+        ).first() is not None
+
+    return render_template('public/catalog.html',
+                           items=items,
+                           categories=all_categories,
+                           category_tree=category_tree,
+                           top_level_categories=top_level_categories,
+                           selected_category=cat.id,
+                           selected_cat=cat,
+                           cart=cart,
+                           cart_count=cart_count,
+                           search_query='',
+                           show_items=True,
+                           misc=misc,
+                           has_direct_items=has_direct_items,
+                           misc_category_ids=misc_category_ids)
 
 
 @public_bp.route('/item/<int:item_id>')
