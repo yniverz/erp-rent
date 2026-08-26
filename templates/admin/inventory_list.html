@@ -41,8 +41,9 @@
     </select>
     <select name="supplier" onchange="document.getElementById('filter-form').submit()">
         <option value="">Alle Lieferanten</option>
+        <option value="own" {{ 'selected' if filter_supplier == 'own' }}>Eigener Bestand</option>
         {% for s in suppliers %}
-            <option value="{{ s.id }}" {{ 'selected' if filter_supplier == s.id }}>{{ s.name }}</option>
+            <option value="{{ s.id }}" {{ 'selected' if filter_supplier == s.id|string }}>{{ s.name }}</option>
         {% endfor %}
     </select>
     <select name="status" onchange="document.getElementById('filter-form').submit()">

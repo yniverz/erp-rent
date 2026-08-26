@@ -142,7 +142,7 @@ def inventory_list():
     from sqlalchemy import and_, or_
 
     filter_category = request.args.get('category', type=int)
-    filter_supplier = request.args.get('supplier', type=int)
+    filter_supplier = request.args.get('supplier', '').strip()
     filter_status = request.args.get('status', '').strip()
 
     items = Item.query.all()
@@ -197,8 +197,11 @@ def inventory_list():
             items = [i for i in items
                      if i.category_id in cat_ids
                      or any(sc.id in cat_ids for sc in i.subcategories)]
-    if filter_supplier:
-        items = [i for i in items if any(s.supplier_id == filter_supplier for s in i.supplies)]
+    if filter_supplier == 'own':
+        items = [i for i in items if (i.stock_quantity or 0) != 0]
+    elif filter_supplier.isdigit():
+        supplier_id = int(filter_supplier)
+        items = [i for i in items if any(s.supplier_id == supplier_id for s in i.supplies)]
     if filter_status == 'defect':
         items = [i for i in items if i.defect_count > 0]
     elif filter_status == 'inspection_due':
