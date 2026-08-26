@@ -840,12 +840,12 @@ def _lbx_object_style(x, y, w, h, pen_style='NULL', name='Object', lock=0):
     )
 
 
-def _lbx_image(filename, x, y, w, h):
+def _lbx_image(filename, x, y, w, h, name='Image1'):
     """Embedded-BMP image object. The BMP is already pure black/white, so use
     a plain BINARY threshold (no dithering)."""
     return (
         '<image:image>'
-        + _lbx_object_style(x, y, w, h, name='Image1', lock=2)
+        + _lbx_object_style(x, y, w, h, name=name, lock=2)
         + f'<image:imageStyle originalName="{filename}" alignInText="NONE" firstMerge="true" IpName="" fileName="{filename}">'
         + '<image:transparent flag="false" color="#FFFFFF"/>'
         + '<image:trimming flag="false" shape="RECTANGLE" trimOrgX="0pt" trimOrgY="0pt" trimOrgWidth="0pt" trimOrgHeight="0pt"/>'
@@ -859,34 +859,41 @@ def _lbx_image(filename, x, y, w, h):
     )
 
 
-def _unit_label_lbx_bytes(unit):
-    """P-touch Editor .lbx file for one unit: the composed label PNG embedded
-    as a single image object on 24mm tape — scale it as one piece."""
+def _units_label_lbx_bytes(units, title):
+    """P-touch Editor .lbx file with the composed label PNGs of all given units
+    placed one after another on 24mm tape, separated by a 2mm gap — print once,
+    cut between the labels."""
     TAPE_W = 68          # 24mm tape in pt
     FORMAT = 261         # Brother format code for 24mm
     END_MARGIN = 5.6     # unprintable 2mm leader/trailer
+    GAP = 5.6            # 2mm gap between labels
     # PT-P700 print head covers only 18mm (51.2pt) of a 24mm tape:
     # (68 - 51.2) / 2 = 8.4pt unprintable on each side.
     SIDE_MARGIN = 8.4
     BAND_H = TAPE_W - 2 * SIDE_MARGIN   # 51.2pt printable across the tape
 
     from PIL import Image
-    tag = unit.asset_tag or f'#{unit.id}'
 
-    # Compose the label once as PNG, embed as 32-bit BMP (the only raster
+    # Compose each label as PNG, embed as 32-bit BMP (the only raster
     # format .lbx stores; P-touch Editor writes 32bpp).
-    img = Image.open(BytesIO(_unit_label_png_bytes(unit))).convert('RGBA')
-    bmp_buf = BytesIO()
-    img.save(bmp_buf, format='BMP')
-    bmp_name = 'Object0.bmp'
+    objects = []
+    bmps = []
+    x = END_MARGIN
+    for i, unit in enumerate(units):
+        img = Image.open(BytesIO(_unit_label_png_bytes(unit))).convert('RGBA')
+        bmp_buf = BytesIO()
+        img.save(bmp_buf, format='BMP')
+        bmp_name = f'Object{i}.bmp'
+        bmps.append((bmp_name, bmp_buf.getvalue()))
+        if i:
+            x += GAP
+        # Fill the printable band, keep the PNG's aspect ratio
+        img_w = round(BAND_H * img.width / img.height, 2)
+        objects.append(_lbx_image(bmp_name, round(x, 2), SIDE_MARGIN, img_w, BAND_H, name=f'Image{i + 1}'))
+        x += img_w
 
-    # Fill the printable band, keep the PNG's aspect ratio
-    img_h = BAND_H
-    img_w = round(BAND_H * img.width / img.height, 2)
-    objects = [_lbx_image(bmp_name, END_MARGIN, SIDE_MARGIN, img_w, img_h)]
-
-    length = END_MARGIN + img_w + END_MARGIN
-    bg_w = length - 2 * END_MARGIN
+    length = x + END_MARGIN
+    bg_w = round(length - 2 * END_MARGIN, 2)
     bg_h = TAPE_W - 2 * SIDE_MARGIN
 
     label_xml = (
@@ -924,7 +931,7 @@ def _unit_label_lbx_bytes(unit):
         '<meta:properties xmlns:meta="http://schemas.brother.info/ptouch/2007/lbx/meta" '
         'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">'
         '<meta:appName>P-touch Editor</meta:appName>'
-        f'<dc:title>{_lbx_esc(tag)}</dc:title>'
+        f'<dc:title>{_lbx_esc(title)}</dc:title>'
         '<dc:subject></dc:subject>'
         '<dc:creator>erp-rent</dc:creator>'
         '<meta:keyword></meta:keyword>'
@@ -947,8 +954,14 @@ def _unit_label_lbx_bytes(unit):
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_STORED) as zf:
         zf.writestr('label.xml', label_xml)
         zf.writestr('prop.xml', prop_xml)
-        zf.writestr(bmp_name, bmp_buf.getvalue())
+        for bmp_name, bmp_data in bmps:
+            zf.writestr(bmp_name, bmp_data)
     return buf.getvalue()
+
+
+def _unit_label_lbx_bytes(unit):
+    """P-touch Editor .lbx file for a single unit's label."""
+    return _units_label_lbx_bytes([unit], unit.asset_tag or f'#{unit.id}')
 
 
 @admin_bp.route('/inventory/units/<int:unit_id>/label.lbx')
@@ -961,23 +974,18 @@ def unit_label_lbx(unit_id):
     return send_file(BytesIO(data), mimetype='application/octet-stream', as_attachment=True, download_name=fname)
 
 
-@admin_bp.route('/inventory/<int:item_id>/labels-lbx.zip')
+@admin_bp.route('/inventory/<int:item_id>/labels.lbx')
 @login_required
-def unit_labels_lbx_zip(item_id):
-    """Download all unit labels of an item as a ZIP of .lbx files."""
+def unit_labels_lbx_all(item_id):
+    """Download all unit labels of an item as ONE .lbx (labels in a row, 2mm gap)."""
     item = Item.query.get_or_404(item_id)
     units = [u for u in item.units if u.status != ItemUnit.STATUS_RETIRED]
     if not units:
         flash('Keine Einheiten vorhanden.', 'error')
         return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for u in units:
-            fname = _safe_filename(u.asset_tag or f'unit-{u.id}') + '.lbx'
-            zf.writestr(fname, _unit_label_lbx_bytes(u))
-    buf.seek(0)
-    zip_name = 'etiketten-lbx-' + _safe_filename(item.name) + '.zip'
-    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=zip_name)
+    data = _units_label_lbx_bytes(units, item.name)
+    fname = 'etiketten-' + _safe_filename(item.name) + '.lbx'
+    return send_file(BytesIO(data), mimetype='application/octet-stream', as_attachment=True, download_name=fname)
 
 
 @admin_bp.route('/u/<asset_tag>')

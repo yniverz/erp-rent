@@ -43,7 +43,7 @@
             <a href="{{ url_for('admin.unit_label_lbx', unit_id=single_unit.id) }}"><button>⬇ P-touch (.lbx)</button></a>
         {% else %}
             <a href="{{ url_for('admin.unit_labels_zip', item_id=item.id) }}"><button>⬇ PNG (ZIP)</button></a>
-            <a href="{{ url_for('admin.unit_labels_lbx_zip', item_id=item.id) }}"><button>⬇ P-touch .lbx (ZIP)</button></a>
+            <a href="{{ url_for('admin.unit_labels_lbx_all', item_id=item.id) }}"><button>⬇ P-touch (.lbx)</button></a>
         {% endif %}
         <button onclick="window.close()">Schließen</button>
         <span>{{ labels|length }} Etikett(en) – {{ item.name }}</span>
