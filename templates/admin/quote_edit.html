@@ -309,8 +309,12 @@ const QE = (function() {
             srcBtn = '<button type="button" class="qe-icon-btn' + active + '" title="Beschaffung / Kosten" onclick="QE.toggleSourcing(' + l.id + ')">⚙ ' + esc(short || 'Kosten') + '</button>';
         }
 
+        const uncovered = hasSourcing && l.own_available !== -1
+            ? Math.max(0, l.quantity - l.own_available - (l.sourced_quantity || 0)) : 0;
         const availCell = l.type === 'item'
-            ? availBadge(l.available, l.quantity) + (overstock ? '<div class="qe-line-sub qe-src-warn">⚠ Überbestand</div>' : '')
+            ? availBadge(l.available, l.quantity)
+                + (overstock ? '<div class="qe-line-sub qe-src-warn">⚠ Überbestand</div>' : '')
+                + (uncovered > 0 ? '<div class="qe-line-sub qe-src-warn">⚠ ' + uncovered + ' St. nicht gedeckt</div>' : '')
             : '';
 
         const totalCell = eur(l.total)
