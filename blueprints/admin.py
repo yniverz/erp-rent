@@ -1319,10 +1319,14 @@ def quote_api_details(quote_id):
             if name:
                 quote.customer_name = name
         if 'start_date' in data or 'end_date' in data:
-            start_str = (data.get('start_date') or '').strip()
-            end_str = (data.get('end_date') or '').strip()
-            start = datetime.strptime(start_str, '%Y-%m-%d') if start_str else None
-            end = datetime.strptime(end_str, '%Y-%m-%d') if end_str else None
+            # Only the submitted field(s) change – keep the other one as-is.
+            start, end = quote.start_date, quote.end_date
+            if 'start_date' in data:
+                start_str = (data.get('start_date') or '').strip()
+                start = datetime.strptime(start_str, '%Y-%m-%d') if start_str else None
+            if 'end_date' in data:
+                end_str = (data.get('end_date') or '').strip()
+                end = datetime.strptime(end_str, '%Y-%m-%d') if end_str else None
             if start and end and start > end:
                 return _api_error('Enddatum muss nach oder gleich dem Startdatum sein.')
             quote.start_date = start

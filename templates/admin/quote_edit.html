@@ -194,7 +194,7 @@ const QE = (function() {
     let S = null;                 // current state from server
     let openSourcing = new Set(); // line ids with open sourcing panel
     let lineDebounce = {};        // line id -> {timer, patch}
-    let detailDebounce = null;
+    let detailDebounce = {};      // detail key -> timer
     let pickerDebounce = null;
     let detailsFilled = false;
 
@@ -548,8 +548,9 @@ const QE = (function() {
         document.querySelectorAll('[data-dkey]').forEach(inp => {
             const key = inp.dataset.dkey;
             const send = () => {
-                clearTimeout(detailDebounce);
-                detailDebounce = setTimeout(() => {
+                clearTimeout(detailDebounce[key]);
+                detailDebounce[key] = setTimeout(() => {
+                    delete detailDebounce[key];
                     api('/details', {[key]: inp.value});
                 }, inp.type === 'date' ? 0 : 600);
             };
