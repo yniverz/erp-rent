@@ -223,6 +223,7 @@ with app.app_context():
     _add_column_if_missing('item', 'dimensions', 'TEXT')
     _add_column_if_missing('item', 'storage_location', 'TEXT')
     _add_column_if_missing('item', 'replacement_value', 'FLOAT')
+    _add_column_if_missing('item', 'accessories_note', 'TEXT')
     # Single-company stock model
     _add_column_if_missing('item', 'stock_quantity', 'INTEGER NOT NULL DEFAULT 0')
     # Quote editor v2: line ordering, headings, optional positions

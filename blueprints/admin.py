@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit
+from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
 from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file
 from datetime import datetime
 from functools import wraps
@@ -253,6 +253,43 @@ def _apply_item_specs(item, form):
     item.dimensions = form.get('dimensions', '').strip() or None
     item.storage_location = form.get('storage_location', '').strip() or None
     item.replacement_value = _parse_float_or_none(form.get('replacement_value'))
+    item.accessories_note = form.get('accessories_note', '').replace('\r', '').strip() or None
+
+
+def _parse_accessories_form(form, item_id=None):
+    """Parse Lieferumfang rows from the inventory form into ItemAccessory objects.
+    Raises ValueError on invalid input."""
+    linked_ids = form.getlist('acc_linked_ids')
+    names = form.getlist('acc_names')
+    quantities = form.getlist('acc_quantities')
+    per_units = form.getlist('acc_per_units')
+    values = form.getlist('acc_values')
+    shop_flags = form.getlist('acc_show_in_shop')
+    result = []
+    for i, name in enumerate(names):
+        linked_id = int(linked_ids[i]) if i < len(linked_ids) and linked_ids[i].strip() else None
+        linked = Item.query.get(linked_id) if linked_id else None
+        if linked_id and (not linked or linked.id == item_id):
+            raise ValueError('Ungültiger verknüpfter Artikel im Lieferumfang.')
+        name = name.strip() or (linked.name if linked else '')
+        if not name:
+            continue  # empty row
+        try:
+            qty = int(quantities[i]) if i < len(quantities) and quantities[i].strip() else 1
+            per = int(per_units[i]) if i < len(per_units) and per_units[i].strip() else 1
+        except ValueError:
+            raise ValueError(f'Lieferumfang "{name}": Menge muss eine ganze Zahl sein.')
+        if qty < 1 or per < 1:
+            raise ValueError(f'Lieferumfang "{name}": Menge und "pro" müssen mindestens 1 sein.')
+        value = _parse_float_or_none(values[i] if i < len(values) else '')
+        result.append(ItemAccessory(
+            linked_item_id=linked.id if linked else None, name=name[:200],
+            quantity=qty, per_units=per,
+            value=round(value, 2) if value is not None else None,
+            show_in_shop=(shop_flags[i] == '1') if i < len(shop_flags) else True,
+            position=len(result) + 1,
+        ))
+    return result
 
 
 def _parse_supplies_form(form):
@@ -346,6 +383,7 @@ def inventory_add():
                 # Supplier offers
                 for s in _parse_supplies_form(request.form):
                     db.session.add(ItemSupply(item_id=item.id, **s))
+                item.accessories = _parse_accessories_form(request.form, item.id)
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -389,9 +427,10 @@ def inventory_edit(item_id):
             _apply_item_specs(item, request.form)
 
             if item.is_package:
-                # Packages carry no stock or supplier offers
+                # Packages carry no stock, supplier offers or own accessories
                 item.stock_quantity = 0
                 ItemSupply.query.filter_by(item_id=item.id).delete()
+                item.accessories = []
 
                 # Update package components
                 PackageComponent.query.filter_by(package_id=item.id).delete()
@@ -416,6 +455,9 @@ def inventory_edit(item_id):
                 ItemSupply.query.filter_by(item_id=item.id).delete()
                 for s in _parse_supplies_form(request.form):
                     db.session.add(ItemSupply(item_id=item.id, **s))
+
+                # Lieferumfang: rebuild from form
+                item.accessories = _parse_accessories_form(request.form, item.id)
 
             # Handle image upload
             if 'image' in request.files:
@@ -1677,6 +1719,7 @@ def _packliste_lines(quote):
             'tracked': bool(units),
             'candidates': candidates,
             'assigned_count': len(qi.assigned_units),
+            'accessories': _accessory_rows(qi.item, qi.quantity),
         })
     return lines
 
@@ -2351,6 +2394,14 @@ def _extract_positions(quote, *, include_optional=False, include_headings=False)
     return positions
 
 
+def _accessory_rows(item, quantity):
+    """Lieferumfang lines for *quantity* units of *item* (rounded up per row)."""
+    if not item:
+        return []
+    return [{'name': acc.name, 'quantity': needed}
+            for acc, needed in item.accessories_for(quantity) if needed > 0]
+
+
 def _extract_items_for_lieferschein(quote):
     """Extract items for the Lieferschein (no prices; includes headings, assigned
     serial numbers, excludes optional positions)."""
@@ -2381,6 +2432,8 @@ def _extract_items_for_lieferschein(quote):
                         'quantity': c.quantity,
                         'description': c.item.description if c.item else None,
                         'units': [au.label for au in c.assigned_units],
+                        'accessories': _accessory_rows(c.item, c.quantity),
+                        'accessories_note': c.item.accessories_note if c.item else None,
                     }
                     for c in components
                 ],
@@ -2392,9 +2445,68 @@ def _extract_items_for_lieferschein(quote):
                 'is_bundle': False,
                 'description': qi.item.description if qi.item else None,
                 'units': [au.label for au in qi.assigned_units],
+                'accessories': _accessory_rows(qi.item, qi.quantity),
+                'accessories_note': qi.item.accessories_note if qi.item else None,
             })
 
     return items
+
+
+def _extract_rows_for_wertaufstellung(quote):
+    """Rows for the Wertaufstellung: devices (Gerätewert) plus Lieferumfang with
+    rounded-up quantities. Custom lines and optional positions are skipped.
+    Returns (rows, grand_total, missing_count)."""
+    rows = []
+    totals = {'sum': 0.0, 'missing': 0}
+
+    def _value_row(kind, level, pos, name, quantity, unit_value, units=None):
+        total = round(unit_value * quantity, 2) if unit_value is not None else None
+        if total is None:
+            totals['missing'] += 1
+        else:
+            totals['sum'] += total
+        rows.append({'kind': kind, 'level': level, 'pos': pos, 'name': name,
+                     'quantity': quantity, 'unit_value': unit_value, 'total': total,
+                     'units': units or []})
+
+    def _item_rows(qi, level, pos):
+        item = qi.item
+        _value_row('item', level, pos, qi.display_name, qi.quantity, item.replacement_value,
+                   [au.label for au in qi.assigned_units])
+        for acc, needed in item.accessories_for(qi.quantity):
+            if needed > 0:
+                _value_row('accessory', level + 1, None, acc.name, needed, acc.effective_value())
+
+    pos = 1
+    seen_package_ids = set()
+    for qi in quote.quote_items:  # ordered by position
+        if qi.is_heading:
+            rows.append({'kind': 'heading', 'name': qi.custom_item_name or ''})
+            continue
+        if qi.is_optional or qi.is_custom or not qi.item:
+            continue
+        if qi.package_id:
+            if qi.package_id in seen_package_ids:
+                continue
+            seen_package_ids.add(qi.package_id)
+            rows.append({'kind': 'bundle', 'level': 0, 'pos': pos,
+                         'name': qi.package.name if qi.package else 'Paket', 'quantity': None})
+            for comp in quote.quote_items:
+                if comp.package_id == qi.package_id and comp.item and not comp.is_optional:
+                    _item_rows(comp, 1, None)
+        else:
+            _item_rows(qi, 0, pos)
+        pos += 1
+
+    # Drop headings without any following content (e.g. headings over custom lines only)
+    cleaned = []
+    for i, row in enumerate(rows):
+        if row['kind'] == 'heading':
+            nxt = rows[i + 1] if i + 1 < len(rows) else None
+            if not nxt or nxt['kind'] == 'heading':
+                continue
+        cleaned.append(row)
+    return cleaned, round(totals['sum'], 2), totals['missing']
 
 
 def _send_pdf_response(pdf_bytes, filename):
@@ -2487,3 +2599,34 @@ def lieferschein_pdf(quote_id):
         notes=quote.public_notes,
     )
     return _send_pdf_response(pdf_bytes, f"lieferschein_{quote.reference_number}.pdf")
+
+
+# ── Wertaufstellung PDF ──
+
+@admin_bp.route('/quotes/<int:quote_id>/wertaufstellung.pdf')
+@login_required
+def wertaufstellung_pdf(quote_id):
+    """Generate Wertaufstellung (replacement values incl. Lieferumfang) PDF"""
+    from generators.wertaufstellung import build_wertaufstellung_pdf
+
+    quote = Quote.query.get_or_404(quote_id)
+    site_settings = SiteSettings.query.first()
+    data = _extract_common_pdf_data(quote, site_settings)
+    rows, grand_total, missing = _extract_rows_for_wertaufstellung(quote)
+
+    pdf_bytes = build_wertaufstellung_pdf(
+        issuer_name=data['issuer_name'],
+        issuer_address=data['issuer_address'],
+        contact_lines=data['contact_lines'],
+        tax_number=data['tax_number'],
+        vat_id=data.get('vat_id'),
+        logo_path=data['logo_path'],
+        recipient_lines=data['recipient_lines'],
+        reference_number=quote.reference_number or f"WA-{quote.id:04d}",
+        start_date_str=data['start_date_str'],
+        end_date_str=data['end_date_str'],
+        rows=rows,
+        grand_total=grand_total,
+        missing_count=missing,
+    )
+    return _send_pdf_response(pdf_bytes, f"wertaufstellung_{quote.reference_number}.pdf")

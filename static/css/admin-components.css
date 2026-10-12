@@ -151,9 +151,13 @@
 .ownership-table            { width: 100%; font-size: 0.9em; }
 .col-w-30           { width: 30px; }
 .col-w-50           { width: 50px; }
+.col-w-70           { width: 70px; }
 .col-w-80           { width: 80px; }
 .col-w-90           { width: 90px; }
+.col-w-110          { width: 110px; }
 .col-w-130          { width: 130px; }
+.col-w-180          { width: 180px; }
+.accessory-total    { padding: 9px 0; font-weight: 600; }
 .rental-price-mode  { width: auto; min-width: 100px; }
 .min-w-150          { min-width: 150px; }
 .min-w-160          { min-width: 160px; }

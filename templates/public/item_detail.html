@@ -56,6 +56,22 @@
             </div>
         {% endif %}
 
+        {% set shop_accessories = item.accessories | selectattr('show_in_shop') | list %}
+        {% if not item.is_package and (shop_accessories or item.accessories_note) %}
+            <div class="detail-components">
+                <h3>Lieferumfang</h3>
+                <ul>
+                    <li>1&times; {{ item.name }}</li>
+                    {% for a in shop_accessories %}
+                        <li>{{ a.quantity }}&times; {{ a.name }}{% if a.per_units > 1 %} (je {{ a.per_units }} Stück){% endif %}</li>
+                    {% endfor %}
+                </ul>
+                {% if item.accessories_note %}
+                    <p class="detail-accessories-note">{{ item.accessories_note|nl2br }}</p>
+                {% endif %}
+            </div>
+        {% endif %}
+
         {% if item.is_package and item.package_components %}
             <div class="detail-components">
                 <h3>Paketinhalt</h3>

@@ -126,6 +126,8 @@
                 <td>
                     <strong>{{ qi.item.name }}</strong>
                     {% if qi.package_id and qi.package %}<br><small class="text-muted">📦 {{ qi.package.name }}</small>{% endif %}
+                    {% if line.accessories %}<br><small class="text-muted">+ {% for a in line.accessories %}{{ a.quantity }}× {{ a.name }}{{ ', ' if not loop.last }}{% endfor %}</small>{% endif %}
+                    {% if qi.item.accessories_note %}<br><small class="text-muted"><em>{{ qi.item.accessories_note }}</em></small>{% endif %}
                 </td>
                 <td>
                     {{ qi.quantity }}

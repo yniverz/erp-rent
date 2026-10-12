@@ -198,7 +198,8 @@ class Item(db.Model):
     power_watts = db.Column(db.Float, nullable=True)
     dimensions = db.Column(db.String(200), nullable=True)  # free text, e.g. "60 × 40 × 30 cm"
     storage_location = db.Column(db.String(200), nullable=True)  # Lagerort / Case
-    replacement_value = db.Column(db.Float, nullable=True)  # Wiederbeschaffungswert (per unit)
+    replacement_value = db.Column(db.Float, nullable=True)  # Gerätewert ohne Zubehör (per unit)
+    accessories_note = db.Column(db.Text, nullable=True)  # Hinweis zum Lieferumfang (Shop + Lieferschein)
 
     category = db.relationship('Category', back_populates='items')
     subcategories = db.relationship('Category', secondary=item_subcategories, lazy='selectin')
@@ -213,6 +214,13 @@ class Item(db.Model):
     units = db.relationship('ItemUnit', back_populates='item',
                             cascade='all, delete-orphan', lazy='selectin',
                             order_by='ItemUnit.id')
+    accessories = db.relationship('ItemAccessory', back_populates='item',
+                                  foreign_keys='ItemAccessory.item_id',
+                                  cascade='all, delete-orphan', lazy='selectin',
+                                  order_by='ItemAccessory.position, ItemAccessory.id')
+    # Accessory rows of other items that link to this item (unlinked on delete)
+    accessory_links = db.relationship('ItemAccessory', foreign_keys='ItemAccessory.linked_item_id',
+                                      back_populates='linked_item')
 
     @property
     def total_quantity(self):
@@ -286,6 +294,35 @@ class Item(db.Model):
             total += s.quantity
         return total
 
+    def value_total(self, _seen=None):
+        """Replacement value per unit incl. accessories (shares for per_units > 1).
+        Packages sum their components. None if no value is defined anywhere."""
+        seen = (_seen or set()) | {self.id}
+        parts = []
+        if self.is_package:
+            for pc in self.package_components:
+                if pc.component_item_id not in seen:
+                    v = pc.component_item.value_total(seen)
+                    if v is not None:
+                        parts.append(v * pc.quantity)
+        else:
+            if self.replacement_value is not None:
+                parts.append(self.replacement_value)
+            for acc in self.accessories:
+                v = acc.effective_value(seen)
+                if v is not None:
+                    parts.append(v * acc.share_per_unit)
+        return round(sum(parts), 2) if parts else None
+
+    @property
+    def replacement_value_total(self):
+        return self.value_total()
+
+    def accessories_for(self, quantity, shop_only=False):
+        """Accessory lines for a given number of units: [(accessory, needed_qty)]."""
+        return [(a, a.needed_for(quantity)) for a in self.accessories
+                if not shop_only or a.show_in_shop]
+
     def inspection_due_units(self, within_days=30):
         """Units whose next inspection (e.g. DGUV V3) is due within N days or overdue."""
         from datetime import date, timedelta
@@ -325,6 +362,40 @@ class Item(db.Model):
                     remaining -= use
 
         return round(total_cost, 2), breakdown
+
+
+class ItemAccessory(db.Model):
+    """Lieferumfang/Zubehör of an item, e.g. "2 Superclamps per lamp" or
+    "1 case per 2 lamps" (quantity=1, per_units=2). Optionally linked to another
+    inventory item (name/value fallback only; does not affect availability)."""
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    linked_item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
+    name = db.Column(db.String(200), nullable=False)  # snapshot, survives unlinking
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    per_units = db.Column(db.Integer, nullable=False, default=1)  # quantity applies per N units
+    value = db.Column(db.Float, nullable=True)  # per piece; None -> linked item's value
+    position = db.Column(db.Integer, nullable=False, default=0)
+    show_in_shop = db.Column(db.Boolean, default=True)
+
+    item = db.relationship('Item', foreign_keys=[item_id], back_populates='accessories')
+    linked_item = db.relationship('Item', foreign_keys=[linked_item_id], back_populates='accessory_links')
+
+    @property
+    def share_per_unit(self):
+        return (self.quantity or 0) / max(1, self.per_units or 1)
+
+    def needed_for(self, units):
+        """Pieces needed for *units* items (rounded up: 3 lamps -> 2 cases)."""
+        per = max(1, self.per_units or 1)
+        return -(-(units * (self.quantity or 0)) // per)
+
+    def effective_value(self, _seen=None):
+        if self.value is not None:
+            return self.value
+        if self.linked_item and self.linked_item_id not in (_seen or set()):
+            return self.linked_item.value_total(_seen)
+        return None
 
 
 class ItemUnit(db.Model):

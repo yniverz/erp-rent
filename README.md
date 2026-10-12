@@ -164,6 +164,7 @@ Log in at `/admin` with your admin or staff credentials to access the back-offic
 - **External providers** — Mark a user as an external provider with a per-day cost. The system tracks what you pay externally vs. what you charge customers.
 - **Packages / Bundles** — Create virtual items that are composed of multiple component items. When added to a quote, packages automatically expand into their components with prices distributed proportionally. Bundles can optionally show a discount compared to renting items individually.
 - **Visibility controls** — Hide items from the public shop or hide their price ("on request").
+- **Lieferumfang (accessories)** — Define what comes with each unit, e.g. 2 superclamps per lamp or 1 case per 2 lamps. Each row has its own value and can optionally link to another inventory item. Accessories appear on the Lieferschein and Packliste (quantities rounded up) and, if enabled per row, in the shop. The replacement value per unit is calculated from the device value plus its accessories.
 
 #### Categories
 - Unlimited nesting depth for organizing items.
@@ -184,6 +185,7 @@ Quotes can be edited or deleted at any time.
 Generate professional German-language PDF documents directly from any quote:
 
 - **Angebot (Quote)** — Itemized quote with positions, quantities, daily rates, totals, discount, tax handling, payment terms, and validity period. Includes AGB (terms & conditions) as an appendix if configured.
+- **Wertaufstellung (Value Statement)** — Replacement values of all items in a quote including their accessories, e.g. for insurance.
 - **Lieferschein / Übergabeprotokoll (Delivery Note)** — Lists items and quantities without prices. Includes a condition/comment column for handwritten notes, a deposit field, and signature sections for both handover and return.
 
 All PDFs include your company logo (if uploaded), address, contact details, tax number, and bank information as configured in settings.

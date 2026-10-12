@@ -154,6 +154,7 @@
             <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
             <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF</a>
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
+            <a href="{{ url_for('admin.wertaufstellung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank" title="Wiederbeschaffungswerte inkl. Zubehör, z.B. für die Versicherung">Wertaufstellung PDF</a>
             <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
             <span id="pk-save-quote-status" class="d-flex align-center text-sm text-muted"></span>
             <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">

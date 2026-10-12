@@ -113,6 +113,11 @@
 .detail-components li a:hover {
     text-decoration: underline;
 }
+.detail-accessories-note {
+    margin: 10px 0 0;
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+}
 
 .detail-price {
     font-size: 1.4em;

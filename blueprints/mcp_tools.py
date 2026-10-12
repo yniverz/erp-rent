@@ -20,7 +20,7 @@ from blueprints.api import ApiError, _serialize_quote
 from blueprints.admin import convert_inquiry_to_quote
 from helpers import (get_available_quantity, get_package_available_quantity,
                      get_upload_path, public_base_url)
-from models import (db, Category, Inquiry, Item, ItemSupply, ItemUnit, PackageComponent,
+from models import (db, Category, Inquiry, Item, ItemAccessory, ItemSupply, ItemUnit, PackageComponent,
                     Quote, QuoteItem, SiteSettings, Supplier)
 
 ToolError = ApiError
@@ -92,7 +92,9 @@ ITEM_FIELD_PROPS = {
     'power_watts': _s('number', 'Leistungsaufnahme in Watt', True),
     'dimensions': _s('string', 'Maße als Freitext, z.B. "60 × 40 × 30 cm"', True),
     'storage_location': _s('string', 'Lagerort / Case (intern)', True),
-    'replacement_value': _s('number', 'Wiederbeschaffungswert pro Einheit in EUR (intern)', True),
+    'replacement_value': _s('number', 'Gerätewert ohne Zubehör pro Einheit in EUR (intern, Wiederbeschaffungswert; '
+                             'Zubehör wird über set_item_accessories bewertet)', True),
+    'accessories_note': _s('string', 'Hinweis zum Lieferumfang (öffentlich: Shop + Lieferschein), z.B. "inkl. Safety-Seil"', True),
     'show_bundle_discount': _s('boolean', 'Nur Pakete: Paketpreis im Shop als Rabatt gegenüber Einzelpreisen zeigen'),
 }
 
@@ -257,6 +259,14 @@ def _item_summary(item):
     }
 
 
+def _accessory_dict(a):
+    return {
+        'id': a.id, 'name': a.name, 'quantity': a.quantity, 'per_units': a.per_units,
+        'value': a.value, 'effective_value': a.effective_value(),
+        'linked_item_id': a.linked_item_id, 'show_in_shop': a.show_in_shop,
+    }
+
+
 def _item_detail(item):
     today = datetime.combine(date.today(), datetime.min.time())
     bookings = []
@@ -291,6 +301,9 @@ def _item_detail(item):
         'dimensions': item.dimensions,
         'storage_location': item.storage_location,
         'replacement_value': item.replacement_value,
+        'replacement_value_total': item.replacement_value_total,
+        'accessories': [_accessory_dict(a) for a in item.accessories],
+        'accessories_note': item.accessories_note,
         'image_url': _url('public.uploaded_file', filename=item.image_filename) if item.image_filename else None,
         'shop_url': _url('public.item_detail', item_id=item.id),
         'admin_url': _url('admin.inventory_edit', item_id=item.id),
@@ -310,6 +323,7 @@ def _quote_dict(quote, warnings=None):
     data['admin_url'] = _url('admin.quote_edit', quote_id=quote.id)
     data['angebot_pdf_url'] = _url('admin.angebot_pdf', quote_id=quote.id)
     data['lieferschein_pdf_url'] = _url('admin.lieferschein_pdf', quote_id=quote.id)
+    data['wertaufstellung_pdf_url'] = _url('admin.wertaufstellung_pdf', quote_id=quote.id)
     if warnings is not None:
         data['warnings'] = warnings
     return data
@@ -357,6 +371,7 @@ MISSING_FIELDS = {
     'power_watts': lambda i: i.power_watts is None,
     'dimensions': lambda i: not i.dimensions,
     'replacement_value': lambda i: i.replacement_value is None,
+    'accessories': lambda i: not i.is_package and not i.accessories,
     'price': lambda i: not i.default_rental_price_per_day,
 }
 
@@ -428,6 +443,8 @@ def _apply_item_fields(item, data):
         item.name = name
     if 'description' in data:
         item.description = _text(data['description'])
+    if 'accessories_note' in data:
+        item.accessories_note = _text(data['accessories_note'])
     if 'category_id' in data:
         item.category_id = _get(Category, data['category_id'], 'Kategorie').id if data['category_id'] else None
     if 'subcategory_ids' in data:
@@ -589,6 +606,49 @@ def set_item_supplier_offers(item_id, offers):
             price_is_brutto=bool(o.get('price_is_brutto', True))))
     db.session.commit()
     db.session.refresh(item)
+    return _item_detail(item)
+
+
+@tool('set_item_accessories', 'Lieferumfang festlegen',
+      'Ersetzt den Lieferumfang (Zubehör) eines Artikels. quantity gilt je per_units Geräte: '
+      '2 Superclamps pro Lampe = {quantity: 2, per_units: 1}; 1 Case für 2 Lampen = {quantity: 1, per_units: 2}. '
+      'value = Wert pro Stück (intern, für die Wertaufstellung). Optional linked_item_id verweist auf einen '
+      'Inventar-Artikel (Name/Wert werden übernommen, wenn leer; Verfügbarkeit bleibt unberührt). '
+      'Leere Liste entfernt den Lieferumfang.',
+      {'item_id': ID('des Artikels'),
+       'accessories': {'type': 'array', 'maxItems': 50,
+                       'items': {'type': 'object', 'additionalProperties': False, 'properties': {
+                           'name': {'type': 'string', 'description': 'Bezeichnung (optional bei linked_item_id)'},
+                           'quantity': {'type': 'integer', 'minimum': 1, 'description': 'Standard 1'},
+                           'per_units': {'type': 'integer', 'minimum': 1, 'description': 'Menge gilt je so viele Geräte (Standard 1)'},
+                           'value': {'type': ['number', 'null'], 'minimum': 0, 'description': 'Wert pro Stück in EUR'},
+                           'linked_item_id': {'type': ['integer', 'null'], 'description': 'Optional: verknüpfter Artikel'},
+                           'show_in_shop': {'type': 'boolean', 'description': 'Im Shop anzeigen (Standard true)'}}}}},
+      ['item_id', 'accessories'], idempotent=True)
+def set_item_accessories(item_id, accessories):
+    item = _get(Item, item_id, 'Artikel')
+    if item.is_package:
+        raise ToolError('Pakete haben keinen eigenen Lieferumfang (ergibt sich aus den Komponenten).')
+    rows = []
+    for i, acc in enumerate(accessories, start=1):
+        linked = None
+        if acc.get('linked_item_id'):
+            linked = _get(Item, acc['linked_item_id'], 'Artikel')
+            if linked.id == item.id:
+                raise ToolError('Ein Artikel kann nicht sein eigenes Zubehör sein.')
+        name = _text(acc.get('name'), 200) or (linked.name if linked else None)
+        if not name:
+            raise ToolError(f'Zeile {i}: name oder linked_item_id ist erforderlich.')
+        qty, per = int(acc.get('quantity') or 1), int(acc.get('per_units') or 1)
+        if qty < 1 or per < 1:
+            raise ToolError(f'{name}: quantity und per_units müssen >= 1 sein.')
+        value = _num(acc.get('value'), 'value', 0)
+        rows.append(ItemAccessory(
+            name=name, linked_item_id=linked.id if linked else None, quantity=qty, per_units=per,
+            value=round(value, 2) if value is not None else None,
+            show_in_shop=bool(acc.get('show_in_shop', True)), position=i))
+    item.accessories = rows
+    db.session.commit()
     return _item_detail(item)
 
 

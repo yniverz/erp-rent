@@ -38,7 +38,7 @@
         </div>
 
         <h3>Technische Daten &amp; Logistik</h3>
-        <p class="help-text mb-10">Optional. Hersteller, Modell, Gewicht, Leistung und Maße werden im Shop auf der Artikelseite angezeigt – Lagerort und Wiederbeschaffungswert sind nur intern sichtbar.</p>
+        <p class="help-text mb-10">Optional. Hersteller, Modell, Gewicht, Leistung und Maße werden im Shop auf der Artikelseite angezeigt – der Lagerort ist nur intern sichtbar.</p>
         <div class="form-row">
             <div class="form-group">
                 <label>Hersteller</label>
@@ -67,10 +67,6 @@
             <div class="form-group">
                 <label>Lagerort / Case</label>
                 <input type="text" name="storage_location" value="{{ item.storage_location or '' if item else '' }}" placeholder="z.B. Regal A3, Case 12">
-            </div>
-            <div class="form-group">
-                <label>Wiederbeschaffungswert (&euro;)</label>
-                <input type="number" name="replacement_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="pro Stück, für Versicherung/Schadensfall">
             </div>
         </div>
 
@@ -135,6 +131,68 @@
             {% endif %}
             <input type="file" name="image" accept="image/*">
             <small class="help-text">Akzeptierte Formate: PNG, JPG, GIF, WebP (max. 16MB)</small>
+        </div>
+
+        <!-- Lieferumfang & Wert (hidden when is_package is checked) -->
+        <div id="accessories-section">
+            <h3>Lieferumfang &amp; Wert</h3>
+            <p class="help-text mb-10">Zubehör, das zu jedem Gerät gehört – erscheint auf Lieferschein und Packliste. „pro“ = die Menge gilt je so viele Geräte (z.B. 1 Case pro 2 Lampen → bei 3 Lampen werden 2 Cases eingeplant). Werte sind intern und nur für die Wertaufstellung (z.B. Versicherung).</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Gerätewert ohne Zubehör (&euro;)</label>
+                    <input type="number" name="replacement_value" id="device_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="Wiederbeschaffungswert pro Stück" oninput="updateAccessoryTotal()">
+                </div>
+                <div class="form-group">
+                    <label>Gesamtwert pro Gerät inkl. Zubehör</label>
+                    <div class="accessory-total" id="accessory-total">–</div>
+                </div>
+            </div>
+            <table class="ownership-table accessory-table">
+                <thead>
+                    <tr>
+                        <th class="col-w-180">Verknüpfter Artikel</th>
+                        <th>Bezeichnung</th>
+                        <th class="col-w-70">Menge</th>
+                        <th class="col-w-70">pro</th>
+                        <th class="col-w-110">Wert/Stk (&euro;)</th>
+                        <th class="col-w-80">Shop</th>
+                        <th class="col-w-30"></th>
+                    </tr>
+                </thead>
+                <tbody id="accessory-container">
+                    {% if item and not item.is_package %}
+                        {% for a in item.accessories %}
+                    <tr class="accessory-row">
+                        <td>
+                            <select name="acc_linked_ids" class="w-full" onchange="onAccessoryLinkChange(this)">
+                                <option value="">— frei —</option>
+                                {% for ai in all_items %}
+                                    <option value="{{ ai.id }}" data-name="{{ ai.name }}" data-value="{{ ai.replacement_value_total if ai.replacement_value_total is not none else '' }}" {{ 'selected' if ai.id == a.linked_item_id }}>{{ ai.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td><input type="text" name="acc_names" value="{{ a.name }}" class="w-full" placeholder="z.B. Superclamp"></td>
+                        <td><input type="number" name="acc_quantities" value="{{ a.quantity }}" min="1" class="w-full" oninput="updateAccessoryTotal()"></td>
+                        <td><input type="number" name="acc_per_units" value="{{ a.per_units }}" min="1" class="w-full" title="Menge gilt je so viele Geräte" oninput="updateAccessoryTotal()"></td>
+                        <td><input type="number" name="acc_values" step="0.01" min="0" value="{{ a.value if a.value is not none else '' }}" class="w-full" placeholder="{{ a.linked_item.replacement_value_total if a.linked_item and a.linked_item.replacement_value_total is not none else '' }}" oninput="updateAccessoryTotal()"></td>
+                        <td>
+                            <select name="acc_show_in_shop" class="w-full">
+                                <option value="1" {{ 'selected' if a.show_in_shop }}>Ja</option>
+                                <option value="0" {{ 'selected' if not a.show_in_shop }}>Nein</option>
+                            </select>
+                        </td>
+                        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove(); updateAccessoryTotal()">✕</button></td>
+                    </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addAccessoryRow()">+ Zubehör hinzufügen</button>
+            <div class="form-group mt-16">
+                <label>Hinweis zum Lieferumfang</label>
+                <textarea name="accessories_note" rows="2" placeholder="z.B. inkl. Safety-Seil und Netzkabel">{{ item.accessories_note or '' if item else '' }}</textarea>
+                <small class="help-text">Öffentlich: erscheint im Shop und auf dem Lieferschein.</small>
+            </div>
         </div>
 
         <!-- Stock & Suppliers Section (hidden when is_package is checked) -->
@@ -344,6 +402,7 @@ function togglePackageFields() {
     var isPackage = document.getElementById('is_package').checked;
     document.getElementById('package-components-section').classList.toggle('d-none', !isPackage);
     document.getElementById('ownership-section').classList.toggle('d-none', isPackage);
+    document.getElementById('accessories-section').classList.toggle('d-none', isPackage);
     document.getElementById('bundle-discount-option').classList.toggle('d-none', !isPackage);
     if (isPackage) {
         if (document.getElementById('components-tbody').children.length === 0) {
@@ -374,6 +433,58 @@ function addSupplyRow() {
     tbody.appendChild(tr);
 }
 
+// ── Lieferumfang rows ──
+function addAccessoryRow() {
+    var tbody = document.getElementById('accessory-container');
+    var tr = document.createElement('tr');
+    tr.className = 'accessory-row';
+    tr.innerHTML = `
+        <td>
+            <select name="acc_linked_ids" class="w-full" onchange="onAccessoryLinkChange(this)">
+                <option value="">— frei —</option>
+                {% for ai in all_items %}
+                <option value="{{ ai.id }}" data-name="{{ ai.name }}" data-value="{{ ai.replacement_value_total if ai.replacement_value_total is not none else '' }}">{{ ai.name }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td><input type="text" name="acc_names" class="w-full" placeholder="z.B. Superclamp"></td>
+        <td><input type="number" name="acc_quantities" value="1" min="1" class="w-full" oninput="updateAccessoryTotal()"></td>
+        <td><input type="number" name="acc_per_units" value="1" min="1" class="w-full" title="Menge gilt je so viele Geräte" oninput="updateAccessoryTotal()"></td>
+        <td><input type="number" name="acc_values" step="0.01" min="0" class="w-full" oninput="updateAccessoryTotal()"></td>
+        <td><select name="acc_show_in_shop" class="w-full"><option value="1" selected>Ja</option><option value="0">Nein</option></select></td>
+        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove(); updateAccessoryTotal()">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+}
+
+function onAccessoryLinkChange(select) {
+    var opt = select.options[select.selectedIndex];
+    var row = select.closest('tr');
+    var nameInput = row.querySelector('[name="acc_names"]');
+    var valueInput = row.querySelector('[name="acc_values"]');
+    if (opt.value && !nameInput.value.trim()) nameInput.value = opt.dataset.name;
+    valueInput.placeholder = opt.value ? (opt.dataset.value || '') : '';
+    updateAccessoryTotal();
+}
+
+function updateAccessoryTotal() {
+    var out = document.getElementById('accessory-total');
+    var device = parseFloat(document.getElementById('device_value').value);
+    var total = isNaN(device) ? 0 : device;
+    var any = !isNaN(device);
+    document.querySelectorAll('#accessory-container .accessory-row').forEach(function (row) {
+        var valInput = row.querySelector('[name="acc_values"]');
+        var val = parseFloat(valInput.value);
+        if (isNaN(val)) val = parseFloat(valInput.placeholder);
+        if (isNaN(val)) return;
+        var qty = parseInt(row.querySelector('[name="acc_quantities"]').value) || 0;
+        var per = Math.max(1, parseInt(row.querySelector('[name="acc_per_units"]').value) || 1);
+        total += val * qty / per;
+        any = true;
+    });
+    out.textContent = any ? total.toFixed(2).replace('.', ',') + ' €' : '–';
+}
+
 // ── Component rows (packages) ──
 function addComponentRow() {
     var tbody = document.getElementById('components-tbody');
@@ -395,6 +506,7 @@ function addComponentRow() {
 
 // ── Initialize on page load ──
 togglePackageFields();
+updateAccessoryTotal();
 
 {% if item and not item.is_package %}
 // ── Availability check ──

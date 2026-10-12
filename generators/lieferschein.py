@@ -52,7 +52,9 @@ def build_lieferschein_pdf(
 
     # Items: list of dicts
     # Each: { 'name': str, 'quantity': int, 'is_bundle': bool,
-    #          'bundle_components': [{'name': str, 'quantity': int}] }
+    #          'bundle_components': [{'name': str, 'quantity': int}],
+    #          'accessories': [{'name': str, 'quantity': int}],  (also on components)
+    #          'accessories_note': str | None }
     items: list[dict],
 
     # Kaution (optional)
@@ -139,6 +141,27 @@ def build_lieferschein_pdf(
     pos_nr = 1
     heading_row_idxs: list = []
     data_row_heights: list = []
+
+    def _add_accessory_rows(entry, prefix):
+        """Lieferumfang as indented sub-rows (+ optional note) below an item."""
+        from xml.sax.saxutils import escape as _esc
+        for acc in entry.get("accessories") or []:
+            table_data.append([
+                Paragraph("", styles["table_cell"]),
+                Paragraph(f"{prefix}+ {_esc(acc['name'])}", styles["table_cell_indent"]),
+                Paragraph(str(acc["quantity"]), styles["table_cell_indent"]),
+                Paragraph("", styles["table_cell_indent"]),
+            ])
+            data_row_heights.append(None)
+        note = entry.get("accessories_note")
+        if note:
+            table_data.append([
+                Paragraph("", styles["table_cell"]),
+                Paragraph(f"{prefix}<i>{_fmt_desc(note)}</i>", styles["table_cell_indent"]),
+                Paragraph("", styles["table_cell_indent"]),
+                Paragraph("", styles["table_cell_indent"]),
+            ])
+            data_row_heights.append(None)
     for item in items:
         if item.get("is_heading"):
             heading_row_idxs.append(len(table_data))
@@ -169,6 +192,7 @@ def build_lieferschein_pdf(
                     Paragraph(cdesc, styles["table_cell_indent"]),
                 ])
                 data_row_heights.append(None if (cdesc or comp.get("units")) else 24)
+                _add_accessory_rows(comp, "&nbsp;&nbsp;&nbsp;")
         else:
             desc = _fmt_desc(item.get("description"))
             table_data.append([
@@ -178,6 +202,7 @@ def build_lieferschein_pdf(
                 Paragraph(desc, styles["table_cell"]),
             ])
             data_row_heights.append(None if (desc or item.get("units")) else 24)
+            _add_accessory_rows(item, "")
         pos_nr += 1
 
     # Header row auto, data rows fixed-min where empty (room for handwriting)

@@ -27,6 +27,9 @@ Hinweise:
   Markdown/HTML; die ersten ~120 Zeichen werden in der Katalogübersicht angezeigt).
 - Preise sind Mietpreise in EUR pro Einheit und Tag (brutto, außer prices_are_net ist gesetzt).
 - Bestand -1 bedeutet unbegrenzt. Daten im Format YYYY-MM-DD.
+- Lieferumfang (Zubehör wie Superclamps, Cases, Kabel) über set_item_accessories pflegen, nicht in
+  die Beschreibung schreiben. replacement_value ist der Gerätewert ohne Zubehör; der Gesamtwert
+  (replacement_value_total) wird aus Gerätewert + Zubehör berechnet.
 - Vor Massenänderungen erst mit list_items/get_item den aktuellen Stand lesen und nur Felder
   senden, die sich ändern sollen. Technische Daten nur eintragen, wenn sie sicher bekannt sind.
 - Änderungen wirken sofort im Live-System."""
