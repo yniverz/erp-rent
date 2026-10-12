@@ -598,4 +598,68 @@ class SiteSettings(db.Model):
     terms_and_conditions_text = db.Column(db.Text, nullable=True)
     # Notification
     notification_email = db.Column(db.String(200), nullable=True)
+    # MCP server (Claude connector)
+    mcp_enabled = db.Column(db.Boolean, default=False)
+    mcp_allow_delete = db.Column(db.Boolean, default=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── OAuth 2.1 (authorization server for the MCP endpoint) ─────────────
+# Secrets (client secrets, codes, tokens) are stored as SHA-256 hashes only.
+
+class OAuthClient(db.Model):
+    """OAuth client, registered dynamically (RFC 7591) or via a
+    Client ID Metadata Document (client_id is then an https URL)."""
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.String(500), unique=True, nullable=False)
+    client_secret_hash = db.Column(db.String(64), nullable=True)  # None = public client (PKCE only)
+    client_name = db.Column(db.String(200), nullable=True)
+    redirect_uris = db.Column(db.Text, nullable=False, default='[]')  # JSON list
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def redirect_uri_list(self):
+        import json
+        try:
+            return json.loads(self.redirect_uris or '[]')
+        except ValueError:
+            return []
+
+    @property
+    def display_name(self):
+        return self.client_name or self.client_id
+
+
+class OAuthAuthorizationCode(db.Model):
+    """Short-lived authorization code (PKCE S256)."""
+    id = db.Column(db.Integer, primary_key=True)
+    code_hash = db.Column(db.String(64), unique=True, nullable=False)
+    client_id = db.Column(db.String(500), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    redirect_uri = db.Column(db.Text, nullable=False)
+    code_challenge = db.Column(db.String(200), nullable=False)
+    scope = db.Column(db.String(200), nullable=True)
+    resource = db.Column(db.String(500), nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+
+class OAuthToken(db.Model):
+    """Access/refresh token pair issued to a client on behalf of a user.
+    Refresh tokens rotate: each refresh revokes the old row and creates a new one."""
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.String(500), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    access_token_hash = db.Column(db.String(64), unique=True, nullable=False)
+    refresh_token_hash = db.Column(db.String(64), unique=True, nullable=True)
+    scope = db.Column(db.String(200), nullable=True)
+    access_expires_at = db.Column(db.DateTime, nullable=False)
+    refresh_expires_at = db.Column(db.DateTime, nullable=True)
+    revoked = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User')
+
+    @property
+    def client(self):
+        return OAuthClient.query.filter_by(client_id=self.client_id).first()

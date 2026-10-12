@@ -1846,6 +1846,77 @@ def inquiry_update_status(inquiry_id):
     return redirect(url_for('admin.inquiry_view', inquiry_id=inquiry_id))
 
 
+def convert_inquiry_to_quote(inquiry, created_by_id=None):
+    """Create a draft quote from an inquiry (items, dates, contact notes) and
+    mark the inquiry as converted. Commits and returns the new quote."""
+    quote = Quote(
+        customer_name=inquiry.customer_name,
+        created_by_id=created_by_id,
+        start_date=inquiry.desired_start_date,
+        end_date=inquiry.desired_end_date,
+        rental_days=1,
+        status='draft',
+        inquiry_id=inquiry.id,
+        notes=f"Aus Anfrage umgewandelt. E-Mail: {inquiry.customer_email}"
+              + (f", Telefon: {inquiry.customer_phone}" if inquiry.customer_phone else "")
+              + (f"\n{inquiry.message}" if inquiry.message else "")
+    )
+    if quote.start_date and quote.end_date:
+        delta = quote.end_date - quote.start_date
+        quote.rental_days = max(1, delta.days + 1)
+
+    db.session.add(quote)
+    db.session.commit()
+
+    quote.generate_reference_number()
+
+    # Add inquiry items to the quote
+    _pos = 1
+    for inq_item in inquiry.items:
+        item = Item.query.get(inq_item.item_id)
+        if item:
+            if item.is_package:
+                # Expand package into components
+                component_price_sum = item.component_price_sum
+                for pc in item.package_components:
+                    if component_price_sum > 0:
+                        comp_share = (pc.component_item.default_rental_price_per_day * pc.quantity) / component_price_sum
+                        adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
+                    else:
+                        adjusted_price = 0
+                    for _ in range(inq_item.quantity):
+                        qi = QuoteItem(
+                            quote_id=quote.id,
+                            item_id=pc.component_item_id,
+                            quantity=pc.quantity,
+                            rental_price_per_day=adjusted_price,
+                            is_custom=False,
+                            package_id=item.id,
+                            position=_pos
+                        )
+                        _pos += 1
+                        db.session.add(qi)
+                        db.session.flush()
+                        _apply_default_sources(qi, pc.component_item, quote)
+            else:
+                qi = QuoteItem(
+                    quote_id=quote.id,
+                    item_id=item.id,
+                    quantity=inq_item.quantity,
+                    rental_price_per_day=item.default_rental_price_per_day,
+                    is_custom=False,
+                    position=_pos
+                )
+                _pos += 1
+                db.session.add(qi)
+                db.session.flush()
+                _apply_default_sources(qi, item, quote)
+
+    inquiry.status = 'converted'
+    db.session.commit()
+    return quote
+
+
 @admin_bp.route('/inquiries/<int:inquiry_id>/convert', methods=['POST'])
 @login_required
 def inquiry_convert(inquiry_id):
@@ -1853,72 +1924,7 @@ def inquiry_convert(inquiry_id):
     inquiry = Inquiry.query.get_or_404(inquiry_id)
 
     try:
-        quote = Quote(
-            customer_name=inquiry.customer_name,
-            created_by_id=current_user.id,
-            start_date=inquiry.desired_start_date,
-            end_date=inquiry.desired_end_date,
-            rental_days=1,
-            status='draft',
-            inquiry_id=inquiry.id,
-            notes=f"Aus Anfrage umgewandelt. E-Mail: {inquiry.customer_email}"
-                  + (f", Telefon: {inquiry.customer_phone}" if inquiry.customer_phone else "")
-                  + (f"\n{inquiry.message}" if inquiry.message else "")
-        )
-        if quote.start_date and quote.end_date:
-            delta = quote.end_date - quote.start_date
-            quote.rental_days = max(1, delta.days + 1)
-
-        db.session.add(quote)
-        db.session.commit()
-
-        quote.generate_reference_number()
-
-        # Add inquiry items to the quote
-        _pos = 1
-        for inq_item in inquiry.items:
-            item = Item.query.get(inq_item.item_id)
-            if item:
-                if item.is_package:
-                    # Expand package into components
-                    component_price_sum = item.component_price_sum
-                    for pc in item.package_components:
-                        if component_price_sum > 0:
-                            comp_share = (pc.component_item.default_rental_price_per_day * pc.quantity) / component_price_sum
-                            adjusted_price = round((item.default_rental_price_per_day * comp_share) / pc.quantity, 2)
-                        else:
-                            adjusted_price = 0
-                        for _ in range(inq_item.quantity):
-                            qi = QuoteItem(
-                                quote_id=quote.id,
-                                item_id=pc.component_item_id,
-                                quantity=pc.quantity,
-                                rental_price_per_day=adjusted_price,
-                                is_custom=False,
-                                package_id=item.id,
-                                position=_pos
-                            )
-                            _pos += 1
-                            db.session.add(qi)
-                            db.session.flush()
-                            _apply_default_sources(qi, pc.component_item, quote)
-                else:
-                    qi = QuoteItem(
-                        quote_id=quote.id,
-                        item_id=item.id,
-                        quantity=inq_item.quantity,
-                        rental_price_per_day=item.default_rental_price_per_day,
-                        is_custom=False,
-                        position=_pos
-                    )
-                    _pos += 1
-                    db.session.add(qi)
-                    db.session.flush()
-                    _apply_default_sources(qi, item, quote)
-
-        inquiry.status = 'converted'
-        db.session.commit()
-
+        quote = convert_inquiry_to_quote(inquiry, created_by_id=current_user.id)
         flash(f'Angebot aus Anfrage erstellt!', 'success')
         return redirect(url_for('admin.quote_edit', quote_id=quote.id))
 
@@ -2074,6 +2080,8 @@ def settings():
             settings_record.privacy_url = request.form.get('privacy_url', '').strip()
             settings_record.terms_and_conditions_text = request.form.get('terms_and_conditions_text', '').strip() or None
             settings_record.notification_email = request.form.get('notification_email', '').strip()
+            settings_record.mcp_enabled = request.form.get('mcp_enabled') == 'on'
+            settings_record.mcp_allow_delete = request.form.get('mcp_allow_delete') == 'on'
 
             settings_record.updated_at = datetime.utcnow()
 
@@ -2106,7 +2114,26 @@ def settings():
             db.session.rollback()
             flash(f'Fehler: {str(e)}', 'error')
 
-    return render_template('admin/settings.html', settings=settings_record)
+    from models import OAuthToken
+    from helpers import public_base_url
+    mcp_tokens = OAuthToken.query.filter(
+        OAuthToken.revoked == False,  # noqa: E712
+        OAuthToken.refresh_expires_at > datetime.utcnow(),
+    ).order_by(OAuthToken.created_at.desc()).all()
+    return render_template('admin/settings.html', settings=settings_record,
+                           mcp_url=public_base_url() + '/mcp', mcp_tokens=mcp_tokens)
+
+
+@admin_bp.route('/settings/mcp/revoke/<int:token_id>', methods=['POST'])
+@admin_required
+def mcp_revoke_token(token_id):
+    """Revoke a Claude/MCP connection (OAuth token)"""
+    from models import OAuthToken
+    token = OAuthToken.query.get_or_404(token_id)
+    token.revoked = True
+    db.session.commit()
+    flash('Verbindung widerrufen.', 'success')
+    return redirect(url_for('admin.settings') + '#mcp')
 
 
 @admin_bp.route('/logo')

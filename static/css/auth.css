@@ -67,3 +67,30 @@ body.login-page {
     font-size: 0.9em;
 }
 .back-link:hover { color: var(--color-gray-700); }
+
+/* ===== OAuth consent ===== */
+.consent-list {
+    margin: 0 0 16px;
+    padding-left: 20px;
+    color: var(--color-text);
+    font-size: 0.92em;
+    line-height: 1.6;
+}
+.consent-redirect {
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    margin-bottom: 20px;
+    word-break: break-all;
+}
+.btn-consent-deny {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.95em;
+    cursor: pointer;
+}
+.btn-consent-deny:hover { color: var(--color-text); }

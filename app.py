@@ -178,11 +178,15 @@ from blueprints.auth import auth_bp
 from blueprints.public import public_bp
 from blueprints.admin import admin_bp
 from blueprints.api import api_bp
+from blueprints.oauth import oauth_bp
+from blueprints.mcp import mcp_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(public_bp)
 app.register_blueprint(admin_bp, url_prefix='/admin')
 app.register_blueprint(api_bp, url_prefix='/api/v1')
+app.register_blueprint(oauth_bp)
+app.register_blueprint(mcp_bp)
 
 
 # Initialize database and create default admin
@@ -267,6 +271,9 @@ with app.app_context():
     _drop_column_if_exists('site_settings', 'payment_terms_days')
     # Extra text printed on unit labels
     _add_column_if_missing('site_settings', 'label_extra_text', 'TEXT')
+    # MCP server (Claude connector)
+    _add_column_if_missing('site_settings', 'mcp_enabled', 'BOOLEAN DEFAULT 0')
+    _add_column_if_missing('site_settings', 'mcp_allow_delete', 'BOOLEAN DEFAULT 0')
 
     # ── Category names no longer unique (slug URLs disambiguate via path) ──
     # SQLite can't drop a UNIQUE constraint, so rebuild the table without it.

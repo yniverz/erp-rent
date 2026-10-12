@@ -21,6 +21,8 @@ services:
       - FAVICON_URL=${FAVICON_URL:-}
       # Optional REST API (comma-separated bearer tokens; API disabled if unset)
       - API_TOKENS=${API_TOKENS:-}
+      # Public https base URL (needed behind a reverse proxy for the Claude/MCP OAuth flow)
+      - PUBLIC_URL=${PUBLIC_URL:-}
     volumes:
       - ./instance:/app/instance
     restart: unless-stopped

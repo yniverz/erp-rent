@@ -84,7 +84,8 @@ All configuration is done through environment variables (or a `.env` file in the
 | `SMTP_PASSWORD` | No | — | SMTP login password. |
 | `SMTP_FROM` | No | Same as `SMTP_USER` | Sender address for notification emails. |
 | `FAVICON_URL` | No | — | URL to an image to use as the site favicon. |
-| `API_TOKENS` | No | — | Comma-separated static token(s) for the REST API (`/api/v1`). If unset, the API is disabled. |
+| `API_TOKENS` | No | — | Comma-separated static token(s) for the REST API (`/api/v1`). If unset, the API is disabled. Also accepted as bearer token by the MCP endpoint. |
+| `PUBLIC_URL` | No | request URL | Public base URL, e.g. `https://verleih.example.com`. Set this behind a reverse proxy so the OAuth/MCP metadata advertises the correct https URLs. |
 
 > **Email notifications:** When a customer submits an inquiry through the public shop, a notification email is sent to the address configured in Admin → Settings. For this to work, the SMTP variables must be set.
 
@@ -116,6 +117,28 @@ curl -s -X POST http://localhost:5000/api/v1/quotes/42/lines \
   -H "Content-Type: application/json" \
   -d '{"type": "item", "item_id": 7, "quantity": 2}'
 ```
+
+---
+
+## Claude Integration (MCP)
+
+ERP-Rent includes a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp`, so Claude can read and edit your data — e.g. fill in item descriptions and technical specs, maintain serial numbers and inspection dates, set product images from a URL, or build quotes.
+
+**Setup**
+
+1. Admin → Settings → **Claude / MCP**: check *MCP-Schnittstelle aktivieren* and save. Optionally check *Löschen erlauben* (otherwise Claude cannot delete items, units, categories, suppliers, quotes or inquiries; removing lines from a quote is always allowed).
+2. The app must be reachable via HTTPS. Behind a reverse proxy, set `PUBLIC_URL`.
+3. In claude.ai (or Claude Desktop): Settings → Connectors → *Add custom connector* → enter `https://<your-domain>/mcp`. Claude opens the login page; sign in with your ERP-Rent account and allow access. Changes made by Claude are attributed to that user.
+4. Claude Code works too, either via OAuth or with a static token from `API_TOKENS`:
+   ```bash
+   claude mcp add --transport http erp-rent https://<your-domain>/mcp --header "Authorization: Bearer <API_TOKEN>"
+   ```
+
+Active connections are listed under Settings → Claude / MCP and can be revoked there.
+
+**Tools:** items (list with filters such as "missing description", details, create, bulk update, image from URL, package contents, supplier offers), units (list, add, bulk update), categories, suppliers, quotes (same operations as the REST API), inquiries (list, status, convert to quote), schedule and availability checks, plus delete tools when enabled.
+
+**Auth details:** OAuth 2.1 authorization code flow with PKCE (S256), dynamic client registration (RFC 7591), client ID metadata documents, rotating refresh tokens (access tokens 1 h, refresh tokens 90 days) and token revocation. Tokens are stored hashed.
 
 ---
 

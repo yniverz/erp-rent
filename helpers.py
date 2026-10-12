@@ -178,3 +178,12 @@ def allowed_document_file(filename):
     """Check if a filename has an allowed document/image extension"""
     allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
+
+
+def public_base_url():
+    """External base URL of this app without trailing slash.
+    PUBLIC_URL (e.g. https://verleih.example.com) wins; needed behind a
+    reverse proxy so OAuth/MCP metadata advertises the https URL."""
+    from flask import request
+    configured = (os.getenv('PUBLIC_URL') or '').strip().rstrip('/')
+    return configured or request.url_root.rstrip('/')

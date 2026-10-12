@@ -138,9 +138,58 @@
             <small class="help-text">E-Mail-Adresse, die Benachrichtigungen erhält, wenn Kunden Anfragen absenden. SMTP muss über Umgebungsvariablen konfiguriert sein (SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).</small>
         </div>
 
+        <hr class="section-divider">
+
+        <h2 id="mcp">Claude / MCP</h2>
+        <p class="text-muted mb-16">Erlaubt Claude (claude.ai, Claude Desktop, Claude Code), Inventar, Einheiten, Kategorien, Lieferanten, Angebote und Anfragen zu lesen und zu bearbeiten. Die Anmeldung erfolgt per OAuth mit dem normalen Benutzerkonto.</p>
+
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="mcp_enabled" id="mcp_enabled" {{ 'checked' if settings.mcp_enabled }}>
+                <label for="mcp_enabled" class="m-0 font-normal">MCP-Schnittstelle aktivieren</label>
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="checkbox-group">
+                <input type="checkbox" name="mcp_allow_delete" id="mcp_allow_delete" {{ 'checked' if settings.mcp_allow_delete }}>
+                <label for="mcp_allow_delete" class="m-0 font-normal">Löschen erlauben</label>
+            </div>
+            <small class="help-text">Wenn deaktiviert, kann Claude keine Artikel, Einheiten, Kategorien, Lieferanten, Angebote oder Anfragen löschen. Positionen innerhalb eines Angebots dürfen immer entfernt werden. Nach einer Änderung die Verbindung in Claude ggf. neu laden.</small>
+        </div>
+        <div class="form-group">
+            <label>Connector-URL</label>
+            <input type="text" value="{{ mcp_url }}" readonly onclick="this.select()">
+            <small class="help-text">In claude.ai unter Einstellungen → Connectors → „Benutzerdefinierten Connector hinzufügen“ eintragen. Die App muss per HTTPS öffentlich erreichbar sein; hinter einem Reverse-Proxy <code>PUBLIC_URL</code> setzen.</small>
+        </div>
+
         <button type="submit" class="btn btn-primary mt-10">Einstellungen speichern</button>
     </form>
 </div>
+
+{% if mcp_tokens %}
+<div class="card">
+    <h2>Aktive Claude-Verbindungen</h2>
+    <table>
+        <thead>
+            <tr><th>Client</th><th>Benutzer</th><th>Zuletzt verwendet</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for t in mcp_tokens %}
+            <tr>
+                <td>{{ t.client.display_name if t.client else t.client_id }}</td>
+                <td>{{ t.user.display_name or t.user.username if t.user else '–' }}</td>
+                <td>{{ t.last_used_at.strftime('%d.%m.%Y %H:%M') if t.last_used_at else '–' }} <small class="text-muted">(UTC)</small></td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.mcp_revoke_token', token_id=t.id) }}" onsubmit="return confirm('Verbindung widerrufen?');">
+                        <button type="submit" class="btn btn-sm btn-danger">Widerrufen</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 
 <script>
 function toggleTaxRate() {
