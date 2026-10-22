@@ -182,7 +182,7 @@ Additional line behavior:
 - **Packages** expand into one line per component, priced proportionally to
   the package price. Package component lines share a `package_id` and move /
   delete as a block.
-- **Optional lines** (`is_optional: true`) are shown on the Angebot PDF but
+- **Optional lines** (`is_optional: true`) are shown on the Preisübersicht PDF but
   excluded from the total.
 - Adding an `item` line for an item that is already in the quote
   **increments the existing line's quantity** instead of creating a
@@ -237,7 +237,7 @@ Only fields present in the payload are changed.
 | `cost_per_day` | float | External cost per unit per day. Only for custom lines or items **without** supplier entries (otherwise derived from sourcing → `400`). |
 | `name` | string | Only for `custom` / `heading` lines |
 | `discount_exempt` | bool | Exclude this line from the quote discount |
-| `is_optional` | bool | Show on Angebot but exclude from totals |
+| `is_optional` | bool | Show on Preisübersicht but exclude from totals |
 | `auto_sources` | bool | Re-apply automatic supplier sourcing (own stock first, then cheapest suppliers). Useful after changing `quantity` on an item with suppliers. |
 
 ```bash

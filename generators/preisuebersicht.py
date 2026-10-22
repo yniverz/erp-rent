@@ -1,17 +1,21 @@
 """
-PDF generator for Angebot (Quote / Offer).
+PDF generator for the Unverbindliche Preisübersicht (non-binding price overview).
 
-Produces a professional quote PDF with:
-- Header: Logo, sender, recipient, meta (date, validity, reference)
+This is deliberately NOT an Angebot (offer): the binding offer is created in the
+external accounting tool. The document only gives the customer an early overview
+and states that it does not become part of any contract.
+
+Produces a PDF with:
+- Header: Logo, sender, recipient, meta (date, reference)
 - Positions table: Pos | Bezeichnung | Menge | Tage | EP/Tag | Gesamt
   - Bundles: shown with pauschal price, sub-items indented without price
-- Discount, subtotal, optional MwSt, total
-- Notes, payment terms
+- Discount, subtotal, optional MwSt, estimated total
+- Notes, non-binding disclaimer
 - Footer: business info, contact, bank, tax number
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from io import BytesIO
 
 from reportlab.lib import colors
@@ -27,7 +31,7 @@ from generators.pdf_base import (
 )
 
 
-def build_angebot_pdf(
+def build_preisuebersicht_pdf(
     *,
     # Business / issuer
     issuer_name: str,
@@ -45,9 +49,7 @@ def build_angebot_pdf(
 
     # Document meta
     reference_number: str,
-    angebot_datum: str | None = None,
-    gueltig_bis: str | None = None,
-    quote_validity_days: int = 14,
+    datum: str | None = None,
 
     # Rental period
     start_date_str: str | None = None,
@@ -76,24 +78,21 @@ def build_angebot_pdf(
     # AGB (Terms & Conditions) – basic markdown
     terms_and_conditions_text: str | None = None,
 ) -> bytes:
-    """Build and return the Angebot PDF bytes."""
+    """Build and return the Preisübersicht PDF bytes."""
     buf = BytesIO()
     styles = _base_styles()
 
-    if not angebot_datum:
-        angebot_datum = date.today().strftime("%d.%m.%Y")
-    if not gueltig_bis:
-        gueltig_bis = (date.today() + timedelta(days=quote_validity_days)).strftime("%d.%m.%Y")
+    if not datum:
+        datum = date.today().strftime("%d.%m.%Y")
 
     zeitraum = "—"
     if start_date_str and end_date_str:
         zeitraum = f"{start_date_str} – {end_date_str}"
 
-    # Meta lines for header
+    # Meta lines for header – no validity date, since nothing is offered
     meta_lines = [
-        ("Angebot-Nr.:", reference_number),
-        ("Datum:", angebot_datum),
-        ("Gültig bis:", gueltig_bis),
+        ("Referenz:", reference_number),
+        ("Datum:", datum),
     ]
     if start_date_str and end_date_str:
         meta_lines.append(("Mietzeitraum:", zeitraum))
@@ -114,7 +113,7 @@ def build_angebot_pdf(
                      tax_number=tax_number,
                      vat_id=vat_id)
 
-    doc, cw = build_base_doc(buf, title="Angebot", author=issuer_name,
+    doc, cw = build_base_doc(buf, title="Unverbindliche Preisübersicht", author=issuer_name,
                              on_page_callback=on_page)
 
     # Register AGB two-column template (used via NextPageTemplate if AGB present)
@@ -124,10 +123,15 @@ def build_angebot_pdf(
     story: list = []
 
     # ── Title ──
-    story.append(Paragraph("Angebot", styles["title"]))
+    story.append(Paragraph("Unverbindliche Preisübersicht", styles["title"]))
+    story.append(Paragraph("Kein Angebot – nur zur Vorabinformation", styles["small"]))
     story.append(Spacer(1, 6))
     story.append(Paragraph("Sehr geehrte Damen und Herren,", styles["normal"]))
-    story.append(Paragraph("vielen Dank für Ihre Anfrage. Wir unterbreiten Ihnen folgendes Angebot:", styles["normal"]))
+    story.append(Paragraph(
+        "vielen Dank für Ihre Anfrage. Vorab erhalten Sie eine unverbindliche Übersicht "
+        "der angefragten Leistungen und der voraussichtlichen Kosten:",
+        styles["normal"]
+    ))
     story.append(Spacer(1, 10))
 
     # ── Positions table ──
@@ -385,7 +389,7 @@ def build_angebot_pdf(
             Paragraph(fmt_eur(mwst), styles["right"]),
         ])
         summary_data.append([
-            Paragraph("<b>Gesamtbetrag</b>", styles["right"]),
+            Paragraph("<b>Voraussichtlicher Gesamtbetrag</b>", styles["right"]),
             Paragraph(f"<b>{fmt_eur(brutto_total)}</b>", styles["right"]),
         ])
     else:
@@ -406,7 +410,7 @@ def build_angebot_pdf(
             ])
 
         summary_data.append([
-            Paragraph("<b>Gesamtbetrag</b>", styles["right"]),
+            Paragraph("<b>Voraussichtlicher Gesamtbetrag</b>", styles["right"]),
             Paragraph(f"<b>{fmt_eur(subtotal - discount_amount)}</b>", styles["right"]),
         ])
 
@@ -437,17 +441,20 @@ def build_angebot_pdf(
             story.append(Paragraph(line, styles["normal"]))
         story.append(Spacer(1, 8))
 
-    # ── Payment & validity ──
+    # ── Non-binding disclaimer ──
     story.append(HLine(width=cw))
     story.append(Spacer(1, 4))
     story.append(Paragraph(
-        f"Dieses Angebot ist gültig bis zum {gueltig_bis}.",
+        "<b>Hinweis:</b> Diese Preisübersicht ist unverbindlich und stellt kein Angebot im "
+        "rechtlichen Sinne dar. Sie dient ausschließlich Ihrer Vorabinformation und wird nicht "
+        "Bestandteil eines Vertrags. Preise und Verfügbarkeit sind freibleibend. Maßgeblich ist "
+        "allein unser gesondert übermitteltes Angebot.",
         styles["normal"]
     ))
     story.append(Spacer(1, 14))
     if terms_and_conditions_text:
         story.append(Paragraph(
-            "Es gelten unsere Allgemeinen Geschäftsbedingungen (siehe Anlage).",
+            "Unsere Allgemeinen Geschäftsbedingungen finden Sie zur Information in der Anlage.",
             styles["normal"]
         ))
         story.append(Spacer(1, 8))

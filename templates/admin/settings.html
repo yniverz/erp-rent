@@ -19,7 +19,7 @@
         <div class="form-group">
             <label>Firmenname</label>
             <input type="text" name="business_name" value="{{ settings.business_name or '' }}">
-            <small class="help-text">Offizieller Name – erscheint auf PDFs (Angebote, Lieferscheine).</small>
+            <small class="help-text">Offizieller Name – erscheint auf PDFs (Preisübersichten, Lieferscheine).</small>
         </div>
 
         <div class="form-group">
@@ -58,13 +58,6 @@
             <label>MwSt-Satz (%)</label>
             <input type="number" name="tax_rate" step="0.1" min="0" max="100" value="{{ settings.tax_rate if settings.tax_rate is not none else 19.0 }}">
             <small class="help-text">&Uuml;blicher Satz: 19% (oder 7% f&uuml;r erm&auml;&szlig;igte G&uuml;ter)</small>
-        </div>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label>Angebots-G&uuml;ltigkeit (Tage)</label>
-                <input type="number" name="quote_validity_days" value="{{ settings.quote_validity_days or 14 }}" min="1" max="365">
-            </div>
         </div>
 
         <div class="form-group">
@@ -121,7 +114,7 @@
         <hr class="section-divider">
 
         <h2>Allgemeine Geschäftsbedingungen (AGB)</h2>
-        <p class="text-muted mb-16">Werden dem Angebot als Anlage angehängt. Einfaches Markdown: <code>#</code> für Überschriften, <code>##</code> für Unterüberschriften, Leerzeile für Absätze.</p>
+        <p class="text-muted mb-16">Werden der Preisübersicht zur Information als Anlage angehängt. Einfaches Markdown: <code>#</code> für Überschriften, <code>##</code> für Unterüberschriften, Leerzeile für Absätze.</p>
 
         <div class="form-group">
             <label>AGB-Text</label>

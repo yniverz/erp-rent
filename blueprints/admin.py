@@ -2116,7 +2116,6 @@ def settings():
             settings_record.vat_id = request.form.get('vat_id', '').strip()
             settings_record.tax_mode = request.form.get('tax_mode', 'kleinunternehmer').strip()
             settings_record.tax_rate = float(request.form.get('tax_rate', '19.0') or 19.0)
-            settings_record.quote_validity_days = int(request.form.get('quote_validity_days', '14') or 14)
             settings_record.shop_description = request.form.get('shop_description', '')
             settings_record.label_extra_text = request.form.get('label_extra_text', '').replace('\r', '').strip() or None
             settings_record.imprint_url = request.form.get('imprint_url', '').strip()
@@ -2296,7 +2295,6 @@ def _extract_common_pdf_data(quote, site_settings):
     tax_number = site_settings.tax_number if site_settings else None
     vat_id = site_settings.vat_id if site_settings else None
     tax_mode, tax_rate = _effective_tax_mode_and_rate(site_settings)
-    quote_validity_days = (site_settings.quote_validity_days or 14) if site_settings else 14
 
     # Logo path
     logo_path = None
@@ -2328,7 +2326,6 @@ def _extract_common_pdf_data(quote, site_settings):
         'vat_id': vat_id,
         'tax_mode': tax_mode,
         'tax_rate': tax_rate,
-        'quote_validity_days': quote_validity_days,
         'logo_path': logo_path,
         'start_date_str': start_str,
         'end_date_str': end_str,
@@ -2524,20 +2521,20 @@ def _send_pdf_response(pdf_bytes, filename):
     return response
 
 
-# ── Angebot PDF ──
+# ── Preisübersicht PDF ──
 
-@admin_bp.route('/quotes/<int:quote_id>/angebot.pdf')
+@admin_bp.route('/quotes/<int:quote_id>/preisuebersicht.pdf')
 @login_required
-def angebot_pdf(quote_id):
-    """Generate Angebot (Quote) PDF"""
-    from generators.angebot import build_angebot_pdf
+def preisuebersicht_pdf(quote_id):
+    """Generate the non-binding Preisübersicht PDF (the binding Angebot is made in the accounting tool)"""
+    from generators.preisuebersicht import build_preisuebersicht_pdf
 
     quote = Quote.query.get_or_404(quote_id)
     site_settings = SiteSettings.query.first()
     data = _extract_common_pdf_data(quote, site_settings)
     positions = _extract_positions(quote, include_optional=True, include_headings=True)
 
-    pdf_bytes = build_angebot_pdf(
+    pdf_bytes = build_preisuebersicht_pdf(
         issuer_name=data['issuer_name'],
         issuer_address=data['issuer_address'],
         contact_lines=data['contact_lines'],
@@ -2548,7 +2545,7 @@ def angebot_pdf(quote_id):
         prices_are_net=bool(getattr(quote, 'prices_are_net', False)),
         logo_path=data['logo_path'],
         recipient_lines=data['recipient_lines'],
-        reference_number=quote.reference_number or f"AN-{quote.id:04d}",
+        reference_number=quote.reference_number or f"PU-{quote.id:04d}",
         start_date_str=data['start_date_str'],
         end_date_str=data['end_date_str'],
         rental_days=data['rental_days'],
@@ -2560,11 +2557,10 @@ def angebot_pdf(quote_id):
         discount_amount=quote.discount_amount,
         subtotal=quote.subtotal,
         total=quote.total,
-        quote_validity_days=data['quote_validity_days'],
         notes=quote.public_notes,
         terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
     )
-    return _send_pdf_response(pdf_bytes, f"angebot_{quote.reference_number}.pdf")
+    return _send_pdf_response(pdf_bytes, f"preisuebersicht_{quote.reference_number}.pdf")
 
 
 # ── Lieferschein PDF ──

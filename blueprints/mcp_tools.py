@@ -321,7 +321,7 @@ def _item_detail(item):
 def _quote_dict(quote, warnings=None):
     data = _serialize_quote(quote, include_lines=True)
     data['admin_url'] = _url('admin.quote_edit', quote_id=quote.id)
-    data['angebot_pdf_url'] = _url('admin.angebot_pdf', quote_id=quote.id)
+    data['preisuebersicht_pdf_url'] = _url('admin.preisuebersicht_pdf', quote_id=quote.id)
     data['lieferschein_pdf_url'] = _url('admin.lieferschein_pdf', quote_id=quote.id)
     data['wertaufstellung_pdf_url'] = _url('admin.wertaufstellung_pdf', quote_id=quote.id)
     if warnings is not None:

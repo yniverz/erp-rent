@@ -55,11 +55,11 @@
         </div>
         <div class="form-group">
             <label>Interne Notizen</label>
-            <textarea id="notes" data-dkey="notes" rows="2" placeholder="Nur intern sichtbar, nicht auf der Rechnung"></textarea>
+            <textarea id="notes" data-dkey="notes" rows="2" placeholder="Nur intern sichtbar, nicht auf PDFs"></textarea>
         </div>
         <div class="form-group m-0">
-            <label>Bemerkungen (auf Rechnung/Angebot)</label>
-            <textarea id="public_notes" data-dkey="public_notes" rows="2" placeholder="Wird auf Angebot, Rechnung und Lieferschein gedruckt"></textarea>
+            <label>Bemerkungen (auf PDFs)</label>
+            <textarea id="public_notes" data-dkey="public_notes" rows="2" placeholder="Wird auf Preisübersicht und Lieferschein gedruckt"></textarea>
         </div>
     </div>
 
@@ -152,7 +152,7 @@
         <div class="d-flex gap-10 flex-wrap">
             <a href="{{ url_for('admin.quote_packliste', quote_id=quote.id) }}" class="btn btn-outline">📦 Packliste</a>
             <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
-            <a href="{{ url_for('admin.angebot_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Angebot PDF</a>
+            <a href="{{ url_for('admin.preisuebersicht_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank" title="Unverbindliche Vorabinformation für den Kunden – kein Angebot, das kommt aus der Buchhaltung">Preisübersicht PDF</a>
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
             <a href="{{ url_for('admin.wertaufstellung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank" title="Wiederbeschaffungswerte inkl. Zubehör, z.B. für die Versicherung">Wertaufstellung PDF</a>
             <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
@@ -335,7 +335,7 @@ const QE = (function() {
             + '<td data-total="' + l.id + '">' + totalCell + '</td>'
             + '<td><div class="qe-flags">'
             + '<label title="Vom Rabatt ausgenommen"><input type="checkbox" data-fkey="exempt-' + l.id + '" ' + (l.discount_exempt ? 'checked' : '') + '> Kein Rabatt</label>'
-            + '<label title="Auf dem Angebot als optionale Position ausweisen – zählt nicht zum Gesamtpreis"><input type="checkbox" data-fkey="opt-' + l.id + '" ' + (l.is_optional ? 'checked' : '') + '> Optional</label>'
+            + '<label title="Auf der Preisübersicht als optionale Position ausweisen – zählt nicht zum Gesamtpreis"><input type="checkbox" data-fkey="opt-' + l.id + '" ' + (l.is_optional ? 'checked' : '') + '> Optional</label>'
             + '</div></td>'
             + '<td><div class="qe-row-actions">' + srcBtn
             + '<button type="button" class="qe-icon-btn danger" title="Entfernen" onclick="QE.removeLine(' + l.id + ')">✕</button>'

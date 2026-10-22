@@ -463,7 +463,7 @@ class Quote(db.Model):
     status = db.Column(db.String(50), default='draft')  # only 'draft' (Entwurf); finalization happens in an external tool
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     notes = db.Column(db.Text, nullable=True)  # Internal notes (not on PDF)
-    public_notes = db.Column(db.Text, nullable=True)  # Shown on Angebot/Rechnung/Lieferschein
+    public_notes = db.Column(db.Text, nullable=True)  # Shown on Preisübersicht/Lieferschein
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=True)
     # Pricing
     # When True (and global tax_mode='regular'), all stored item prices are
@@ -507,7 +507,7 @@ class Quote(db.Model):
 
     @property
     def optional_total(self):
-        """Sum of optional line totals (shown on Angebot, not part of the total)."""
+        """Sum of optional line totals (shown on Preisübersicht, not part of the total)."""
         return round(sum(qi.total_price for qi in self.quote_items
                          if qi.is_optional and not qi.is_heading), 2)
 
@@ -540,7 +540,7 @@ class QuoteItem(db.Model):
     # Ordering & presentation
     position = db.Column(db.Integer, nullable=False, default=0)  # manual sort order within the quote
     is_heading = db.Column(db.Boolean, default=False)  # free-text section heading (uses custom_item_name)
-    is_optional = db.Column(db.Boolean, default=False)  # shown on Angebot, excluded from totals
+    is_optional = db.Column(db.Boolean, default=False)  # shown on Preisübersicht, excluded from totals
 
     quote = db.relationship('Quote', back_populates='quote_items')
     item = db.relationship('Item', foreign_keys=[item_id], back_populates='quote_items')
@@ -656,7 +656,7 @@ class SiteSettings(db.Model):
     vat_id = db.Column(db.String(100), nullable=True)  # USt-IdNr (z.B. DE123456789)
     tax_mode = db.Column(db.String(20), default='kleinunternehmer')  # 'kleinunternehmer' or 'regular'
     tax_rate = db.Column(db.Float, default=19.0)  # MwSt-Satz in %, configurable
-    quote_validity_days = db.Column(db.Integer, default=14)
+    quote_validity_days = db.Column(db.Integer, default=14)  # unused: the Preisübersicht has no validity date
     logo_filename = db.Column(db.String(300), nullable=True)  # Uploaded logo file
     # Public storefront
     shop_description = db.Column(db.Text, nullable=True)
