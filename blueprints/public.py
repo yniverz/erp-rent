@@ -103,7 +103,7 @@ def catalog():
                 Item.subcategories.any(Category.name.ilike(f'%{term}%'))
             )
             query = query.filter(term_filter)
-        items = query.order_by(Item.name).all()
+        items = sorted(query.all(), key=Item.shop_sort_key)
 
         return render_template('public/catalog.html',
                                items=items,
@@ -178,7 +178,7 @@ def catalog_category(cat_path):
                 Item.subcategories.any(Category.id.in_(descendant_ids))
             )
         )
-    items = query.order_by(Item.name).all()
+    items = sorted(query.all(), key=Item.shop_sort_key)
 
     # Check if the category has items directly assigned (not only via children)
     has_direct_items = False

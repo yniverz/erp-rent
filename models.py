@@ -246,6 +246,21 @@ class Item(db.Model):
         return any(s.quantity != 0 for s in self.supplies)
 
     @property
+    def has_own_stock(self):
+        """True if the item is kept in own stock. Packages: every component is."""
+        if self.is_package:
+            return bool(self.package_components) and all(
+                (pc.component_item.stock_quantity or 0) != 0 for pc in self.package_components)
+        return (self.stock_quantity or 0) != 0
+
+    def shop_sort_key(self):
+        """Shop order: own stock first, then most expensive first (also when the price
+        is hidden), then by name. The key stays server-side; only the order reaches the page."""
+        return (not self.has_own_stock,
+                -(self.default_rental_price_per_day or 0),
+                self.name.casefold())
+
+    @property
     def supplies_sorted(self):
         """Supplier offers sorted by price (cheapest first)."""
         return sorted(self.supplies, key=lambda s: s.price_per_day or 0)
