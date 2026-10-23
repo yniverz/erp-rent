@@ -256,8 +256,12 @@
 .price-original { font-family: var(--font-body); font-size: 0.85rem; font-weight: 400; color: var(--cream-faint); text-decoration: line-through; }
 .price-discounted { color: var(--gold); }
 
-.add-to-cart-form { display: flex; gap: 0.5rem; align-items: stretch; }
-.add-to-cart-form .btn { flex: 1; padding-left: 0.5rem; padding-right: 0.5rem; white-space: nowrap; }
+/* Button wraps below the stepper (full width) when the card is too narrow */
+.add-to-cart-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: stretch; }
+.add-to-cart-form .btn { flex: 1 0 auto; padding-left: 0.75rem; padding-right: 0.75rem; white-space: nowrap; }
+.item-card .qty input[type="number"] { width: 2.4rem; }
+.item-card .qty button { width: 1.8rem; }
+.item-card .add-to-cart-form .btn { letter-spacing: 1px; }
 .add-to-cart-form .btn:hover { transform: none; }
 
 /* ── Empty state ── */
