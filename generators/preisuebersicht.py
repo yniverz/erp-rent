@@ -10,6 +10,7 @@ Produces a PDF with:
 - Positions table: Pos | Bezeichnung | Menge | Tage | EP/Tag | Gesamt
   - Bundles: shown with pauschal price, sub-items indented without price
 - Discount, subtotal, optional MwSt, estimated total
+- Gesamtwert (replacement value incl. Lieferumfang) of the rented goods
 - Notes, non-binding disclaimer
 - Footer: business info, contact, bank, tax number
 """
@@ -72,6 +73,10 @@ def build_preisuebersicht_pdf(
     subtotal: float = 0,
     total: float = 0,
 
+    # Replacement value of all rented goods incl. Lieferumfang (as in the Wertaufstellung)
+    value_total: float | None = None,
+    value_incomplete: bool = False,  # some lines have no value -> shown as "mind."
+
     # Notes
     notes: str | None = None,
 
@@ -127,11 +132,17 @@ def build_preisuebersicht_pdf(
     story.append(Paragraph("Kein Angebot – nur zur Vorabinformation", styles["small"]))
     story.append(Spacer(1, 6))
     story.append(Paragraph("Sehr geehrte Damen und Herren,", styles["normal"]))
-    story.append(Paragraph(
-        "vielen Dank für Ihre Anfrage. Vorab erhalten Sie eine unverbindliche Übersicht "
-        "der angefragten Leistungen und der voraussichtlichen Kosten:",
-        styles["normal"]
-    ))
+    intro = ("vielen Dank für Ihre Anfrage. Vorab erhalten Sie eine unverbindliche Übersicht "
+             "der angefragten Leistungen und der voraussichtlichen Kosten")
+    if is_pauschale:
+        # Stated once here instead of "(Nutzung …)" / "pauschal" on every line,
+        # which also reads wrong on custom lines like Lieferung / Abholung
+        period = f" ({leistungszeitraum})" if leistungszeitraum else ""
+        intro += (". Alle Preise sind Pauschalpreise; die Miete gilt jeweils für den "
+                  f"gesamten Mietzeitraum{period}.")
+    else:
+        intro += ":"
+    story.append(Paragraph(intro, styles["normal"]))
     story.append(Spacer(1, 10))
 
     # ── Positions table ──
@@ -180,19 +191,22 @@ def build_preisuebersicht_pdf(
     else:
         position_nettos = None  # not used in Kleinunternehmer mode
 
-    # Build compact period label for Pauschale descriptions
-    pauschale_suffix = ""
-    if is_pauschale and leistungszeitraum:
-        pauschale_suffix = f" (Nutzung {leistungszeitraum})"
-
+    # Pos / Menge wide enough that their bold headers don't wrap (4pt padding each side)
     col_widths = [
-        22,           # Pos
-        cw - 22 - 30 - 30 - 50 - 58,  # Bezeichnung (flexible)
-        30,           # Menge
+        26,           # Pos
+        cw - 26 - 36 - 30 - 50 - 58,  # Bezeichnung (flexible)
+        36,           # Menge
         30,           # Tage
         50,           # EP/Tag
         58,           # Gesamt
     ]
+
+    def _visible_cols(rows):
+        """Pauschale: drop the Tage and EP/Tag columns – the flat price is explained in the intro."""
+        return [[r[i] for i in (0, 1, 2, 5)] for r in rows] if is_pauschale else rows
+
+    if is_pauschale:
+        col_widths = [26, cw - 26 - 36 - 70, 36, 70]
 
     header_row = [
         Paragraph("Pos", styles["table_header"]),
@@ -224,10 +238,9 @@ def build_preisuebersicht_pdf(
         if item.get("is_bundle"):
             # Bundle header row – price only as pauschal in Gesamt
             display_total = position_nettos[pos_idx] if is_regular else item["total"]
-            name_label = f"<b>{item['name']}{pauschale_suffix}</b>" if is_pauschale else f"<b>{item['name']}</b>"
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
-                Paragraph(name_label, styles["table_cell"]),
+                Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
                 Paragraph("" if is_pauschale else str(rental_days), styles["table_cell"]),
                 Paragraph("pauschal", styles["table_cell"]),
@@ -256,13 +269,22 @@ def build_preisuebersicht_pdf(
                 display_total = item["total"]
 
             if is_pauschale:
-                name_label = f"{item['name']}{pauschale_suffix}"
                 table_data.append([
                     Paragraph(str(pos_nr), styles["table_cell"]),
-                    Paragraph(name_label, styles["table_cell"]),
+                    Paragraph(item["name"], styles["table_cell"]),
                     Paragraph(str(item["quantity"]), styles["table_cell"]),
                     Paragraph("", styles["table_cell"]),
                     Paragraph("pauschal", styles["table_cell"]),
+                    Paragraph(fmt_eur(display_total), styles["table_cell_right"]),
+                ])
+            elif item.get("is_one_off"):
+                # Custom line (Lieferung, Abholung …): one-off amount, not per day
+                table_data.append([
+                    Paragraph(str(pos_nr), styles["table_cell"]),
+                    Paragraph(item["name"], styles["table_cell"]),
+                    Paragraph(str(item["quantity"]), styles["table_cell"]),
+                    Paragraph("", styles["table_cell"]),
+                    Paragraph("einmalig", styles["table_cell_right"]),
                     Paragraph(fmt_eur(display_total), styles["table_cell_right"]),
                 ])
             else:
@@ -276,7 +298,7 @@ def build_preisuebersicht_pdf(
                 ])
         pos_nr += 1
 
-    table = Table(table_data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
+    table = Table(_visible_cols(table_data), colWidths=col_widths, hAlign="LEFT", repeatRows=1)
     table_style_cmds = [
         # Header
         ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
@@ -329,15 +351,17 @@ def build_preisuebersicht_pdf(
                         Paragraph("", styles["table_cell"]),
                     ])
             else:
+                one_off = item.get("is_one_off")
                 opt_data.append([
                     Paragraph("+", styles["table_cell"]),
                     Paragraph(item["name"], styles["table_cell"]),
                     Paragraph(str(item["quantity"]), styles["table_cell"]),
-                    Paragraph("" if is_pauschale else str(rental_days), styles["table_cell"]),
-                    Paragraph("pauschal" if is_pauschale else fmt_eur(opt_ppd), styles["table_cell_right"]),
+                    Paragraph("" if is_pauschale or one_off else str(rental_days), styles["table_cell"]),
+                    Paragraph("pauschal" if is_pauschale else "einmalig" if one_off else fmt_eur(opt_ppd),
+                              styles["table_cell_right"]),
                     Paragraph(fmt_eur(opt_total), styles["table_cell_right"]),
                 ])
-        opt_table = Table(opt_data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
+        opt_table = Table(_visible_cols(opt_data), colWidths=col_widths, hAlign="LEFT", repeatRows=1)
         opt_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), CLR_TABLE_HEADER_BG),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -431,6 +455,32 @@ def build_preisuebersicht_pdf(
             "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.",
             styles["small"]
         ))
+
+    # ── Replacement value of the rented goods (kept visually apart from the price) ──
+    if value_total:
+        value_text = f"{'mind. ' if value_incomplete else ''}{fmt_eur(value_total)}"
+        value_hint = (
+            "Wiederbeschaffungswert aller oben aufgeführten Mietgegenstände inkl. Zubehör"
+            f"{' (ohne optionale Positionen)' if optional_positions else ''} – "
+            "zur Orientierung, z. B. für Ihre Versicherung im Verlust- oder Schadensfall. "
+            "Eine detaillierte Wertaufstellung erhalten Sie auf Anfrage."
+        )
+        value_table = Table([
+            [Paragraph("<b>Gesamtwert der Mietgegenstände</b>", styles["normal"]),
+             Paragraph(f"<b>{value_text}</b>", styles["right"])],
+            [Paragraph(value_hint, styles["small"]), ""],
+        ], colWidths=[cw - 120, 120], hAlign="LEFT")
+        value_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), CLR_TABLE_HEADER_BG),
+            ("SPAN", (0, 1), (-1, 1)),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(Spacer(1, 12))
+        story.append(value_table)
 
     story.append(Spacer(1, 14))
 

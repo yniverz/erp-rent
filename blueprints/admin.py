@@ -2386,6 +2386,7 @@ def _extract_positions(quote, *, include_optional=False, include_headings=False)
                 'total': qi.total_price,
                 'is_bundle': False,
                 'is_optional': bool(qi.is_optional),
+                'is_one_off': bool(qi.is_custom),  # custom lines are not multiplied by rental days
             })
 
     return positions
@@ -2533,6 +2534,7 @@ def preisuebersicht_pdf(quote_id):
     site_settings = SiteSettings.query.first()
     data = _extract_common_pdf_data(quote, site_settings)
     positions = _extract_positions(quote, include_optional=True, include_headings=True)
+    _, value_total, value_missing = _extract_rows_for_wertaufstellung(quote)
 
     pdf_bytes = build_preisuebersicht_pdf(
         issuer_name=data['issuer_name'],
@@ -2557,6 +2559,8 @@ def preisuebersicht_pdf(quote_id):
         discount_amount=quote.discount_amount,
         subtotal=quote.subtotal,
         total=quote.total,
+        value_total=value_total,
+        value_incomplete=value_missing > 0,
         notes=quote.public_notes,
         terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
     )

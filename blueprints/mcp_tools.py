@@ -952,14 +952,14 @@ def update_quote(quote_id, **fields):
 
 @tool('add_quote_line', 'Angebotsposition hinzufügen',
       'Fügt eine Position hinzu. type=item: Inventar-Artikel oder Paket (Pakete werden in Einzelpositionen '
-      'aufgelöst; existiert der Artikel schon, erhöht sich die Menge). type=custom: freie Position mit name/price_per_day. '
+      'aufgelöst; existiert der Artikel schon, erhöht sich die Menge). type=custom: freie Position mit name/price_per_day (z.B. Lieferung; wird einmalig berechnet, nicht pro Miettag). '
       'type=heading: Zwischenüberschrift. Antwort enthält Verfügbarkeitswarnungen.',
       {'quote_id': ID('des Angebots'),
        'type': _s('string', 'Art der Position', enum=['item', 'custom', 'heading']),
        'item_id': _s('integer', 'Bei type=item: Artikel-ID'),
        'quantity': _s('integer', 'Menge (Standard 1)', minimum=1),
        'name': _s('string', 'Bei custom/heading: Text'),
-       'price_per_day': _s('number', 'Optional: abweichender Preis pro Einheit und Tag', minimum=0)},
+       'price_per_day': _s('number', 'Optional: abweichender Preis pro Einheit und Tag (bei custom: einmaliger Preis pro Einheit)', minimum=0)},
       ['quote_id', 'type'])
 def add_quote_line(quote_id, **data):
     data = {k: v for k, v in data.items() if v is not None}
@@ -971,7 +971,7 @@ def add_quote_line(quote_id, **data):
       'Ändert Menge, Preis, Einkaufskosten, Name (nur custom/heading), Rabattausnahme oder Optional-Status einer Position.',
       {'quote_id': ID('des Angebots'), 'line_id': ID('der Position'),
        'quantity': _s('integer', 'Menge', minimum=1),
-       'price_per_day': _s('number', 'Preis pro Einheit und Tag', minimum=0),
+       'price_per_day': _s('number', 'Preis pro Einheit und Tag (bei eigenen Positionen: einmaliger Preis pro Einheit)', minimum=0),
        'cost_per_day': _s('number', 'Einkaufskosten pro Einheit/Tag (nur ohne Lieferanten-Beschaffung)', minimum=0),
        'name': _s('string', 'Text (nur custom/heading)'),
        'discount_exempt': _s('boolean', 'Vom Rabatt ausgenommen'),

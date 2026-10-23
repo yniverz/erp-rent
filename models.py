@@ -572,15 +572,18 @@ class QuoteItem(db.Model):
         return self.item.name if self.item else "Unknown Item"
 
     @property
+    def billed_days(self):
+        """Custom lines (Lieferung, Abholung …) are one-off amounts; items are per rental day."""
+        return 1 if self.is_custom else self.quote.calculate_rental_days()
+
+    @property
     def total_price(self):
-        days = self.quote.calculate_rental_days()
-        return round(self.quantity * self.rental_price_per_day * days, 2)
+        return round(self.quantity * self.rental_price_per_day * self.billed_days, 2)
 
     @property
     def total_external_cost(self):
         """Total cost we pay externally for this quote item"""
-        days = self.quote.calculate_rental_days()
-        return round(self.quantity * (self.rental_cost_per_day or 0) * days, 2)
+        return round(self.quantity * (self.rental_cost_per_day or 0) * self.billed_days, 2)
 
     @property
     def sourced_quantity(self):

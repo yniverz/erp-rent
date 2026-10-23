@@ -184,7 +184,7 @@ Quotes can be edited or deleted at any time.
 #### PDF Documents
 Generate professional German-language PDF documents directly from any quote:
 
-- **Unverbindliche Preisübersicht (Price Overview)** — Non-binding overview with positions, quantities, daily rates, estimated totals, discount and tax handling. Explicitly states that it is not an offer and does not become part of a contract — the binding Angebot is created in the accounting tool. Includes AGB (terms & conditions) as an informational appendix if configured.
+- **Unverbindliche Preisübersicht (Price Overview)** — Non-binding overview with positions, quantities, daily rates, estimated totals, discount and tax handling, plus the total replacement value of the rented goods (incl. accessories) for insurance / loss purposes. Explicitly states that it is not an offer and does not become part of a contract — the binding Angebot is created in the accounting tool. Includes AGB (terms & conditions) as an informational appendix if configured.
 - **Wertaufstellung (Value Statement)** — Replacement values of all items in a quote including their accessories, e.g. for insurance.
 - **Lieferschein / Übergabeprotokoll (Delivery Note)** — Lists items and quantities without prices. Includes a condition/comment column for handwritten notes, a deposit field, and signature sections for both handover and return.
 

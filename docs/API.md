@@ -174,7 +174,7 @@ A quote consists of ordered lines. There are three line types:
 | Type | Description |
 |---|---|
 | `item` | An inventory item (or package) referenced by `item_id`. Prices default to the item's list price; availability and supplier sourcing are handled automatically. |
-| `custom` | A free-text position with its own name, quantity and price. |
+| `custom` | A free-text position with its own name, quantity and price (e.g. Lieferung). Charged **once**, not per rental day. |
 | `heading` | A free-text section heading. Has no quantity/price and never counts towards totals. |
 
 Additional line behavior:
@@ -199,7 +199,7 @@ POST /api/v1/quotes/<id>/lines
 | `type` | string | all | `item` (default), `custom` or `heading` |
 | `item_id` | int | `item` | **Required.** Inventory item or package id (see [Items](#items)) |
 | `quantity` | int | `item`, `custom` | Default `1` |
-| `price_per_day` | float | `item`, `custom` | For `item`: overrides the default list price |
+| `price_per_day` | float | `item`, `custom` | For `item`: overrides the default list price. For `custom`: one-off price per unit |
 | `name` | string | `custom`, `heading` | **Required** for these types |
 
 ```bash
@@ -233,7 +233,7 @@ Only fields present in the payload are changed.
 | Field | Type | Description |
 |---|---|---|
 | `quantity` | int | Minimum `1`. Not allowed on headings. |
-| `price_per_day` | float | Customer price per unit per day |
+| `price_per_day` | float | Customer price per unit per day (custom lines: one-off price per unit) |
 | `cost_per_day` | float | External cost per unit per day. Only for custom lines or items **without** supplier entries (otherwise derived from sourcing → `400`). |
 | `name` | string | Only for `custom` / `heading` lines |
 | `discount_exempt` | bool | Exclude this line from the quote discount |
@@ -388,7 +388,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 - `type` is `item`, `custom` or `heading`. Heading lines only carry `id`,
   `type`, `name` and `position`.
-- `total` = `quantity × price_per_day × rental_days`.
+- `total` = `quantity × price_per_day × rental_days` for `item` lines and
+  `quantity × price_per_day` for `custom` lines (one-off, not per day).
 - `package_id` / `package_name` are set on lines that were expanded from a
   package.
 - `assigned_units` lists the specific physical units (serial numbers)

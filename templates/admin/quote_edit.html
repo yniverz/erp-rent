@@ -100,14 +100,14 @@
         <div class="qe-inline-form" id="qe-form-custom">
             <div class="form-group flex-1">
                 <label>Name</label>
-                <input type="text" id="qe-custom-name" placeholder="z.B. Aufbauzeit">
+                <input type="text" id="qe-custom-name" placeholder="z.B. Lieferung">
             </div>
             <div class="form-group w-80">
                 <label>Menge</label>
                 <input type="number" id="qe-custom-qty" value="1" min="1">
             </div>
             <div class="form-group w-120">
-                <label>Preis/Tag</label>
+                <label title="Eigene Positionen werden einmalig berechnet, nicht pro Miettag">Preis (einmalig)</label>
                 <input type="number" id="qe-custom-price" step="0.01" min="0">
             </div>
             <button type="button" class="btn btn-sm btn-primary" onclick="QE.addCustom()">Hinzufügen</button>
@@ -331,7 +331,9 @@ const QE = (function() {
             + '<td class="' + (isPkgComp ? 'qe-pkg-comp-name' : '') + '">' + nameCell + '</td>'
             + '<td>' + availCell + '</td>'
             + '<td><input type="number" class="qty-input" data-fkey="qty-' + l.id + '" value="' + l.quantity + '" min="1"></td>'
-            + '<td><input type="number" class="price-input" data-fkey="price-' + l.id + '" value="' + l.price_per_day.toFixed(2) + '" step="0.01" min="0"></td>'
+            + '<td><input type="number" class="price-input" data-fkey="price-' + l.id + '" value="' + l.price_per_day.toFixed(2) + '" step="0.01" min="0">'
+            + (l.type === 'custom' ? '<div class="qe-line-sub" title="Eigene Positionen werden nicht mit den Miettagen multipliziert">einmalig</div>' : '')
+            + '</td>'
             + '<td data-total="' + l.id + '">' + totalCell + '</td>'
             + '<td><div class="qe-flags">'
             + '<label title="Vom Rabatt ausgenommen"><input type="checkbox" data-fkey="exempt-' + l.id + '" ' + (l.discount_exempt ? 'checked' : '') + '> Kein Rabatt</label>'
@@ -729,7 +731,7 @@ const QE = (function() {
       .map((l) => ({
         name: l.name,
         count: l.quantity || 0,
-        price: (l.price_per_day || 0) * days,
+        price: (l.price_per_day || 0) * (l.type === 'custom' ? 1 : days),  // custom lines are one-off
       }));
     if (!items.length) return null;
     return {
