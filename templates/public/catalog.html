@@ -3,6 +3,9 @@
 {% block title %}{{ site_settings.business_name or 'Verleih' }} - Katalog{% endblock %}
 
 {% block extra_head %}
+{% if search_query %}
+<meta name="robots" content="noindex">
+{% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/public-catalog.css') }}">
 {% endblock %}
 

@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <title>{% block title %}{{ brand_name }}{% endblock %}</title>
+    {% if meta_description %}
+    <meta name="description" content="{{ meta_description }}">
+    {% endif %}
+    {% if canonical_url %}
+    <link rel="canonical" href="{{ canonical_url }}">
+    {% endif %}
     {% if has_favicon %}
     <link rel="icon" href="/favicon.ico" type="{{ favicon_mimetype }}">
     <link rel="shortcut icon" href="/favicon.ico" type="{{ favicon_mimetype }}">

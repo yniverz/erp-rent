@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, make_response
 from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings, item_subcategories, slugify
-from helpers import send_inquiry_notification, get_upload_path
+from helpers import send_inquiry_notification, get_upload_path, public_base_url
 from datetime import datetime, date
 import os
 import re
@@ -17,6 +17,19 @@ def toggle_price_mode():
     resp = make_response(redirect(referrer))
     resp.set_cookie('price_mode', new_mode, max_age=60*60*24*365, samesite='Lax')
     return resp
+
+
+def _canonical_url(endpoint, **values):
+    """Absolute canonical URL for <link rel="canonical"> (drops stray query params)."""
+    return public_base_url() + url_for(endpoint, **values)
+
+
+def _meta_description(text, limit=155):
+    """Collapse whitespace and cut at a word boundary for <meta name="description">."""
+    text = ' '.join((text or '').split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(' ', 1)[0].rstrip(',;:-–') + '…'
 
 
 def _misc_category_ids(all_categories):
@@ -121,7 +134,10 @@ def catalog():
                                misc_category_ids=misc_category_ids)
 
     # Main page: show top-level category cards
+    settings = SiteSettings.query.first()
     return render_template('public/catalog.html',
+                           canonical_url=_canonical_url('public.catalog'),
+                           meta_description=_meta_description(settings.shop_description if settings else ''),
                            items=[],
                            categories=all_categories,
                            category_tree=category_tree,
@@ -190,7 +206,21 @@ def catalog_category(cat_path):
             )
         ).first() is not None
 
+    # "Sonstiges" only exists for categories with children; elsewhere ?misc is ignored
+    is_misc = bool(misc and cat.children)
+    label = f'{cat.name} – Sonstiges' if is_misc else cat.name
+    names = ', '.join(i.name for i in items[:3])
+    if len(items) > 3:
+        description = f'{label} mieten – {len(items)} Artikel, z. B. {names}.'
+    elif items:
+        description = f'{label} mieten: {names}.'
+    else:
+        description = f'{label} mieten.'
+
     return render_template('public/catalog.html',
+                           canonical_url=_canonical_url('public.catalog_category', cat_path=cat.url_path,
+                                                        misc=1 if is_misc else None),
+                           meta_description=_meta_description(description),
                            items=items,
                            categories=all_categories,
                            category_tree=category_tree,
@@ -217,6 +247,8 @@ def item_detail(item_id):
     cart_count = sum(cart.values())
 
     return render_template('public/item_detail.html',
+                           canonical_url=_canonical_url('public.item_detail', item_id=item.id),
+                           meta_description=_meta_description(item.description) or f'{item.name} mieten.',
                            item=item,
                            cart=cart,
                            cart_count=cart_count)
