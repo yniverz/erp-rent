@@ -2,7 +2,7 @@ from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
 from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
-from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file
+from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis
 from datetime import datetime
 from functools import wraps
 import os
@@ -2561,6 +2561,7 @@ def preisuebersicht_pdf(quote_id):
         total=quote.total,
         value_total=value_total,
         value_incomplete=value_missing > 0,
+        value_basis=replacement_value_basis(data['tax_mode']),
         notes=quote.public_notes,
         terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
     )
@@ -2628,5 +2629,6 @@ def wertaufstellung_pdf(quote_id):
         rows=rows,
         grand_total=grand_total,
         missing_count=missing,
+        value_basis=replacement_value_basis(data['tax_mode']),
     )
     return _send_pdf_response(pdf_bytes, f"wertaufstellung_{quote.reference_number}.pdf")

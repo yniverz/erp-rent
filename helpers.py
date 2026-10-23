@@ -6,6 +6,11 @@ from models import db, Item, Quote, QuoteItem, PackageComponent
 from sqlalchemy import and_, or_
 
 
+def replacement_value_basis(tax_mode):
+    """Replacement values are net when regularly taxed (input VAT is recoverable), otherwise gross."""
+    return 'netto' if tax_mode == 'regular' else 'brutto'
+
+
 def get_upload_path():
     """Get the path for uploaded files"""
     base = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')

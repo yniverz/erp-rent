@@ -52,6 +52,7 @@ def build_wertaufstellung_pdf(
     rows: list[dict],
     grand_total: float,
     missing_count: int = 0,
+    value_basis: str = "brutto",  # 'netto' (regelbesteuert) or 'brutto' (Kleinunternehmer)
 ) -> bytes:
     """Build and return the Wertaufstellung PDF bytes."""
     buf = BytesIO()
@@ -86,9 +87,10 @@ def build_wertaufstellung_pdf(
 
     story: list = []
     story.append(Paragraph("Wertaufstellung", styles["title"]))
+    basis_text = "Nettowerte (ohne MwSt.)" if value_basis == "netto" else "Bruttowerte (inkl. MwSt.)"
     story.append(Paragraph(
         "Wiederbeschaffungswerte der für den angegebenen Mietzeitraum überlassenen Gegenstände "
-        "inklusive Zubehör, z.B. zur Vorlage bei einer Versicherung.",
+        f"inklusive Zubehör, z.B. zur Vorlage bei einer Versicherung. Alle Werte sind {basis_text}.",
         styles["normal"]
     ))
     story.append(Spacer(1, 10))
@@ -141,7 +143,7 @@ def build_wertaufstellung_pdf(
     total_idx = len(table_data)
     table_data.append([
         "",
-        Paragraph("<b>Gesamtwert</b>", styles["table_cell"]),
+        Paragraph(f"<b>Gesamtwert ({value_basis})</b>", styles["table_cell"]),
         "", "",
         Paragraph(f"<b>{fmt_eur(grand_total)}</b>", styles["table_cell_right"]),
     ])

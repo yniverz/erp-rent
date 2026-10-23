@@ -137,13 +137,18 @@
         <div id="accessories-section">
             <h3>Lieferumfang &amp; Wert</h3>
             <p class="help-text mb-10">Zubehör, das zu jedem Gerät gehört – erscheint auf Lieferschein und Packliste. „pro“ = die Menge gilt je so viele Geräte (z.B. 1 Case pro 2 Lampen → bei 3 Lampen werden 2 Cases eingeplant). Werte sind intern und nur für die Wertaufstellung (z.B. Versicherung).</p>
+            {% if value_basis == 'netto' %}
+            <p class="help-text mb-10"><strong>Alle Werte netto (ohne MwSt.) eintragen</strong> – also was ein gleichwertiges Ersatzgerät heute ohne MwSt. kostet: Händlerpreis ÷ {{ '%.2f'|format(1 + tax_rate / 100) | replace('.', ',') }}, Privatkauf wie er ist (regelbesteuert, Vorsteuer wird erstattet).</p>
+            {% else %}
+            <p class="help-text mb-10"><strong>Alle Werte brutto eintragen</strong> – also der Endpreis, den ein gleichwertiges Ersatzgerät heute kostet, inkl. MwSt. (Kleinunternehmer, keine Vorsteuererstattung).</p>
+            {% endif %}
             <div class="form-row">
                 <div class="form-group">
-                    <label>Gerätewert ohne Zubehör (&euro;)</label>
-                    <input type="number" name="replacement_value" id="device_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="Wiederbeschaffungswert pro Stück" oninput="updateAccessoryTotal()">
+                    <label>Gerätewert ohne Zubehör (&euro;, {{ value_basis }})</label>
+                    <input type="number" name="replacement_value" id="device_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="Wiederbeschaffungswert pro Stück, {{ value_basis }}" oninput="updateAccessoryTotal()">
                 </div>
                 <div class="form-group">
-                    <label>Gesamtwert pro Gerät inkl. Zubehör</label>
+                    <label>Gesamtwert pro Gerät inkl. Zubehör ({{ value_basis }})</label>
                     <div class="accessory-total" id="accessory-total">–</div>
                 </div>
             </div>
@@ -154,7 +159,7 @@
                         <th>Bezeichnung</th>
                         <th class="col-w-70">Menge</th>
                         <th class="col-w-70">pro</th>
-                        <th class="col-w-110">Wert/Stk (&euro;)</th>
+                        <th class="col-w-110">Wert/Stk (&euro;, {{ value_basis }})</th>
                         <th class="col-w-80">Shop</th>
                         <th class="col-w-30"></th>
                     </tr>

@@ -76,6 +76,7 @@ def build_preisuebersicht_pdf(
     # Replacement value of all rented goods incl. Lieferumfang (as in the Wertaufstellung)
     value_total: float | None = None,
     value_incomplete: bool = False,  # some lines have no value -> shown as "mind."
+    value_basis: str = "brutto",  # 'netto' (regelbesteuert) or 'brutto' (Kleinunternehmer)
 
     # Notes
     notes: str | None = None,
@@ -459,14 +460,15 @@ def build_preisuebersicht_pdf(
     # ── Replacement value of the rented goods (kept visually apart from the price) ──
     if value_total:
         value_text = f"{'mind. ' if value_incomplete else ''}{fmt_eur(value_total)}"
+        basis_text = "netto, ohne MwSt." if value_basis == "netto" else "brutto, inkl. MwSt."
         value_hint = (
-            "Wiederbeschaffungswert aller oben aufgeführten Mietgegenstände inkl. Zubehör"
+            f"Wiederbeschaffungswert ({basis_text}) aller oben aufgeführten Mietgegenstände inkl. Zubehör"
             f"{' (ohne optionale Positionen)' if optional_positions else ''} – "
             "zur Orientierung, z. B. für Ihre Versicherung im Verlust- oder Schadensfall. "
             "Eine detaillierte Wertaufstellung erhalten Sie auf Anfrage."
         )
         value_table = Table([
-            [Paragraph("<b>Gesamtwert der Mietgegenstände</b>", styles["normal"]),
+            [Paragraph(f"<b>Gesamtwert der Mietgegenstände ({value_basis})</b>", styles["normal"]),
              Paragraph(f"<b>{value_text}</b>", styles["right"])],
             [Paragraph(value_hint, styles["small"]), ""],
         ], colWidths=[cw - 120, 120], hAlign="LEFT")

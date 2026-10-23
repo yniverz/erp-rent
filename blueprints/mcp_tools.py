@@ -19,7 +19,7 @@ from blueprints import api as quote_ops
 from blueprints.api import ApiError, _serialize_quote
 from blueprints.admin import convert_inquiry_to_quote
 from helpers import (get_available_quantity, get_package_available_quantity,
-                     get_upload_path, public_base_url)
+                     get_upload_path, public_base_url, replacement_value_basis)
 from models import (db, Category, Inquiry, Item, ItemAccessory, ItemSupply, ItemUnit, PackageComponent,
                     Quote, QuoteItem, SiteSettings, Supplier)
 
@@ -92,7 +92,8 @@ ITEM_FIELD_PROPS = {
     'power_watts': _s('number', 'Leistungsaufnahme in Watt', True),
     'dimensions': _s('string', 'Maße als Freitext, z.B. "60 × 40 × 30 cm"', True),
     'storage_location': _s('string', 'Lagerort / Case (intern)', True),
-    'replacement_value': _s('number', 'Gerätewert ohne Zubehör pro Einheit in EUR (intern, Wiederbeschaffungswert; '
+    'replacement_value': _s('number', 'Gerätewert ohne Zubehör pro Einheit in EUR (intern, heutiger Wiederbeschaffungswert; '
+                             'netto bei Regelbesteuerung, brutto bei Kleinunternehmer – siehe replacement_value_basis in get_item; '
                              'Zubehör wird über set_item_accessories bewertet)', True),
     'accessories_note': _s('string', 'Hinweis zum Lieferumfang (öffentlich: Shop + Lieferschein), z.B. "inkl. Safety-Seil"', True),
     'show_bundle_discount': _s('boolean', 'Nur Pakete: Paketpreis im Shop als Rabatt gegenüber Einzelpreisen zeigen'),
@@ -267,6 +268,12 @@ def _accessory_dict(a):
     }
 
 
+def _value_basis():
+    """'netto' or 'brutto' – how replacement values are entered, from the tax mode in the settings."""
+    settings = SiteSettings.query.first()
+    return replacement_value_basis((settings.tax_mode if settings else None) or 'kleinunternehmer')
+
+
 def _item_detail(item):
     today = datetime.combine(date.today(), datetime.min.time())
     bookings = []
@@ -302,6 +309,7 @@ def _item_detail(item):
         'storage_location': item.storage_location,
         'replacement_value': item.replacement_value,
         'replacement_value_total': item.replacement_value_total,
+        'replacement_value_basis': _value_basis(),
         'accessories': [_accessory_dict(a) for a in item.accessories],
         'accessories_note': item.accessories_note,
         'image_url': _url('public.uploaded_file', filename=item.image_filename) if item.image_filename else None,
@@ -621,7 +629,7 @@ def set_item_supplier_offers(item_id, offers):
                            'name': {'type': 'string', 'description': 'Bezeichnung (optional bei linked_item_id)'},
                            'quantity': {'type': 'integer', 'minimum': 1, 'description': 'Standard 1'},
                            'per_units': {'type': 'integer', 'minimum': 1, 'description': 'Menge gilt je so viele Geräte (Standard 1)'},
-                           'value': {'type': ['number', 'null'], 'minimum': 0, 'description': 'Wert pro Stück in EUR'},
+                           'value': {'type': ['number', 'null'], 'minimum': 0, 'description': 'Wert pro Stück in EUR (netto/brutto wie replacement_value_basis)'},
                            'linked_item_id': {'type': ['integer', 'null'], 'description': 'Optional: verknüpfter Artikel'},
                            'show_in_shop': {'type': 'boolean', 'description': 'Im Shop anzeigen (Standard true)'}}}}},
       ['item_id', 'accessories'], idempotent=True)

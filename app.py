@@ -1,6 +1,7 @@
 from flask import Flask, send_file, request, Response, abort
 from flask_login import LoginManager
 from models import db, User, SiteSettings
+from helpers import replacement_value_basis
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import os
@@ -152,6 +153,7 @@ def inject_site_settings():
         tax_rate=eff_rate,
         effective_tax_mode=eff_mode,
         effective_tax_rate=eff_rate,
+        value_basis=replacement_value_basis(eff_mode),
     )
 
 
