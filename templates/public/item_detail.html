@@ -3,82 +3,95 @@
 {% block title %}{{ item.name }} – {{ site_settings.business_name or 'Verleih' }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/public-catalog.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/public-item-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-catalog.css', v=asset_v) }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-item-detail.css', v=asset_v) }}">
 {% endblock %}
 
 {% block content %}
-<div class="detail-back">
-    <a href="javascript:void(0)" onclick="history.back()" class="btn btn-outline btn-sm">&larr; Zurück</a>
-</div>
+<nav class="catalog-breadcrumb detail-breadcrumb" aria-label="Kategoriepfad">
+    <a href="{{ url_for('public.catalog') }}">Katalog</a>
+    {% if item.category %}
+        {% for ancestor in item.category.ancestors %}
+            <span class="breadcrumb-sep">/</span>
+            <a href="{{ url_for('public.catalog_category', cat_path=ancestor.url_path) }}">{{ ancestor.name }}</a>
+        {% endfor %}
+        <span class="breadcrumb-sep">/</span>
+        <a href="{{ url_for('public.catalog_category', cat_path=item.category.url_path) }}">{{ item.category.name }}</a>
+    {% endif %}
+</nav>
 
 <div class="detail-layout">
-    <div class="detail-image">
+    <div class="detail-image item-image">
         {% if item.image_filename %}
             <img src="{{ url_for('public.uploaded_file', filename=item.image_filename) }}" alt="{{ item.name }}">
         {% else %}
-            <span class="placeholder">&#128247;</span>
+            <span class="placeholder">{{ item.name[:1] }}</span>
+        {% endif %}
+        {% if item.is_package %}
+            <span class="item-bundle-tag">Paket</span>
         {% endif %}
     </div>
 
     <div class="detail-info">
-        <div class="detail-tags">
-            {% if item.category %}
-                <span class="item-category-tag category-breadcrumb">
-                    {% for ancestor in item.category.ancestors %}
-                        <a href="{{ url_for('public.catalog_category', cat_path=ancestor.url_path) }}">{{ ancestor.name }}</a>
-                        <span class="breadcrumb-sep">&rsaquo;</span>
-                    {% endfor %}
-                    <a href="{{ url_for('public.catalog_category', cat_path=item.category.url_path) }}">{{ item.category.name }}</a>
-                </span>
-            {% endif %}
-            {% if item.is_package %}
-                <span class="item-bundle-tag">Paket</span>
-            {% endif %}
-        </div>
-
+        {% if item.manufacturer %}
+            <span class="section-label">{{ item.manufacturer }}</span>
+        {% endif %}
         <h1 class="detail-name">{{ item.name }}</h1>
+
+        <div class="detail-buy">
+            {% if item.show_price_publicly %}
+                {% if item.is_package and item.show_bundle_discount and item.package_components and item.default_rental_price_per_day < item.component_price_sum %}
+                    <div class="detail-price bundle-discount">
+                        <span class="price-original">&euro;{{ "%.2f"|format(item.component_price_sum|netto) }}</span>
+                        <span class="price-discounted">&euro;{{ "%.2f"|format(item.default_rental_price_per_day|netto) }}</span>
+                        <span class="price-unit">/ Tag</span>
+                    </div>
+                {% else %}
+                    <div class="detail-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day|netto) }} <span class="price-unit">/ Tag</span></div>
+                {% endif %}
+            {% else %}
+                <div class="detail-price on-request">Preis auf Anfrage</div>
+            {% endif %}
+
+            <form class="add-to-cart-form detail-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
+                <input type="hidden" name="item_id" value="{{ item.id }}">
+                <div class="qty">
+                    <button type="button" data-step="-1" aria-label="Weniger">&minus;</button>
+                    <input type="number" name="quantity" value="1" min="1" aria-label="Menge">
+                    <button type="button" data-step="1" aria-label="Mehr">+</button>
+                </div>
+                <button type="submit" class="btn btn-primary">In den Warenkorb</button>
+            </form>
+            <p class="detail-buy-note">Unverbindlich anfragen – wir bestätigen Verfügbarkeit und Preis für Ihren Zeitraum.</p>
+        </div>
 
         {% if item.description %}
             <div class="detail-description">{{ item.description|nl2br }}</div>
         {% endif %}
 
-        {% if item.has_specs %}
-            <div class="detail-specs">
-                <h3>Technische Daten</h3>
-                <table class="specs-table">
-                    {% if item.manufacturer %}<tr><th>Hersteller</th><td>{{ item.manufacturer }}</td></tr>{% endif %}
-                    {% if item.model_name %}<tr><th>Modell</th><td>{{ item.model_name }}</td></tr>{% endif %}
-                    {% if item.weight_kg %}<tr><th>Gewicht</th><td>{{ '%g'|format(item.weight_kg) }} kg</td></tr>{% endif %}
-                    {% if item.power_watts %}<tr><th>Leistungsaufnahme</th><td>{{ '%g'|format(item.power_watts) }} W</td></tr>{% endif %}
-                    {% if item.dimensions %}<tr><th>Maße</th><td>{{ item.dimensions }}</td></tr>{% endif %}
-                </table>
-            </div>
-        {% endif %}
-
         {% set shop_accessories = item.accessories | selectattr('show_in_shop') | list %}
         {% if not item.is_package and (shop_accessories or item.accessories_note) %}
-            <div class="detail-components">
-                <h3>Lieferumfang</h3>
-                <ul>
-                    <li>1&times; {{ item.name }}</li>
+            <section class="detail-section">
+                <h2 class="detail-section-title">Lieferumfang</h2>
+                <ul class="detail-list">
+                    <li><span class="detail-qty">1&times;</span> {{ item.name }}</li>
                     {% for a in shop_accessories %}
-                        <li>{{ a.quantity }}&times; {{ a.name }}{% if a.per_units > 1 %} (je {{ a.per_units }} Stück){% endif %}</li>
+                        <li><span class="detail-qty">{{ a.quantity }}&times;</span> {{ a.name }}{% if a.per_units > 1 %} <span class="text-muted">(je {{ a.per_units }} Stück)</span>{% endif %}</li>
                     {% endfor %}
                 </ul>
                 {% if item.accessories_note %}
                     <p class="detail-accessories-note">{{ item.accessories_note|nl2br }}</p>
                 {% endif %}
-            </div>
+            </section>
         {% endif %}
 
         {% if item.is_package and item.package_components %}
-            <div class="detail-components">
-                <h3>Paketinhalt</h3>
-                <ul>
+            <section class="detail-section">
+                <h2 class="detail-section-title">Paketinhalt</h2>
+                <ul class="detail-list">
                     {% for pc in item.package_components %}
                         <li>
-                            {{ pc.quantity }}&times;
+                            <span class="detail-qty">{{ pc.quantity }}&times;</span>
                             {% if pc.component_item.visible_in_shop %}
                                 <a href="{{ url_for('public.item_detail', item_id=pc.component_item.id) }}">{{ pc.component_item.name }}</a>
                             {% else %}
@@ -87,58 +100,25 @@
                         </li>
                     {% endfor %}
                 </ul>
-            </div>
+            </section>
         {% endif %}
 
-        {% if item.show_price_publicly %}
-            {% if item.is_package and item.show_bundle_discount and item.package_components and item.default_rental_price_per_day < item.component_price_sum %}
-                <div class="detail-price bundle-discount">
-                    <span class="price-original">&euro;{{ "%.2f"|format(item.component_price_sum|netto) }}</span>
-                    <span class="price-discounted">&euro;{{ "%.2f"|format(item.default_rental_price_per_day|netto) }} / Tag</span>
-                </div>
-            {% else %}
-                <div class="detail-price">&euro;{{ "%.2f"|format(item.default_rental_price_per_day|netto) }} / Tag</div>
-            {% endif %}
-        {% else %}
-            <div class="detail-price on-request">Preis auf Anfrage</div>
+        {% if item.has_specs %}
+            <section class="detail-section">
+                <h2 class="detail-section-title">Technische Daten</h2>
+                <dl class="specs-list">
+                    {% if item.manufacturer %}<div><dt>Hersteller</dt><dd>{{ item.manufacturer }}</dd></div>{% endif %}
+                    {% if item.model_name %}<div><dt>Modell</dt><dd>{{ item.model_name }}</dd></div>{% endif %}
+                    {% if item.weight_kg %}<div><dt>Gewicht</dt><dd>{{ '%g'|format(item.weight_kg) }} kg</dd></div>{% endif %}
+                    {% if item.power_watts %}<div><dt>Leistungsaufnahme</dt><dd>{{ '%g'|format(item.power_watts) }} W</dd></div>{% endif %}
+                    {% if item.dimensions %}<div><dt>Maße</dt><dd>{{ item.dimensions }}</dd></div>{% endif %}
+                </dl>
+            </section>
         {% endif %}
-
-        <form class="add-to-cart-form detail-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
-            <input type="hidden" name="item_id" value="{{ item.id }}">
-            <input type="number" name="quantity" value="1" min="1">
-            <button type="submit" class="btn btn-primary">In den Warenkorb</button>
-        </form>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
-<script>
-document.querySelectorAll('[data-ajax-cart]').forEach(form => {
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const btn = this.querySelector('button');
-        const origText = btn.textContent;
-        btn.textContent = 'Hinzugefügt!';
-        btn.classList.add('btn-added');
-        setTimeout(() => { btn.textContent = origText; btn.classList.remove('btn-added'); }, 1200);
-
-        fetch(this.action, {
-            method: 'POST',
-            body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.cart_count !== undefined) {
-                document.getElementById('cart-badge').textContent = data.cart_count;
-                const cartLink = document.getElementById('cart-link');
-                if (cartLink) cartLink.classList.toggle('d-none', data.cart_count <= 0);
-            }
-        })
-        .catch(() => {});
-    });
-});
-</script>
+<div class="detail-back">
+    <a href="javascript:void(0)" onclick="history.back()" class="link-back">&larr; Zurück</a>
+</div>
 {% endblock %}

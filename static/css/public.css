@@ -1,93 +1,254 @@
 /* ===== Public Storefront Styles ===== */
+/* Variables come from public-theme.css. */
 
-body { background: var(--bg-body); }
+html { scroll-behavior: smooth; }
+body {
+    background: var(--ink);
+    color: var(--cream);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; color: var(--cream); line-height: 1.2; }
+::selection { background: rgba(var(--gold-rgb), 0.35); color: #fff; }
+
+/* ── Section label + title (shared pattern) ── */
+.section-label {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 0.75rem;
+}
+.section-title {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    margin-bottom: 1.25rem;
+}
 
 /* ── Header ── */
-header {
-    background: var(--color-primary);
-    color: white;
-    padding: 0;
+.site-header {
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: var(--shadow-heavy);
+    background: var(--ink-overlay);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.4s;
 }
+.site-header.scrolled { border-bottom-color: var(--hairline); }
 .header-inner {
     max-width: var(--container-max-public);
     margin: 0 auto;
-    padding: 15px var(--spacing-page);
+    padding: 1.15rem var(--spacing-page);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1.5rem;
 }
 .logo {
-    font-size: 1.4em;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
     font-weight: 700;
-    color: white;
+    color: var(--gold);
+    letter-spacing: 2px;
+    text-transform: uppercase;
     text-decoration: none;
+    white-space: nowrap;
 }
-.logo:hover { opacity: 0.9; }
+.logo:hover { color: var(--gold-light); }
 
-.header-nav          { display: flex; align-items: center; gap: 20px; }
-.header-nav a        { color: rgba(255,255,255,0.85); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
-.header-nav a:hover  { color: white; }
-
-.cart-link {
+.header-nav { display: flex; align-items: center; gap: 2rem; }
+.header-nav a {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.1);
-    padding: 8px 16px;
-    border-radius: var(--radius-sm);
-    transition: background 0.2s;
+    color: var(--cream);
+    text-decoration: none;
+    font-size: 0.82rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: color 0.3s;
 }
-.cart-link:hover { background: rgba(255,255,255,0.2); }
+.header-nav a:hover,
+.header-nav a.active { color: var(--gold); }
+.header-nav a.active::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -6px;
+    height: 1px;
+    background: var(--gold);
+}
+
+.cart-link { display: inline-flex; align-items: center; gap: 0.5rem; }
+.cart-icon { width: 18px; height: 18px; }
 .cart-badge {
-    background: var(--color-danger);
-    color: white;
-    font-size: 0.75em;
+    background: var(--gold);
+    color: var(--ink);
+    font-size: 0.7rem;
     font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 10px;
+    letter-spacing: 0;
+    line-height: 1;
+    padding: 4px 7px;
+    border-radius: 999px;
     min-width: 20px;
     text-align: center;
 }
 
-.header-nav-login {
-    background: rgba(255,255,255,0.1);
-    padding: 8px 16px;
-    border-radius: var(--radius-sm);
+/* ── Buttons (override common.css for the storefront) ── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.85rem 2rem;
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    border-radius: 0;
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.35s var(--ease), color 0.35s var(--ease), border-color 0.35s var(--ease), transform 0.3s var(--ease);
+}
+.btn:hover { background: var(--gold); color: var(--ink); transform: translateY(-2px); }
+.btn-primary,
+.btn-success { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.btn-primary:hover,
+.btn-success:hover { background: var(--gold-light); border-color: var(--gold-light); color: var(--ink); }
+.btn-outline { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+.btn-outline:hover { background: var(--gold); color: var(--ink); }
+.btn-ghost { background: transparent; color: var(--cream-muted); border: 1px solid var(--hairline-strong); }
+.btn-ghost:hover { background: transparent; color: var(--gold); border-color: var(--gold); }
+.btn-sm { padding: 0.6rem 1.1rem; font-size: 0.7rem; letter-spacing: 1.5px; }
+.btn-added { background: var(--color-success) !important; border-color: var(--color-success) !important; color: var(--ink) !important; }
+
+.link-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--cream-muted);
+    text-decoration: none;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: color 0.3s;
+}
+.link-back:hover { color: var(--gold); }
+
+/* ── Form controls ── */
+input, select, textarea {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--hairline-strong);
+    border-radius: 0;
+    color: var(--cream);
+    font-family: var(--font-body);
+    padding: 0.8rem 1rem;
+    transition: border-color 0.3s, background 0.3s;
+}
+input:focus, select:focus, textarea:focus {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--gold);
+    box-shadow: none;
+}
+input::placeholder, textarea::placeholder { color: var(--cream-faint); }
+input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8) sepia(0.4); cursor: pointer; }
+.form-group label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-bottom: 0.5rem;
 }
 
-/* ── Container ── */
+/* Quantity stepper */
+.qty {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--hairline-strong);
+    flex-shrink: 0;
+}
+.qty input[type="number"] {
+    width: 3rem;
+    border: none;
+    background: transparent;
+    text-align: center;
+    padding: 0.5rem 0;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.qty input::-webkit-outer-spin-button,
+.qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty button {
+    background: transparent;
+    border: none;
+    color: var(--cream-muted);
+    width: 2rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s;
+}
+.qty button:hover { color: var(--gold); background: rgba(var(--gold-rgb), 0.08); }
+
+/* ── Alerts ── */
+.alert { border-radius: 0; border-width: 0 0 0 2px; }
+
+/* ── Main container ── */
 .container {
     max-width: var(--container-max-public);
     margin: 0 auto;
-    padding: 30px var(--spacing-page);
-    min-height: calc(100vh - 160px);
+    padding: clamp(2rem, 5vw, 3.5rem) var(--spacing-page) clamp(4rem, 8vw, 6rem);
+    min-height: calc(100vh - 220px);
 }
 
 /* ── Footer ── */
-footer {
-    background: var(--color-primary);
-    color: rgba(255,255,255,0.7);
-    padding: 25px var(--spacing-page);
+.site-footer {
+    border-top: 1px solid var(--hairline);
+    padding: 2.5rem var(--spacing-page);
     text-align: center;
-    font-size: 0.9em;
+    font-size: 0.8rem;
+    color: var(--cream-faint);
 }
-footer a       { color: rgba(255,255,255,0.85); text-decoration: none; margin: 0 12px; }
-footer a:hover { color: white; text-decoration: underline; }
-.footer-inner  { max-width: var(--container-max-public); margin: 0 auto; }
-.footer-links  { margin-bottom: 10px; }
-.footer-tax-note { margin-bottom: 12px; font-size: 0.85em; color: rgba(255,255,255,0.55); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.btn-price-toggle { background: transparent; border: 1px solid rgba(255,255,255,0.35); color: rgba(255,255,255,0.7); padding: 2px 10px; border-radius: var(--radius); font-size: 0.9em; cursor: pointer; transition: var(--transition); }
-.btn-price-toggle:hover { background: rgba(255,255,255,0.1); color: white; border-color: rgba(255,255,255,0.6); }
+.footer-inner { max-width: var(--container-max-public); margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; }
+.footer-links a { color: var(--gold); text-decoration: none; margin: 0 1rem; transition: color 0.3s; }
+.footer-links a:hover { color: var(--gold-light); }
+.footer-tax-note { display: flex; align-items: center; justify-content: center; gap: 0.75rem; flex-wrap: wrap; color: var(--cream-faint); }
+.footer-toggle-form { display: inline; }
+.btn-price-toggle {
+    background: transparent;
+    border: 1px solid var(--hairline-strong);
+    color: var(--cream-muted);
+    padding: 0.3rem 0.8rem;
+    font-family: var(--font-body);
+    font-size: 0.68rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.3s, border-color 0.3s;
+}
+.btn-price-toggle:hover { color: var(--gold); border-color: var(--gold); }
 
-/* ── Cart button flash ── */
-.btn-added { background: var(--color-success) !important; }
+/* ── Reveal on scroll ── */
+.fade-up { opacity: 0; transform: translateY(24px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
+.fade-up.visible { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .fade-up { opacity: 1; transform: none; transition: none; }
+    .btn:hover { transform: none; }
+}
 
 /* ── Responsive ── */
-@media (max-width: 768px) {
-    .header-inner { flex-direction: column; gap: 10px; }
+@media (max-width: 640px) {
+    .header-inner { padding-top: 0.9rem; padding-bottom: 0.9rem; }
+    .logo { font-size: 1.15rem; letter-spacing: 1.5px; }
+    .header-nav { gap: 1.1rem; }
+    .header-nav a { font-size: 0.72rem; letter-spacing: 1px; }
+    .header-nav .nav-optional { display: none; }
 }

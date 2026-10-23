@@ -1,39 +1,62 @@
 /* ===== Public – Inquiry Sent Confirmation ===== */
 
 .confirmation-wrapper {
+    max-width: 620px;
+    margin: 0 auto;
+    padding: clamp(2rem, 6vw, 4rem) 0;
     text-align: center;
-    padding: 60px 20px;
 }
 .confirmation-icon {
-    font-size: 4em;
-    margin-bottom: 20px;
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 1.75rem;
+    border: 1px solid var(--gold);
+    border-radius: 50%;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-.confirmation-wrapper h1 {
-    margin-bottom: 14px;
-    font-size: 2em;
-}
-.confirmation-subtitle {
-    font-size: 1.15em;
-    color: var(--color-gray-700);
-    margin-bottom: 10px;
-}
-.confirmation-detail {
-    color: var(--color-text-muted);
-    max-width: 500px;
-    margin: 0 auto 30px;
-}
+.confirmation-icon svg { width: 34px; height: 34px; }
+.confirmation-wrapper h1 { font-size: clamp(2.2rem, 6vw, 3.5rem); margin-bottom: 0.75rem; }
+.confirmation-subtitle { font-size: 1.15rem; color: var(--cream); margin-bottom: 0.5rem; }
+.confirmation-detail { color: var(--cream-muted); font-weight: 300; margin: 0 auto 2.5rem; max-width: 480px; }
+.confirmation-detail strong { color: var(--cream); font-weight: 500; }
+
 .confirmation-summary {
-    background: var(--bg-card);
-    border-radius: var(--radius-xl);
-    padding: 24px;
-    max-width: 500px;
-    margin: 0 auto 30px;
-    box-shadow: var(--shadow-card);
     text-align: left;
+    padding: 1.75rem;
+    margin-bottom: 2.5rem;
+    border: 1px solid var(--hairline);
+    background: rgba(255, 255, 255, 0.02);
 }
-.confirmation-summary h3 {
-    margin-bottom: 14px;
+.confirmation-summary h2 {
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 1rem;
 }
-.confirmation-summary ul {
-    margin-left: 20px;
+.confirmation-facts > div {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    font-size: 0.92rem;
 }
+.confirmation-facts dt { color: var(--cream-faint); }
+.confirmation-items { list-style: none; margin-top: 0.75rem; border-top: 1px solid var(--hairline-strong); }
+.confirmation-items li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 0.92rem;
+}
+.confirmation-qty { min-width: 2.25rem; color: var(--cream-faint); font-variant-numeric: tabular-nums; }
+.confirmation-name { flex: 1; min-width: 0; }
+.confirmation-price { color: var(--cream-muted); white-space: nowrap; font-size: 0.85rem; }
+.confirmation-price.on-request { color: var(--gold-light); }

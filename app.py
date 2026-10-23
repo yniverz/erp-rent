@@ -20,6 +20,18 @@ app = Flask(__name__, static_folder=None)
 _static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 _static_cache = {}  # (filepath, mtime) -> (data, etag, mimetype)
 
+
+def _compute_asset_version():
+    """Cache-busting token for static URLs: newest mtime below static/."""
+    newest = 0
+    for dirpath, _, filenames in os.walk(_static_dir):
+        for name in filenames:
+            newest = max(newest, os.path.getmtime(os.path.join(dirpath, name)))
+    return format(int(newest), 'x')
+
+
+_asset_version = _compute_asset_version()
+
 @app.route('/static/<path:filename>', endpoint='static')
 def serve_static(filename):
     filepath = os.path.realpath(os.path.join(_static_dir, filename))
@@ -148,6 +160,8 @@ def inject_site_settings():
         site_settings=settings,
         brand_name=(settings.display_name or settings.business_name or 'Verleih') if settings else 'Verleih',
         has_favicon=_favicon_data is not None,
+        homepage_url=os.getenv('HOMEPAGE_URL', '').strip(),
+        asset_v=_asset_version,
         favicon_mimetype=_favicon_mimetype,
         show_netto=show_netto,
         tax_rate=eff_rate,

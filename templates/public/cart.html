@@ -4,130 +4,136 @@
 
 {% block extra_head %}
 <meta name="robots" content="noindex">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/public-cart.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-cart.css', v=asset_v) }}">
 {% endblock %}
 
 {% block content %}
 <div class="cart-page">
-    <h1>Ihr Warenkorb</h1>
+    <header class="cart-header">
+        <span class="section-label">Mietanfrage</span>
+        <h1>Ihr Warenkorb</h1>
+    </header>
 
     {% if not cart_items %}
         <div class="cart-empty">
             <h2>Ihr Warenkorb ist leer</h2>
             <p>Stöbern Sie in unserem Katalog, um Geräte für Ihre Veranstaltung zu finden.</p>
-            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary mt-16">Katalog durchstöbern</a>
+            <a href="{{ url_for('public.catalog') }}" class="btn btn-primary">Katalog durchstöbern</a>
         </div>
     {% else %}
-        <form method="POST" action="{{ url_for('public.cart_update') }}">
-            <table class="cart-table">
-                <thead>
-                    <tr>
-                        <th>Artikel</th>
-                        <th>Preis / Tag</th>
-                        <th>Menge</th>
-                        <th>Summe / Tag</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
+    <div class="cart-layout">
+        <div class="cart-main">
+            <form method="POST" action="{{ url_for('public.cart_update') }}" class="cart-items-form">
+                <div class="cart-list-head" aria-hidden="true">
+                    <span>Artikel</span>
+                    <span>Menge</span>
+                    <span>Summe / Tag</span>
+                </div>
+                <ul class="cart-list">
                     {% for ci in cart_items %}
-                    <tr>
-                        <td>
-                            <div class="item-row">
-                                {% if ci.item.image_filename %}
-                                    <img src="{{ url_for('public.uploaded_file', filename=ci.item.image_filename) }}" class="item-thumb" alt="">
-                                {% endif %}
-                                <div>
-                                    <strong>{{ ci.item.name }}</strong>
-                                    {% if ci.item.is_package %}<span class="badge badge-bundle">Paket</span>{% endif %}
-                                    {% if ci.item.category %}<br><small class="text-muted">{{ ci.item.category.name }}</small>{% endif %}
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            {% if ci.item.show_price_publicly %}
-                                &euro;{{ "%.2f"|format(ci.item.default_rental_price_per_day|netto) }}
+                    <li class="cart-row">
+                        <a href="{{ url_for('public.item_detail', item_id=ci.item.id) }}" class="cart-thumb">
+                            {% if ci.item.image_filename %}
+                                <img src="{{ url_for('public.uploaded_file', filename=ci.item.image_filename) }}" alt="">
                             {% else %}
-                                <span class="on-request-text">On request</span>
+                                <span>{{ ci.item.name[:1] }}</span>
                             {% endif %}
-                        </td>
-                        <td>
-                            <input type="number" name="quantity_{{ ci.item.id }}" value="{{ ci.quantity }}" min="0">
-                        </td>
-                        <td>
+                        </a>
+                        <div class="cart-row-info">
+                            {% if ci.item.category %}<span class="cart-row-cat">{{ ci.item.category.name }}</span>{% endif %}
+                            <a href="{{ url_for('public.item_detail', item_id=ci.item.id) }}" class="cart-row-name">{{ ci.item.name }}</a>
+                            {% if ci.item.is_package %}<span class="badge-bundle">Paket</span>{% endif %}
+                            <span class="cart-row-unit">
+                                {% if ci.item.show_price_publicly %}
+                                    &euro;{{ "%.2f"|format(ci.item.default_rental_price_per_day|netto) }} / Tag
+                                {% else %}
+                                    Preis auf Anfrage
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="qty cart-row-qty">
+                            <button type="button" data-step="-1" aria-label="Weniger">&minus;</button>
+                            <input type="number" name="quantity_{{ ci.item.id }}" value="{{ ci.quantity }}" min="0" aria-label="Menge {{ ci.item.name }}">
+                            <button type="button" data-step="1" aria-label="Mehr">+</button>
+                        </div>
+                        <div class="cart-row-total">
                             {% if ci.line_total is not none %}
                                 &euro;{{ "%.2f"|format(ci.line_total|netto) }}
                             {% else %}
                                 <span class="on-request-text">Auf Anfrage</span>
                             {% endif %}
-                        </td>
-                        <td>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="removeItem({{ ci.item.id }})">&#10005;</button>
-                        </td>
-                    </tr>
+                        </div>
+                        <button type="button" class="cart-row-remove" onclick="removeItem({{ ci.item.id }})" aria-label="{{ ci.item.name }} entfernen">&times;</button>
+                    </li>
                     {% endfor %}
-                </tbody>
-            </table>
+                </ul>
 
-            <div class="cart-actions">
-                <button type="submit" class="btn btn-outline btn-sm">Mengen aktualisieren</button>
-                <a href="{{ url_for('public.catalog') }}" class="btn btn-sm btn-gray">Weiter stöbern</a>
+                <div class="cart-actions">
+                    <a href="{{ url_for('public.catalog') }}" class="link-back">&larr; Weiter stöbern</a>
+                    <button type="submit" class="btn btn-ghost btn-sm" id="cart-update-btn">Mengen aktualisieren</button>
+                </div>
+            </form>
+
+            <section class="inquiry-form" id="anfrage">
+                <span class="section-label">Schritt 2</span>
+                <h2>Mietanfrage senden</h2>
+                <p class="inquiry-intro">Geben Sie Ihre Daten und gewünschten Termine ein. Wir melden uns mit Verfügbarkeit und einem Angebot bei Ihnen.</p>
+
+                <form method="POST" action="{{ url_for('public.submit_inquiry') }}">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="customer_name">Ihr Name *</label>
+                            <input type="text" name="customer_name" id="customer_name" autocomplete="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="customer_email">E-Mail-Adresse *</label>
+                            <input type="email" name="customer_email" id="customer_email" autocomplete="email" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="customer_phone">Telefonnummer</label>
+                            <input type="tel" name="customer_phone" id="customer_phone" autocomplete="tel">
+                        </div>
+                        <div class="form-group form-group-spacer"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="start_date">Gewünschtes Startdatum *</label>
+                            <input type="date" name="start_date" id="start_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="end_date">Gewünschtes Enddatum *</label>
+                            <input type="date" name="end_date" id="end_date" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Nachricht / Zusätzliche Infos</label>
+                        <textarea name="message" id="message" rows="5" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
+                    </div>
+                    <div id="inquiry-errors" class="alert alert-error d-none"></div>
+                    <button type="submit" class="btn btn-primary btn-submit-lg">Anfrage absenden</button>
+                </form>
+            </section>
+        </div>
+
+        <aside class="cart-summary">
+            <span class="section-label">Übersicht</span>
+            <div class="summary-row">
+                <span>Artikel</span>
+                <span>{{ cart_count }}</span>
             </div>
-        </form>
-
-        <div class="cart-summary">
             <div class="summary-row total">
                 <span>Zwischensumme pro Tag</span>
                 <span>&euro;{{ "%.2f"|format(subtotal|netto) }}</span>
             </div>
             {% if has_on_request %}
-                <div class="summary-note">&#9888; Einige Artikel sind mit "Preis auf Anfrage" gekennzeichnet. Der endgültige Preis wird nach Ihrer Anfrage mitgeteilt.</div>
+                <div class="summary-note">Einige Artikel sind mit „Preis auf Anfrage" gekennzeichnet. Der endgültige Preis wird nach Ihrer Anfrage mitgeteilt.</div>
             {% endif %}
-            <p class="help-text mt-8">Die Endsumme hängt vom Mietzeitraum ab und wird nach Prüfung bestätigt.</p>
-        </div>
-
-        <div class="inquiry-form">
-            <h2>Mietanfrage senden</h2>
-            <p class="text-muted mb-20 text-095">Geben Sie Ihre Daten und gewünschten Termine ein. Wir melden uns mit Verfügbarkeit und einem Angebot bei Ihnen.</p>
-
-            <form method="POST" action="{{ url_for('public.submit_inquiry') }}">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Ihr Name *</label>
-                        <input type="text" name="customer_name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>E-Mail-Adresse *</label>
-                        <input type="email" name="customer_email" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Telefonnummer</label>
-                        <input type="tel" name="customer_phone">
-                    </div>
-                    <div class="form-group">
-                        <label>&nbsp;</label>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Gewünschtes Startdatum *</label>
-                        <input type="date" name="start_date" id="start_date" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Gewünschtes Enddatum *</label>
-                        <input type="date" name="end_date" id="end_date" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Nachricht / Zusätzliche Infos</label>
-                    <textarea name="message" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
-                </div>
-                <div id="inquiry-errors" class="text-danger text-sm mb-12 d-none"></div>
-                <button type="submit" class="btn btn-success btn-submit-lg">Anfrage absenden</button>
-            </form>
-        </div>
+            <p class="summary-help">Die Endsumme hängt vom Mietzeitraum ab und wird nach Prüfung bestätigt.</p>
+            <a href="#anfrage" class="btn btn-primary summary-cta">Zur Anfrage</a>
+        </aside>
+    </div>
     {% endif %}
 </div>
 
@@ -142,6 +148,15 @@ function removeItem(itemId) {
     form.action = '/cart/remove/' + itemId;
     form.submit();
 }
+
+// Highlight the update button once a quantity changed
+document.querySelectorAll('.cart-items-form input[type="number"]').forEach(input => {
+    input.addEventListener('change', () => {
+        const btn = document.getElementById('cart-update-btn');
+        btn.classList.remove('btn-ghost');
+        btn.classList.add('btn-primary');
+    });
+});
 
 (function() {
     // Set min date to today for date inputs
