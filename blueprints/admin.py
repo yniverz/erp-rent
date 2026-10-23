@@ -1172,7 +1172,12 @@ def _apply_default_sources(qi, item, quote):
 @login_required
 def quote_list():
     """List all quotes"""
-    quotes = Quote.query.order_by(Quote.created_at.desc()).all()
+    # Newest rental period first; quotes without a date go last
+    quotes = Quote.query.order_by(
+        Quote.start_date.is_(None),
+        Quote.start_date.desc(),
+        Quote.created_at.desc(),
+    ).all()
     return render_template('admin/quote_list.html', quotes=quotes)
 
 
