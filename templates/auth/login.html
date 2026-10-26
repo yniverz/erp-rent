@@ -3,38 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="light dark">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0d0d0d">
     <meta name="robots" content="noindex">
     <title>Anmelden - {{ brand_name }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables_light.css') }}" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables_dark.css') }}" media="(prefers-color-scheme: dark)">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    {% if has_favicon %}
+    <link rel="icon" href="/favicon.ico" type="{{ favicon_mimetype }}">
+    {% endif %}
+    <link rel="preload" href="{{ url_for('static', filename='fonts/playfair-display-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/inter-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public-theme.css', v=asset_v) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css', v=asset_v) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css', v=asset_v) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public-login.css', v=asset_v) }}">
 </head>
 <body class="login-page">
-    <div class="login-card">
-        <h1>{{ brand_name }}</h1>
+    <main class="login-shell">
+        <a href="{{ url_for('public.catalog') }}" class="logo login-logo">{{ brand_name }}</a>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+        <div class="login-card">
+            <span class="section-label">Verwaltung</span>
+            <h1>Anmelden</h1>
 
-        <form method="POST">
-            <div class="form-group">
-                <label>Benutzername</label>
-                <input type="text" name="username" required autofocus>
-            </div>
-            <div class="form-group">
-                <label>Passwort</label>
-                <input type="password" name="password" required>
-            </div>
-            <button type="submit" class="btn-login">Anmelden</button>
-        </form>
-        <a href="{{ url_for('public.catalog') }}" class="back-link">&larr; Zurück zum Shop</a>
-    </div>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <div class="form-group">
+                    <label for="username">Benutzername</label>
+                    <input type="text" name="username" id="username" autocomplete="username" autocapitalize="none" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">Passwort</label>
+                    <input type="password" name="password" id="password" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary login-submit">Anmelden</button>
+            </form>
+        </div>
+
+        <a href="{{ url_for('public.catalog') }}" class="link-back">&larr; Zurück zum Shop</a>
+    </main>
 </body>
 </html>

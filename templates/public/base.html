@@ -64,16 +64,15 @@
                     </form>
                 </div>
             {% endif %}
-            {% if site_settings and (site_settings.imprint_url or site_settings.privacy_url) %}
             <div class="footer-links">
-                {% if site_settings.imprint_url %}
+                {% if site_settings and site_settings.imprint_url %}
                     <a href="{{ site_settings.imprint_url }}" target="_blank" rel="noopener">Impressum</a>
                 {% endif %}
-                {% if site_settings.privacy_url %}
+                {% if site_settings and site_settings.privacy_url %}
                     <a href="{{ site_settings.privacy_url }}" target="_blank" rel="noopener">Datenschutz</a>
                 {% endif %}
+                <a href="{{ url_for('auth.login') }}" rel="nofollow">Anmelden</a>
             </div>
-            {% endif %}
             <div>&copy; {{ brand_name }}</div>
         </div>
     </footer>
