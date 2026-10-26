@@ -83,8 +83,7 @@ All configuration is done through environment variables (or a `.env` file in the
 | `SMTP_USER` | No | — | SMTP login username. |
 | `SMTP_PASSWORD` | No | — | SMTP login password. |
 | `SMTP_FROM` | No | Same as `SMTP_USER` | Sender address for notification emails. |
-| `FAVICON_URL` | No | — | URL to an image to use as the site favicon. |
-| `HOMEPAGE_URL` | No | — | Link to your main website, shown as "Startseite" in the shop header. |
+| `FAVICON_URL` | No | — | Fallback favicon URL. Prefer setting it in Admin → Settings, which takes precedence. |
 | `API_TOKENS` | No | — | Comma-separated static token(s) for the REST API (`/api/v1`). If unset, the API is disabled. Also accepted as bearer token by the MCP endpoint. |
 | `PUBLIC_URL` | No | request URL | Public base URL, e.g. `https://verleih.example.com`. Set this behind a reverse proxy so the OAuth/MCP metadata advertises the correct https URLs. |
 

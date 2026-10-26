@@ -88,9 +88,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///erp_rent.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
-# Favicon cache
+# Favicon cache (per worker; refetched when the configured URL changes)
 _favicon_data = None
 _favicon_mimetype = 'image/x-icon'
+_favicon_source = None  # URL the cache was filled from ('' = none configured)
 
 # Map file extensions to MIME types for favicons
 _FAVICON_EXT_MAP = {
@@ -119,13 +120,19 @@ def _detect_mimetype(url, content_type_header):
             return mime
     return 'image/x-icon'
 
-def _load_favicon():
-    global _favicon_data, _favicon_mimetype
-    favicon_url = os.getenv('FAVICON_URL', '').strip()
+def _load_favicon(settings=None):
+    """Favicon from the settings URL (FAVICON_URL env as fallback), fetched once per URL."""
+    global _favicon_data, _favicon_mimetype, _favicon_source
+    favicon_url = ((settings.favicon_url if settings else None) or os.getenv('FAVICON_URL', '')).strip()
+    if favicon_url == _favicon_source:
+        return
+    _favicon_source = favicon_url
+    _favicon_data = None
+    _favicon_mimetype = 'image/x-icon'
     if not favicon_url:
         return
     try:
-        resp = http_requests.get(favicon_url, timeout=10)
+        resp = http_requests.get(favicon_url, timeout=5)
         resp.raise_for_status()
         _favicon_data = resp.content
         _favicon_mimetype = _detect_mimetype(favicon_url, resp.headers.get('Content-Type', ''))
@@ -152,6 +159,7 @@ def load_user(user_id):
 @app.context_processor
 def inject_site_settings():
     settings = SiteSettings.query.first()
+    _load_favicon(settings)
     show_netto = request.cookies.get('price_mode') == 'netto'
     local_mode = (settings.tax_mode or 'kleinunternehmer') if settings else 'kleinunternehmer'
     local_rate = (settings.tax_rate if settings and settings.tax_rate else 19.0)
@@ -160,7 +168,6 @@ def inject_site_settings():
         site_settings=settings,
         brand_name=(settings.display_name or settings.business_name or 'Verleih') if settings else 'Verleih',
         has_favicon=_favicon_data is not None,
-        homepage_url=os.getenv('HOMEPAGE_URL', '').strip(),
         asset_v=_asset_version,
         favicon_mimetype=_favicon_mimetype,
         show_netto=show_netto,
@@ -184,6 +191,7 @@ def netto_filter(value):
 
 @app.route('/favicon.ico')
 def favicon():
+    _load_favicon(SiteSettings.query.first())
     if _favicon_data:
         return send_file(io.BytesIO(_favicon_data), mimetype=_favicon_mimetype)
     return '', 204
@@ -291,6 +299,11 @@ with app.app_context():
     # MCP server (Claude connector)
     _add_column_if_missing('site_settings', 'mcp_enabled', 'BOOLEAN DEFAULT 0')
     _add_column_if_missing('site_settings', 'mcp_allow_delete', 'BOOLEAN DEFAULT 0')
+    # Optional extra button in the shop header (e.g. back to the main website)
+    _add_column_if_missing('site_settings', 'header_link_text', 'VARCHAR(100)')
+    _add_column_if_missing('site_settings', 'header_link_url', 'VARCHAR(500)')
+    # Favicon source moved from FAVICON_URL env to settings (env stays as fallback)
+    _add_column_if_missing('site_settings', 'favicon_url', 'VARCHAR(500)')
 
     # ── Category names no longer unique (slug URLs disambiguate via path) ──
     # SQLite can't drop a UNIQUE constraint, so rebuild the table without it.
@@ -386,7 +399,7 @@ with app.app_context():
         print("Created default site settings")
 
     # Load favicon from URL
-    _load_favicon()
+    _load_favicon(SiteSettings.query.first())
 
 
 if __name__ == '__main__':

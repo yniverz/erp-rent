@@ -29,10 +29,10 @@
         <div class="header-inner">
             <a href="{{ url_for('public.catalog') }}" class="logo">{{ brand_name }}</a>
             <nav class="header-nav" aria-label="Hauptnavigation">
-                {% if homepage_url %}
-                <a href="{{ homepage_url }}">Startseite</a>
+                {% if site_settings and site_settings.header_link_text and site_settings.header_link_url %}
+                <a href="{{ site_settings.header_link_url }}" class="header-nav-extra">{{ site_settings.header_link_text }}</a>
                 {% endif %}
-                <a href="{{ url_for('public.catalog') }}" class="{{ 'active' if endpoint.startswith('public.catalog') or endpoint == 'public.item_detail' }}">Katalog</a>
+                <a href="{{ url_for('public.catalog') }}" class="nav-catalog {{ 'active' if endpoint.startswith('public.catalog') or endpoint == 'public.item_detail' }}">Katalog</a>
                 <a href="{{ url_for('public.cart') }}" class="cart-link{{ ' active' if endpoint == 'public.cart' }}{{ ' d-none' if not cart_count }}" id="cart-link" aria-label="Warenkorb">
                     <svg class="cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 7h12l-1.2 12.1a1 1 0 0 1-1 .9H8.2a1 1 0 0 1-1-.9L6 7Z"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7"/></svg>
                     <span class="cart-badge" id="cart-badge">{{ cart_count|default(0) }}</span>

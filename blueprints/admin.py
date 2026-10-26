@@ -2122,6 +2122,9 @@ def settings():
             settings_record.tax_mode = request.form.get('tax_mode', 'kleinunternehmer').strip()
             settings_record.tax_rate = float(request.form.get('tax_rate', '19.0') or 19.0)
             settings_record.shop_description = request.form.get('shop_description', '')
+            settings_record.header_link_text = request.form.get('header_link_text', '').strip() or None
+            settings_record.header_link_url = request.form.get('header_link_url', '').strip() or None
+            settings_record.favicon_url = request.form.get('favicon_url', '').strip() or None
             settings_record.label_extra_text = request.form.get('label_extra_text', '').replace('\r', '').strip() or None
             settings_record.imprint_url = request.form.get('imprint_url', '').strip()
             settings_record.privacy_url = request.form.get('privacy_url', '').strip()

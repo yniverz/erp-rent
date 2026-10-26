@@ -678,6 +678,9 @@ class SiteSettings(db.Model):
     logo_filename = db.Column(db.String(300), nullable=True)  # Uploaded logo file
     # Public storefront
     shop_description = db.Column(db.Text, nullable=True)
+    header_link_text = db.Column(db.String(100), nullable=True)  # Optional extra button in the shop header
+    header_link_url = db.Column(db.String(500), nullable=True)
+    favicon_url = db.Column(db.String(500), nullable=True)  # Falls back to FAVICON_URL env
     # Unit labels: extra text printed on every label (multi-line)
     label_extra_text = db.Column(db.Text, nullable=True)
     # Legal links
