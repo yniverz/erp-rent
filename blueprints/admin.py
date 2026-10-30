@@ -2,7 +2,7 @@ from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
 from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
-from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, save_clean_image, InvalidImage
+from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, save_clean_image, clean_svg, InvalidImage
 from datetime import datetime
 from functools import wraps
 import os
@@ -2171,9 +2171,14 @@ def settings():
                             os.remove(old_path)
                     if ext == '.svg':
                         # Vector logo for the PDFs; never served by /uploads (see public.uploaded_file)
-                        filename = 'company_logo.svg'
-                        logo_file.save(os.path.join(get_upload_path(), filename))
-                        settings_record.logo_filename = filename
+                        try:
+                            svg = clean_svg(logo_file.read())
+                            with open(os.path.join(get_upload_path(), 'company_logo.svg'), 'wb') as f:
+                                f.write(svg)
+                            settings_record.logo_filename = 'company_logo.svg'
+                        except InvalidImage as e:
+                            settings_record.logo_filename = None
+                            flash(str(e), 'error')
                     else:
                         try:
                             settings_record.logo_filename = save_clean_image(logo_file.read(), 'company_logo')

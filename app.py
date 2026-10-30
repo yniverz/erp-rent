@@ -460,6 +460,11 @@ with app.app_context():
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
     os.makedirs(uploads_dir, exist_ok=True)
 
+    # One-time: strip metadata from images uploaded before it was done on upload.
+    # TODO: remove two releases after 2026-10 (together with helpers.clean_existing_uploads).
+    from helpers import clean_existing_uploads
+    clean_existing_uploads()
+
     # Create default admin user if no users exist
     if User.query.count() == 0:
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
