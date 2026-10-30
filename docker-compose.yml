@@ -7,7 +7,10 @@ services:
       - "5000:5000"
     environment:
       - PYTHONUNBUFFERED=1
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-please-change-in-production}
+      # Required: random, >= 32 chars (python -c "import secrets; print(secrets.token_hex(32))")
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
+      # Cookies are HTTPS-only; set to 0 only for plain-http local testing
+      - COOKIE_SECURE=${COOKIE_SECURE:-1}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-password123}
       - FLASK_ENV=production

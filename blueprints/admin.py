@@ -1,13 +1,12 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import login_required, current_user
-from models import db, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
-from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis
+from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
+from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, save_clean_image, InvalidImage
 from datetime import datetime
 from functools import wraps
 import os
 import re
-import uuid
 import zipfile
 
 admin_bp = Blueprint('admin', __name__)
@@ -69,9 +68,10 @@ def categories():
                     if 'image' in request.files:
                         file = request.files['image']
                         if file and file.filename and allowed_image_file(file.filename):
-                            ext = file.filename.rsplit('.', 1)[1].lower()
-                            image_filename = f"{uuid.uuid4().hex}.{ext}"
-                            file.save(os.path.join(get_upload_path(), image_filename))
+                            try:
+                                image_filename = save_clean_image(file.read())
+                            except InvalidImage as e:
+                                flash(str(e), 'error')
                     cat = Category(name=name, display_order=order, parent_id=parent_id, image_filename=image_filename)
                     db.session.add(cat)
                     db.session.commit()
@@ -93,13 +93,16 @@ def categories():
                 if 'image' in request.files:
                     file = request.files['image']
                     if file and file.filename and allowed_image_file(file.filename):
-                        if cat.image_filename:
-                            old_path = os.path.join(get_upload_path(), cat.image_filename)
-                            if os.path.exists(old_path):
-                                os.remove(old_path)
-                        ext = file.filename.rsplit('.', 1)[1].lower()
-                        cat.image_filename = f"{uuid.uuid4().hex}.{ext}"
-                        file.save(os.path.join(get_upload_path(), cat.image_filename))
+                        try:
+                            new_filename = save_clean_image(file.read())
+                        except InvalidImage as e:
+                            flash(str(e), 'error')
+                        else:
+                            if cat.image_filename:
+                                old_path = os.path.join(get_upload_path(), cat.image_filename)
+                                if os.path.exists(old_path):
+                                    os.remove(old_path)
+                            cat.image_filename = new_filename
                 if request.form.get('remove_image') == 'on' and cat.image_filename:
                     old_path = os.path.join(get_upload_path(), cat.image_filename)
                     if os.path.exists(old_path):
@@ -342,9 +345,10 @@ def inventory_add():
             if 'image' in request.files:
                 file = request.files['image']
                 if file and file.filename and allowed_image_file(file.filename):
-                    ext = file.filename.rsplit('.', 1)[1].lower()
-                    image_filename = f"{uuid.uuid4().hex}.{ext}"
-                    file.save(os.path.join(get_upload_path(), image_filename))
+                    try:
+                        image_filename = save_clean_image(file.read())
+                    except InvalidImage as e:
+                        flash(str(e), 'error')
 
             item = Item(
                 name=name,
@@ -463,14 +467,17 @@ def inventory_edit(item_id):
             if 'image' in request.files:
                 file = request.files['image']
                 if file and file.filename and allowed_image_file(file.filename):
-                    # Delete old image
-                    if item.image_filename:
-                        old_path = os.path.join(get_upload_path(), item.image_filename)
-                        if os.path.exists(old_path):
-                            os.remove(old_path)
-                    ext = file.filename.rsplit('.', 1)[1].lower()
-                    item.image_filename = f"{uuid.uuid4().hex}.{ext}"
-                    file.save(os.path.join(get_upload_path(), item.image_filename))
+                    try:
+                        new_filename = save_clean_image(file.read())
+                    except InvalidImage as e:
+                        flash(str(e), 'error')
+                    else:
+                        # Delete old image
+                        if item.image_filename:
+                            old_path = os.path.join(get_upload_path(), item.image_filename)
+                            if os.path.exists(old_path):
+                                os.remove(old_path)
+                        item.image_filename = new_filename
 
             # Remove image if requested
             if request.form.get('remove_image') == 'on' and item.image_filename:
@@ -2022,6 +2029,9 @@ def user_add():
             if not username or not password:
                 flash('Benutzername und Passwort sind erforderlich.', 'error')
                 return render_template('admin/user_form.html', user=None)
+            if len(password) < MIN_PASSWORD_LENGTH:
+                flash(f'Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein.', 'error')
+                return render_template('admin/user_form.html', user=None)
 
             if User.query.filter_by(username=username).first():
                 flash('Benutzername existiert bereits.', 'error')
@@ -2059,9 +2069,16 @@ def user_edit(user_id):
             user.email = request.form.get('email', '').strip() or None
             user.is_admin = request.form.get('is_admin') == 'on'
             user.active = request.form.get('active') == 'on'
+            if request.form.get('reset_totp') == 'on':
+                user.totp_secret = None
+                user.totp_last_step = None
 
             new_password = request.form.get('password', '').strip()
             if new_password:
+                if len(new_password) < MIN_PASSWORD_LENGTH:
+                    db.session.rollback()
+                    flash(f'Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein.', 'error')
+                    return render_template('admin/user_form.html', user=user)
                 user.set_password(new_password)
 
             # Prevent removing own admin status
@@ -2152,9 +2169,17 @@ def settings():
                         old_path = os.path.join(get_upload_path(), settings_record.logo_filename)
                         if os.path.exists(old_path):
                             os.remove(old_path)
-                    filename = f'company_logo{ext}'
-                    logo_file.save(os.path.join(get_upload_path(), filename))
-                    settings_record.logo_filename = filename
+                    if ext == '.svg':
+                        # Vector logo for the PDFs; never served by /uploads (see public.uploaded_file)
+                        filename = 'company_logo.svg'
+                        logo_file.save(os.path.join(get_upload_path(), filename))
+                        settings_record.logo_filename = filename
+                    else:
+                        try:
+                            settings_record.logo_filename = save_clean_image(logo_file.read(), 'company_logo')
+                        except InvalidImage as e:
+                            settings_record.logo_filename = None
+                            flash(str(e), 'error')
                 else:
                     flash('Ung\u00fcltiges Logo-Format. Erlaubt: PNG, JPEG, SVG, WebP, GIF', 'error')
 
@@ -2196,7 +2221,9 @@ def serve_logo():
     logo_path = os.path.join(get_upload_path(), site_settings.logo_filename)
     if not os.path.exists(logo_path):
         abort(404)
-    return send_file(logo_path)
+    resp = send_file(logo_path)
+    resp.headers['Content-Security-Policy'] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+    return resp
 
 
 @admin_bp.route('/schedule')

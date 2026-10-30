@@ -53,7 +53,7 @@
                 <div class="detail-price on-request">Preis auf Anfrage</div>
             {% endif %}
 
-            <form class="add-to-cart-form detail-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
+            <form class="add-to-cart-form detail-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="item_id" value="{{ item.id }}">
                 <div class="qty">
                     <button type="button" data-step="-1" aria-label="Weniger">&minus;</button>
@@ -119,6 +119,6 @@
 </div>
 
 <div class="detail-back">
-    <a href="javascript:void(0)" onclick="history.back()" class="link-back">&larr; Zurück</a>
+    <a href="{{ url_for('public.catalog') }}" data-click="history-back" class="link-back">&larr; Zurück</a>
 </div>
 {% endblock %}

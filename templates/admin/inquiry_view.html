@@ -73,7 +73,7 @@
 
     <!-- Status Update -->
     <div class="mb-16">
-        <form method="POST" action="{{ url_for('admin.inquiry_update_status', inquiry_id=inquiry.id) }}" class="d-flex gap-10 align-center">
+        <form method="POST" action="{{ url_for('admin.inquiry_update_status', inquiry_id=inquiry.id) }}" class="d-flex gap-10 align-center"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="m-0 font-semibold">Status aktualisieren:</label>
             <select name="status" class="w-160">
                 <option value="new" {{ 'selected' if inquiry.status == 'new' }}>Neu</option>
@@ -87,8 +87,8 @@
 
     <div class="d-flex gap-10 flex-wrap">
         {% if inquiry.status != 'converted' %}
-            <form method="POST" action="{{ url_for('admin.inquiry_convert', inquiry_id=inquiry.id) }}">
-                <button type="submit" class="btn btn-success" onclick="return confirm('Diese Anfrage in ein Angebot umwandeln?');">In Angebot umwandeln</button>
+            <form method="POST" action="{{ url_for('admin.inquiry_convert', inquiry_id=inquiry.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success" data-confirm="Diese Anfrage in ein Angebot umwandeln?">In Angebot umwandeln</button>
             </form>
         {% endif %}
 
@@ -96,7 +96,7 @@
 
         <a href="{{ url_for('admin.inquiry_list') }}" class="btn btn-outline">Zurück zu Anfragen</a>
 
-        <form method="POST" action="{{ url_for('admin.inquiry_delete', inquiry_id=inquiry.id) }}" onsubmit="return confirm('Diese Anfrage löschen?');">
+        <form method="POST" action="{{ url_for('admin.inquiry_delete', inquiry_id=inquiry.id) }}" data-confirm="Diese Anfrage löschen?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger">Löschen</button>
         </form>
     </div>

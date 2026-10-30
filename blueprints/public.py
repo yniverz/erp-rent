@@ -1,11 +1,17 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, make_response
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, make_response, abort
 from models import db, Item, Category, Inquiry, InquiryItem, SiteSettings, item_subcategories, slugify
-from helpers import send_inquiry_notification, get_upload_path, public_base_url
-from datetime import datetime, date
+from helpers import send_inquiry_notification, get_upload_path, public_base_url, throttle_count, throttle_record
+from datetime import datetime, date, timedelta
 import os
 import re
+import time
 
 public_bp = Blueprint('public', __name__)
+
+MAX_ITEM_QUANTITY = 999           # per cart line
+INQUIRY_MIN_FILL_SECONDS = 3      # faster than this is a bot
+INQUIRY_LIMIT_PER_HOUR = 5        # per client IP
+INQUIRY_MAX_LENGTHS = {'customer_name': 200, 'customer_email': 200, 'customer_phone': 50, 'message': 5000}
 
 
 @public_bp.route('/toggle-price-mode', methods=['POST'])
@@ -241,7 +247,7 @@ def item_detail(item_id):
     """Public item detail page"""
     item = Item.query.get_or_404(item_id)
     if not item.visible_in_shop:
-        return redirect(url_for('public.catalog'))
+        abort(404)  # same answer as unknown ids, so hidden items can't be enumerated
 
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
@@ -261,6 +267,17 @@ def cart():
     cart_items = []
     subtotal = 0
     has_on_request = False
+
+    # Drop items that were deleted or hidden from the shop since they were added
+    for item_id_str in list(cart_data.keys()):
+        item = Item.query.get(int(item_id_str))
+        if not item or not item.visible_in_shop:
+            del cart_data[item_id_str]
+            session['cart'] = cart_data
+            session.modified = True
+
+    if cart_data:
+        session['inquiry_form_ts'] = time.time()  # minimum-fill-time check on submit
 
     for item_id_str, quantity in cart_data.items():
         item = Item.query.get(int(item_id_str))
@@ -305,7 +322,7 @@ def cart_add():
 
     cart = session.get('cart', {})
     key = str(item_id)
-    cart[key] = cart.get(key, 0) + quantity
+    cart[key] = min(cart.get(key, 0) + quantity, MAX_ITEM_QUANTITY)
     session['cart'] = cart
     session.modified = True
 
@@ -329,7 +346,7 @@ def cart_update():
             if qty <= 0:
                 del cart[key]
             else:
-                cart[key] = qty
+                cart[key] = min(qty, MAX_ITEM_QUANTITY)
 
     session['cart'] = cart
     session.modified = True
@@ -371,6 +388,18 @@ def submit_inquiry():
         flash('Ihr Warenkorb ist leer.', 'error')
         return redirect(url_for('public.cart'))
 
+    # --- Spam protection: honeypot, minimum fill time, per-IP rate limit ---
+    ip = request.remote_addr or 'unknown'
+    form_ts = session.get('inquiry_form_ts')
+    if request.form.get('website') or not form_ts or time.time() - form_ts < INQUIRY_MIN_FILL_SECONDS:
+        print(f"Inquiry rejected as spam from {ip}")
+        flash('Ihre Anfrage konnte nicht gesendet werden. Bitte versuchen Sie es erneut.', 'error')
+        return redirect(url_for('public.cart'))
+    if throttle_count('inquiry', timedelta(hours=1), ip=ip) >= INQUIRY_LIMIT_PER_HOUR:
+        flash('Zu viele Anfragen in kurzer Zeit. Bitte versuchen Sie es später erneut '
+              'oder kontaktieren Sie uns direkt.', 'error')
+        return redirect(url_for('public.cart'))
+
     customer_name = request.form.get('customer_name', '').strip()
     customer_email = request.form.get('customer_email', '').strip()
     customer_phone = request.form.get('customer_phone', '').strip()
@@ -380,6 +409,12 @@ def submit_inquiry():
 
     # --- Validation ---
     errors = []
+
+    labels = {'customer_name': 'Name', 'customer_email': 'E-Mail-Adresse',
+              'customer_phone': 'Telefonnummer', 'message': 'Nachricht'}
+    for field, limit in INQUIRY_MAX_LENGTHS.items():
+        if len(request.form.get(field, '').strip()) > limit:
+            errors.append(f'{labels[field]} darf höchstens {limit} Zeichen lang sein.')
 
     if not customer_name:
         errors.append('Name ist erforderlich.')
@@ -414,9 +449,9 @@ def submit_inquiry():
     # Validate cart item quantities
     for item_id_str, quantity in cart_data.items():
         item = Item.query.get(int(item_id_str))
-        if not item:
-            errors.append(f'Artikel (ID {item_id_str}) nicht gefunden.')
-        elif quantity < 1:
+        if not item or not item.visible_in_shop:
+            errors.append(f'Artikel (ID {item_id_str}) ist nicht mehr verfügbar.')
+        elif quantity < 1 or quantity > MAX_ITEM_QUANTITY:
             errors.append(f'Ungültige Menge für {item.name}.')
 
     if errors:
@@ -449,6 +484,8 @@ def submit_inquiry():
                 db.session.add(inq_item)
 
         db.session.commit()
+        throttle_record('inquiry', ip)
+        session.pop('inquiry_form_ts', None)
 
         # Send email notification
         settings = SiteSettings.query.first()
@@ -462,11 +499,48 @@ def submit_inquiry():
 
     except Exception as e:
         db.session.rollback()
-        flash(f'Fehler beim Senden der Anfrage: {str(e)}', 'error')
+        print(f"Inquiry failed: {e!r}")
+        flash('Beim Senden der Anfrage ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.', 'error')
         return redirect(url_for('public.cart'))
+
+
+@public_bp.route('/robots.txt')
+def robots_txt():
+    lines = ['User-agent: *']
+    for path in ('/login', '/logout', '/profile', '/admin/', '/cart', '/inquiry', '/toggle-price-mode',
+                 '/oauth/', '/api/', '/mcp'):
+        lines.append(f'Disallow: {path}')
+    lines.append(f"Sitemap: {public_base_url()}{url_for('public.sitemap_xml')}")
+    resp = make_response('\n'.join(lines) + '\n')
+    resp.mimetype = 'text/plain'
+    return resp
+
+
+@public_bp.route('/sitemap.xml')
+def sitemap_xml():
+    """Catalog, categories and shop-visible items"""
+    from xml.sax.saxutils import escape as xml_escape
+    base = public_base_url()
+    urls = [base + url_for('public.catalog')]
+    for cat in Category.query.order_by(Category.display_order, Category.name).all():
+        urls.append(base + url_for('public.catalog_category', cat_path=cat.url_path))
+    for item in sorted(Item.query.filter_by(visible_in_shop=True).all(), key=Item.shop_sort_key):
+        urls.append(base + url_for('public.item_detail', item_id=item.id))
+    body = ['<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    body += [f'  <url><loc>{xml_escape(u)}</loc></url>' for u in urls]
+    body.append('</urlset>')
+    resp = make_response('\n'.join(body) + '\n')
+    resp.mimetype = 'application/xml'
+    return resp
+
+
+PUBLIC_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
 
 
 @public_bp.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    """Serve uploaded files"""
+    """Serve uploaded raster images only (never SVG/HTML, which could run scripts)"""
+    if filename.rsplit('.', 1)[-1].lower() not in PUBLIC_UPLOAD_EXTENSIONS:
+        abort(404)
     return send_from_directory(get_upload_path(), filename)

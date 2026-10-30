@@ -350,7 +350,7 @@ def authorize():
 
     if request.method == 'POST':
         expected = session.pop('oauth_csrf', None)
-        if not expected or not hmac.compare_digest(expected, request.form.get('csrf_token', '')):
+        if not expected or not hmac.compare_digest(expected, request.form.get('consent_token', '')):
             return _page_error('Sitzung abgelaufen. Bitte die Verbindung in Claude erneut starten.')
         if request.form.get('decision') != 'allow':
             return _redirect_error('access_denied', 'Zugriff wurde abgelehnt.')
@@ -376,7 +376,7 @@ def authorize():
                            client=client,
                            redirect_host=urlparse(redirect_uri).netloc,
                            params=params,
-                           csrf_token=session['oauth_csrf'],
+                           consent_token=session['oauth_csrf'],
                            allow_delete=bool(settings and settings.mcp_allow_delete))
 
 

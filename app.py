@@ -1,5 +1,7 @@
-from flask import Flask, send_file, request, Response, abort
+from flask import Flask, send_file, request, Response, abort, flash, redirect, g
 from flask_login import LoginManager
+from flask_wtf.csrf import CSRFProtect, CSRFError
+from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, User, SiteSettings
 from helpers import replacement_value_basis
 from dotenv import load_dotenv
@@ -7,6 +9,7 @@ from markupsafe import Markup, escape
 import os
 import io
 import hashlib
+import secrets
 import mimetypes
 import requests as http_requests
 import cssmin
@@ -83,10 +86,80 @@ def nl2br_filter(value):
     if not value:
         return value
     return Markup(escape(value).replace('\n', Markup('<br>')))
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+_secret_key = (os.getenv('SECRET_KEY') or '').strip()
+if len(_secret_key) < 32 or 'change' in _secret_key.lower():  # rejects the example placeholders
+    raise RuntimeError(
+        'SECRET_KEY must be set to a random value of at least 32 characters, e.g. '
+        'python -c "import secrets; print(secrets.token_hex(32))"'
+    )
+app.config['SECRET_KEY'] = _secret_key
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///erp_rent.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+
+# Cookies: HTTPS-only by default; set COOKIE_SECURE=0 for plain-http local development
+_cookie_secure = os.getenv('COOKIE_SECURE', '1').strip().lower() not in ('0', 'false', 'no')
+app.config.update(
+    SESSION_COOKIE_SECURE=_cookie_secure,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    REMEMBER_COOKIE_SECURE=_cookie_secure,
+    REMEMBER_COOKIE_HTTPONLY=True,
+    REMEMBER_COOKIE_SAMESITE='Lax',
+    WTF_CSRF_TIME_LIMIT=None,  # token lives as long as the session (long-open admin tabs)
+)
+
+# Behind the TLS-terminating reverse proxy: trust one hop of X-Forwarded-* headers.
+# Only safe while gunicorn is reachable by the proxy alone (see docker-compose ports).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+csrf = CSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    """Expired/missing CSRF token: friendly message instead of a bare 400."""
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json \
+            or 'application/json' in request.headers.get('Accept', ''):
+        return {'ok': False, 'error': 'Sitzung abgelaufen. Bitte Seite neu laden.'}, 400
+    if request.referrer and request.referrer.startswith(request.host_url):
+        flash('Sitzung abgelaufen oder ungültige Anfrage. Bitte erneut versuchen.', 'error')
+        return redirect(request.referrer, code=303)
+    return 'Ungültige Anfrage (CSRF-Token fehlt oder ist abgelaufen).', 400
+
+
+def _csp_nonce():
+    """Per-request nonce for the inline <script nonce="{{ csp_nonce }}"> blocks."""
+    if 'csp_nonce' not in g:
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
+
+@app.context_processor
+def inject_csp_nonce():
+    return {'csp_nonce': _csp_nonce()}
+
+
+@app.after_request
+def security_headers(resp):
+    h = resp.headers
+    if request.is_secure:
+        h.setdefault('Strict-Transport-Security', 'max-age=31536000')
+    h.setdefault('X-Content-Type-Options', 'nosniff')
+    h.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    h.setdefault('X-Frame-Options', 'DENY')
+    h.setdefault('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()')
+    # OAuth consent redirects to the client's callback after the POST, which form-action also covers
+    form_action = "'self' https:" if request.path == '/oauth/authorize' else "'self'"
+    h.setdefault('Content-Security-Policy',
+                 f"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                 f"script-src 'self' 'nonce-{_csp_nonce()}'; object-src 'none'; base-uri 'self'; "
+                 f"form-action {form_action}; frame-ancestors 'none'")
+    # Never cache personal / staff pages (shared computers, back button after logout)
+    path = request.path
+    if path in ('/login', '/cart', '/profile') or path.startswith(('/admin', '/oauth')):
+        h['Cache-Control'] = 'no-store'
+    return resp
 
 # Favicon cache (per worker; refetched when the configured URL changes)
 _favicon_data = None
@@ -212,6 +285,13 @@ app.register_blueprint(api_bp, url_prefix='/api/v1')
 app.register_blueprint(oauth_bp)
 app.register_blueprint(mcp_bp)
 
+# Bearer-token endpoints (no cookies involved) don't take CSRF tokens
+from blueprints.oauth import register as _oauth_register, token as _oauth_token, revoke as _oauth_revoke
+csrf.exempt(api_bp)
+csrf.exempt(mcp_bp)
+for _view in (_oauth_register, _oauth_token, _oauth_revoke):
+    csrf.exempt(_view)
+
 
 # Initialize database and create default admin
 with app.app_context():
@@ -304,6 +384,9 @@ with app.app_context():
     _add_column_if_missing('site_settings', 'header_link_url', 'VARCHAR(500)')
     # Favicon source moved from FAVICON_URL env to settings (env stays as fallback)
     _add_column_if_missing('site_settings', 'favicon_url', 'VARCHAR(500)')
+    # Optional TOTP two-factor login
+    _add_column_if_missing('user', 'totp_secret', 'VARCHAR(64)')
+    _add_column_if_missing('user', 'totp_last_step', 'INTEGER')
 
     # ── Category names no longer unique (slug URLs disambiguate via path) ──
     # SQLite can't drop a UNIQUE constraint, so rebuild the table without it.

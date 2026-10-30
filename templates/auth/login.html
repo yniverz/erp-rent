@@ -33,7 +33,16 @@
                 {% endif %}
             {% endwith %}
 
-            <form method="POST">
+            {% if totp_step %}
+            <form method="POST" action="{{ url_for('auth.login_totp') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="code">Code aus der Authenticator-App</label>
+                    <input type="text" name="code" id="code" inputmode="numeric" pattern="[0-9 ]*" maxlength="7" autocomplete="one-time-code" required autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary login-submit">Bestätigen</button>
+            </form>
+            {% else %}
+            <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="username">Benutzername</label>
                     <input type="text" name="username" id="username" autocomplete="username" autocapitalize="none" required autofocus>
@@ -44,6 +53,7 @@
                 </div>
                 <button type="submit" class="btn btn-primary login-submit">Anmelden</button>
             </form>
+            {% endif %}
         </div>
 
         <a href="{{ url_for('public.catalog') }}" class="link-back">&larr; Zurück zum Shop</a>

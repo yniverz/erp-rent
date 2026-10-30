@@ -6,7 +6,7 @@
 <h1>Neues Angebot erstellen</h1>
 
 <div class="card">
-    <form method="POST">
+    <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label>Kundenname *</label>
             <input type="text" name="customer_name" id="customer_name" required autocomplete="off">

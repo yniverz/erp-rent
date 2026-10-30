@@ -92,7 +92,7 @@
 <!-- Scan -->
 <div class="card">
     <h2>Scannen / Kennung eingeben</h2>
-    <form method="POST" action="{{ url_for('admin.packliste_scan', quote_id=quote.id) }}" class="d-flex gap-10 align-end">
+    <form method="POST" action="{{ url_for('admin.packliste_scan', quote_id=quote.id) }}" class="d-flex gap-10 align-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group m-0 flex-1">
             <label>Asset-Tag oder Seriennummer</label>
             <input type="text" name="code" placeholder="z.B. U00042 – QR-Code scannen oder eintippen" autofocus autocomplete="off">
@@ -140,7 +140,7 @@
                 <td>
                     {% if qi.assigned_units %}
                         {% for au in qi.assigned_units %}
-                        <form method="POST" action="{{ url_for('admin.packliste_unassign', quote_id=quote.id) }}" class="d-inline">
+                        <form method="POST" action="{{ url_for('admin.packliste_unassign', quote_id=quote.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="assignment_id" value="{{ au.id }}">
                             <button type="submit" class="btn btn-sm btn-outline" title="Zuweisung entfernen">{{ au.label }} ✕</button>
                         </form>
@@ -156,7 +156,7 @@
                         {% if line.assigned_count >= qi.quantity %}
                             <span class="text-success">✓ Vollständig</span>
                         {% elif line.candidates %}
-                        <form method="POST" action="{{ url_for('admin.packliste_assign', quote_id=quote.id) }}" class="d-flex gap-6 align-center">
+                        <form method="POST" action="{{ url_for('admin.packliste_assign', quote_id=quote.id) }}" class="d-flex gap-6 align-center"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="line_id" value="{{ qi.id }}">
                             <select name="unit_id">
                                 {% for u in line.candidates %}
@@ -196,7 +196,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/jsQR.min.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
     var overlay = document.getElementById('scanner-overlay');
     var video = document.getElementById('scanner-video');
@@ -260,7 +260,8 @@
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded'
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
             },
             body: 'code=' + encodeURIComponent(code)
         }).then(function (r) { return r.json(); }).then(function (data) {

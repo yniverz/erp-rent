@@ -87,15 +87,15 @@
         </div>
 
         <div class="qe-addline-bar">
-            <button type="button" class="btn btn-sm btn-outline" onclick="QE.toggleInlineForm('heading')">+ Überschrift</button>
-            <button type="button" class="btn btn-sm btn-outline" onclick="QE.toggleInlineForm('custom')">+ Eigene Position</button>
+            <button type="button" class="btn btn-sm btn-outline" data-click="qe-toggle-form" data-form="heading">+ Überschrift</button>
+            <button type="button" class="btn btn-sm btn-outline" data-click="qe-toggle-form" data-form="custom">+ Eigene Position</button>
         </div>
         <div class="qe-inline-form" id="qe-form-heading">
             <div class="form-group flex-1">
                 <label>Überschrift</label>
                 <input type="text" id="qe-heading-text" placeholder="z.B. Licht, Ton, Personal …">
             </div>
-            <button type="button" class="btn btn-sm btn-primary" onclick="QE.addHeading()">Hinzufügen</button>
+            <button type="button" class="btn btn-sm btn-primary" data-click="qe-add-heading">Hinzufügen</button>
         </div>
         <div class="qe-inline-form" id="qe-form-custom">
             <div class="form-group flex-1">
@@ -110,7 +110,7 @@
                 <label title="Eigene Positionen werden einmalig berechnet, nicht pro Miettag">Preis (einmalig)</label>
                 <input type="number" id="qe-custom-price" step="0.01" min="0">
             </div>
-            <button type="button" class="btn btn-sm btn-primary" onclick="QE.addCustom()">Hinzufügen</button>
+            <button type="button" class="btn btn-sm btn-primary" data-click="qe-add-custom">Hinzufügen</button>
         </div>
     </div>
 
@@ -141,7 +141,7 @@
                 <div class="d-flex gap-8 align-center">
                     <span>&euro;</span>
                     <input type="number" id="qe-target-total" step="0.01" min="0" class="w-140">
-                    <button type="button" class="btn btn-sm btn-outline" onclick="QE.applyDiscount()">Übernehmen</button>
+                    <button type="button" class="btn btn-sm btn-outline" data-click="qe-apply-discount">Übernehmen</button>
                 </div>
             </div>
         </div>
@@ -157,7 +157,7 @@
             <a href="{{ url_for('admin.wertaufstellung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank" title="Wiederbeschaffungswerte inkl. Zubehör, z.B. für die Versicherung">Wertaufstellung PDF</a>
             <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
             <span id="pk-save-quote-status" class="d-flex align-center text-sm text-muted"></span>
-            <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" onsubmit="return confirm('Dieses Angebot löschen?');">
+            <form method="POST" action="{{ url_for('admin.quote_delete', quote_id=quote.id) }}" class="d-inline" data-confirm="Dieses Angebot löschen?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-danger">Angebot löschen</button>
             </form>
         </div>
@@ -187,7 +187,7 @@
 </aside>
 </div><!-- /qe-layout -->
 
-<script>
+<script nonce="{{ csp_nonce }}">
 const QE = (function() {
     'use strict';
 
@@ -231,7 +231,7 @@ const QE = (function() {
         try {
             const res = await fetch(BASE + path, data === undefined ? {} : {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content},
                 body: JSON.stringify(data),
             });
             const json = await res.json();
@@ -307,7 +307,7 @@ const QE = (function() {
             const short = hasSourcing
                 ? (l.sourced_quantity > 0 ? l.sourced_quantity + '× extern' : 'Eigen')
                 : (l.cost_per_day > 0 ? 'Kosten ' + eur(l.cost_per_day) : '');
-            srcBtn = '<button type="button" class="qe-icon-btn' + active + '" title="Beschaffung / Kosten" onclick="QE.toggleSourcing(' + l.id + ')">⚙ ' + esc(short || 'Kosten') + '</button>';
+            srcBtn = '<button type="button" class="qe-icon-btn' + active + '" title="Beschaffung / Kosten" data-click="qe-toggle-sourcing" data-id="' + l.id + '">⚙ ' + esc(short || 'Kosten') + '</button>';
         }
 
         const uncovered = hasSourcing && l.own_available !== -1
@@ -340,7 +340,7 @@ const QE = (function() {
             + '<label title="Auf der Preisübersicht als optionale Position ausweisen – zählt nicht zum Gesamtpreis"><input type="checkbox" data-fkey="opt-' + l.id + '" ' + (l.is_optional ? 'checked' : '') + '> Optional</label>'
             + '</div></td>'
             + '<td><div class="qe-row-actions">' + srcBtn
-            + '<button type="button" class="qe-icon-btn danger" title="Entfernen" onclick="QE.removeLine(' + l.id + ')">✕</button>'
+            + '<button type="button" class="qe-icon-btn danger" title="Entfernen" data-click="qe-remove-line" data-id="' + l.id + '">✕</button>'
             + '</div></td>'
             + '</tr>'
             + (openSourcing.has(l.id) ? sourcingRow(l) : '');
@@ -366,7 +366,7 @@ const QE = (function() {
                         + (s.max_quantity !== -1 ? ' · max. ' + s.max_quantity : '') + '</small></label>';
                 }).join('')
                 + '</div><div class="qe-src-col">'
-                + '<button type="button" class="btn btn-sm btn-outline" onclick="QE.autoSources(' + l.id + ')">Auto (günstigste zuerst)</button>'
+                + '<button type="button" class="btn btn-sm btn-outline" data-click="qe-auto-sources" data-id="' + l.id + '">Auto (günstigste zuerst)</button>'
                 + '</div>';
         } else {
             inner = '<div class="qe-src-col"><strong>Externe Kosten</strong>'
@@ -391,7 +391,7 @@ const QE = (function() {
                     + '<td><span class="qe-drag-handle" title="Ziehen zum Sortieren">⠿</span></td>'
                     + '<td colspan="5"><input type="text" class="qe-line-name-input" data-fkey="name-' + l.id + '" value="' + esc(l.name) + '"></td>'
                     + '<td></td>'
-                    + '<td><div class="qe-row-actions"><button type="button" class="qe-icon-btn danger" title="Entfernen" onclick="QE.removeLine(' + l.id + ')">✕</button></div></td>'
+                    + '<td><div class="qe-row-actions"><button type="button" class="qe-icon-btn danger" title="Entfernen" data-click="qe-remove-line" data-id="' + l.id + '">✕</button></div></td>'
                     + '</tr>';
                 continue;
             }
@@ -405,7 +405,7 @@ const QE = (function() {
                         + '<td colspan="4">📦 ' + esc(l.package_name || 'Paket') + ' <span class="badge badge-package">Paket</span></td>'
                         + '<td>' + eur(pkgTotal) + '</td>'
                         + '<td></td>'
-                        + '<td><div class="qe-row-actions"><button type="button" class="qe-icon-btn danger" title="Ganzes Paket entfernen" onclick="QE.removePackage(' + l.id + ', \'' + esc(l.package_name || 'Paket') + '\')">✕ Paket</button></div></td>'
+                        + '<td><div class="qe-row-actions"><button type="button" class="qe-icon-btn danger" title="Ganzes Paket entfernen" data-click="qe-remove-package" data-id="' + l.id + '" data-name="' + esc(l.package_name || 'Paket') + '">✕ Paket</button></div></td>'
                         + '</tr>';
                     for (const c of comps) html += lineRow(c);
                 }
@@ -710,6 +710,17 @@ const QE = (function() {
     // exposed for papierkram export
     function currentState() { return S; }
 
+    Actions.register({
+        'qe-toggle-form': el => toggleInlineForm(el.dataset.form),
+        'qe-add-heading': () => addHeading(),
+        'qe-add-custom': () => addCustom(),
+        'qe-apply-discount': () => applyDiscount(),
+        'qe-toggle-sourcing': el => toggleSourcing(Number(el.dataset.id)),
+        'qe-remove-line': el => removeLine(Number(el.dataset.id)),
+        'qe-auto-sources': el => autoSources(Number(el.dataset.id)),
+        'qe-remove-package': el => removePackage(Number(el.dataset.id), el.dataset.name),
+    });
+
     return {toggleInlineForm, addHeading, addCustom, removeLine, removePackage,
             toggleSourcing, autoSources, applyDiscount, currentState};
 })();
@@ -720,7 +731,7 @@ const QE = (function() {
   (source "erp-to-papierkram"). Data is taken from the live editor state,
   so it always reflects the latest saved changes.
 -->
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   function collectQuote() {
     const S = QE.currentState();

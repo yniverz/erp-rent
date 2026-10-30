@@ -25,10 +25,11 @@
             .label { border-color: #ccc; }
         }
     </style>
+    <script src="{{ url_for('static', filename='js/actions.js', v=asset_v) }}"></script>
 </head>
 <body>
     <div class="toolbar">
-        <button onclick="window.print()">🖨 Drucken</button>
+        <button data-click="print">🖨 Drucken</button>
         {% if single_unit %}
             <a href="{{ url_for('admin.unit_label_png', unit_id=single_unit.id) }}"><button>⬇ PNG</button></a>
             <a href="{{ url_for('admin.unit_label_lbx', unit_id=single_unit.id) }}"><button>⬇ P-touch (.lbx)</button></a>
@@ -36,7 +37,7 @@
             <a href="{{ url_for('admin.unit_labels_zip', item_id=item.id) }}"><button>⬇ PNG (ZIP)</button></a>
             <a href="{{ url_for('admin.unit_labels_lbx_all', item_id=item.id) }}"><button>⬇ P-touch (.lbx)</button></a>
         {% endif %}
-        <button onclick="window.close()">Schließen</button>
+        <button data-click="close-window">Schließen</button>
         <span>{{ labels|length }} Etikett(en) – {{ item.name }}</span>
     </div>
     <div class="labels">

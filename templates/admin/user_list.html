@@ -44,7 +44,7 @@
             <td>
                 <a href="{{ url_for('admin.user_edit', user_id=user.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
                 {% if user.id != current_user.id %}
-                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" class="d-inline" onsubmit="return confirm('Benutzer {{ user.username }} löschen?');">
+                    <form method="POST" action="{{ url_for('admin.user_delete', user_id=user.id) }}" class="d-inline" data-confirm="Benutzer {{ user.username }} löschen?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                     </form>
                 {% endif %}

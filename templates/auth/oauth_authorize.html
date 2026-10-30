@@ -34,7 +34,8 @@
                 {% for key, value in params.items() %}
                     <input type="hidden" name="{{ key }}" value="{{ value }}">
                 {% endfor %}
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="consent_token" value="{{ consent_token }}">
                 <button type="submit" name="decision" value="allow" class="btn-login">Zugriff erlauben</button>
                 <button type="submit" name="decision" value="deny" class="btn-consent-deny">Ablehnen</button>
             </form>

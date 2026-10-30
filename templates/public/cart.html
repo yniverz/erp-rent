@@ -23,7 +23,7 @@
     {% else %}
     <div class="cart-layout">
         <div class="cart-main">
-            <form method="POST" action="{{ url_for('public.cart_update') }}" class="cart-items-form">
+            <form method="POST" action="{{ url_for('public.cart_update') }}" class="cart-items-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="cart-list-head" aria-hidden="true">
                     <span>Artikel</span>
                     <span>Menge</span>
@@ -63,7 +63,7 @@
                                 <span class="on-request-text">Auf Anfrage</span>
                             {% endif %}
                         </div>
-                        <button type="button" class="cart-row-remove" onclick="removeItem({{ ci.item.id }})" aria-label="{{ ci.item.name }} entfernen">&times;</button>
+                        <button type="button" class="cart-row-remove" data-click="cart-remove" data-item-id="{{ ci.item.id }}" aria-label="{{ ci.item.name }} entfernen">&times;</button>
                     </li>
                     {% endfor %}
                 </ul>
@@ -79,21 +79,21 @@
                 <h2>Mietanfrage senden</h2>
                 <p class="inquiry-intro">Geben Sie Ihre Daten und gewünschten Termine ein. Wir melden uns mit Verfügbarkeit und einem Angebot bei Ihnen.</p>
 
-                <form method="POST" action="{{ url_for('public.submit_inquiry') }}">
+                <form method="POST" action="{{ url_for('public.submit_inquiry') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-row">
                         <div class="form-group">
                             <label for="customer_name">Ihr Name *</label>
-                            <input type="text" name="customer_name" id="customer_name" autocomplete="name" required>
+                            <input type="text" name="customer_name" id="customer_name" maxlength="200" autocomplete="name" required>
                         </div>
                         <div class="form-group">
                             <label for="customer_email">E-Mail-Adresse *</label>
-                            <input type="email" name="customer_email" id="customer_email" autocomplete="email" required>
+                            <input type="email" name="customer_email" id="customer_email" maxlength="200" autocomplete="email" required>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="customer_phone">Telefonnummer</label>
-                            <input type="tel" name="customer_phone" id="customer_phone" autocomplete="tel">
+                            <input type="tel" name="customer_phone" id="customer_phone" maxlength="50" autocomplete="tel">
                         </div>
                         <div class="form-group form-group-spacer"></div>
                     </div>
@@ -109,10 +109,15 @@
                     </div>
                     <div class="form-group">
                         <label for="message">Nachricht / Zusätzliche Infos</label>
-                        <textarea name="message" id="message" rows="5" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
+                        <textarea name="message" id="message" rows="5" maxlength="5000" placeholder="Erzählen Sie uns von Ihrer Veranstaltung, dem Veranstaltungsort, besonderen Anforderungen..."></textarea>
+                    </div>
+                    <div class="hp-field" aria-hidden="true">
+                        <label for="website">Website (bitte leer lassen)</label>
+                        <input type="text" name="website" id="website" tabindex="-1" autocomplete="off">
                     </div>
                     <div id="inquiry-errors" class="alert alert-error d-none"></div>
                     <button type="submit" class="btn btn-primary btn-submit-lg">Anfrage absenden</button>
+                    <p class="inquiry-privacy">Wir verarbeiten Ihre Angaben zur Bearbeitung Ihrer Anfrage (Art. 6 Abs. 1 lit. b DSGVO).{% if site_settings and site_settings.privacy_url %} Details: <a href="{{ site_settings.privacy_url }}" target="_blank" rel="noopener">Datenschutzerklärung</a>.{% endif %}</p>
                 </form>
             </section>
         </div>
@@ -137,17 +142,17 @@
     {% endif %}
 </div>
 
-<form id="remove-form" method="POST" class="d-none">
+<form id="remove-form" method="POST" class="d-none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 {% endblock %}
 
 {% block extra_js %}
-<script>
-function removeItem(itemId) {
+<script nonce="{{ csp_nonce }}">
+Actions.register({'cart-remove': function (el) {
     const form = document.getElementById('remove-form');
-    form.action = '/cart/remove/' + itemId;
+    form.action = '/cart/remove/' + encodeURIComponent(el.dataset.itemId);
     form.submit();
-}
+}});
 
 // Highlight the update button once a quantity changed
 document.querySelectorAll('.cart-items-form input[type="number"]').forEach(input => {

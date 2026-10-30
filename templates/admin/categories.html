@@ -7,7 +7,7 @@
 
 <div class="card mb-24">
     <h3>Kategorie hinzufügen</h3>
-    <form method="POST" enctype="multipart/form-data" class="d-flex gap-12 align-end flex-wrap">
+    <form method="POST" enctype="multipart/form-data" class="d-flex gap-12 align-end flex-wrap"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="add">
         <div class="form-group m-0 flex-1 min-w-160">
             <label>Name</label>
@@ -49,7 +49,7 @@
         {% for cat, depth in category_tree %}
         <tr>
             <td>
-                <form method="POST" enctype="multipart/form-data" class="d-flex gap-8 align-center" id="edit-form-{{ cat.id }}">
+                <form method="POST" enctype="multipart/form-data" class="d-flex gap-8 align-center" id="edit-form-{{ cat.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="edit">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
                     <span class="cat-indent" style="width:{{ depth * 20 }}px"></span>
@@ -85,7 +85,7 @@
             <td>{{ cat.items.count() }}</td>
             <td>
                 <button type="submit" form="edit-form-{{ cat.id }}" class="btn btn-sm btn-outline">Speichern</button>
-                <form method="POST" class="d-inline" onsubmit="return confirm('Kategorie {{ cat.name }} löschen? Unterkategorien werden dem Elternelement zugeordnet.');">
+                <form method="POST" class="d-inline" data-confirm="Kategorie {{ cat.name }} löschen? Unterkategorien werden dem Elternelement zugeordnet."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="category_id" value="{{ cat.id }}">
                     <button type="submit" class="btn btn-sm btn-danger">Löschen</button>

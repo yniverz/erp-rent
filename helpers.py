@@ -2,8 +2,12 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from models import db, Item, Quote, QuoteItem, PackageComponent
+from models import db, Item, Quote, QuoteItem, PackageComponent, ThrottleEvent
 from sqlalchemy import and_, or_
+from datetime import datetime, timedelta
+
+# Longest throttle window in use; older ThrottleEvent rows are deleted
+THROTTLE_RETENTION = timedelta(hours=1)
 
 
 def replacement_value_basis(tax_mode):
@@ -16,6 +20,75 @@ def get_upload_path():
     base = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
     os.makedirs(base, exist_ok=True)
     return base
+
+
+def throttle_count(kind, window, ip=None, subject=None):
+    """Number of `kind` events within `window`, optionally filtered by ip and/or subject."""
+    q = ThrottleEvent.query.filter(ThrottleEvent.kind == kind,
+                                   ThrottleEvent.created_at >= datetime.utcnow() - window)
+    if ip is not None:
+        q = q.filter(ThrottleEvent.ip == ip)
+    if subject is not None:
+        q = q.filter(ThrottleEvent.subject == subject[:80])
+    return q.count()
+
+
+def throttle_record(kind, ip, subject=''):
+    """Record one event and prune rows past the retention window."""
+    ThrottleEvent.query.filter(ThrottleEvent.created_at < datetime.utcnow() - THROTTLE_RETENTION).delete()
+    db.session.add(ThrottleEvent(kind=kind, ip=ip, subject=(subject or '')[:80]))
+    db.session.commit()
+
+
+TOTP_PERIOD = 30
+TOTP_DIGITS = 6
+
+
+def totp_new_secret():
+    """Random 160-bit base32 secret (what authenticator apps expect)."""
+    import base64
+    import secrets
+    return base64.b32encode(secrets.token_bytes(20)).decode('ascii').rstrip('=')
+
+
+def _totp_at(secret, step):
+    import base64
+    import hashlib
+    import hmac
+    import struct
+    key = base64.b32decode(secret + '=' * (-len(secret) % 8))
+    digest = hmac.new(key, struct.pack('>Q', step), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = (struct.unpack('>I', digest[offset:offset + 4])[0] & 0x7FFFFFFF) % (10 ** TOTP_DIGITS)
+    return f'{value:0{TOTP_DIGITS}d}'
+
+
+def totp_verify(secret, code, last_step=None):
+    """RFC 6238 check allowing ±1 step of clock drift.
+    Returns the matched time step (store it to block replays) or None."""
+    import hmac
+    import time
+    code = ''.join(ch for ch in str(code or '') if ch.isdigit())
+    if not secret or len(code) != TOTP_DIGITS:
+        return None
+    now = int(time.time()) // TOTP_PERIOD
+    for step in (now - 1, now, now + 1):
+        if last_step is not None and step <= last_step:
+            continue
+        if hmac.compare_digest(_totp_at(secret, step), code):
+            return step
+    return None
+
+
+def totp_uri(secret, account, issuer):
+    from urllib.parse import quote
+    label = quote(f'{issuer}:{account}')
+    return f'otpauth://totp/{label}?secret={secret}&issuer={quote(issuer)}&period={TOTP_PERIOD}&digits={TOTP_DIGITS}'
+
+
+def header_safe(value):
+    """Collapse CR/LF and other whitespace so user input can't inject e-mail headers."""
+    return ' '.join(str(value or '').split())
 
 
 def _booked_quantity(item_id, start_date, end_date, exclude_quote_id=None):
@@ -158,7 +231,9 @@ Nachricht:
     msg = MIMEMultipart()
     msg['From'] = smtp_from
     msg['To'] = recipient
-    msg['Subject'] = f'[{business_name}] Mietanfrage von {inquiry.customer_name}'
+    msg['Subject'] = header_safe(f'[{business_name}] Mietanfrage von {inquiry.customer_name}')
+    # customer_email is validated on submit (no whitespace); header_safe is belt and braces
+    msg['Reply-To'] = header_safe(inquiry.customer_email)
     msg.attach(MIMEText(body, 'plain'))
 
     try:
@@ -171,6 +246,57 @@ Nachricht:
     except Exception as e:
         print(f"Failed to send inquiry notification: {e}")
         return False
+
+
+IMAGE_FORMATS = {'JPEG': 'jpg', 'PNG': 'png', 'GIF': 'gif', 'WEBP': 'webp'}
+
+
+class InvalidImage(ValueError):
+    pass
+
+
+def save_clean_image(data, filename_stem=None):
+    """Validate raster image bytes, re-encode them without EXIF/XMP/GPS metadata
+    and write them to uploads/. Returns the stored filename (<uuid or stem>.<ext>).
+
+    Orientation from EXIF is applied to the pixels first so photos stay upright."""
+    import io
+    import uuid
+    from PIL import Image, ImageOps
+    try:
+        probe = Image.open(io.BytesIO(data))
+        probe.verify()
+        img = Image.open(io.BytesIO(data))
+        fmt = img.format
+    except Exception:
+        raise InvalidImage('Die Datei ist kein gültiges Bild.')
+    ext = IMAGE_FORMATS.get(fmt)
+    if not ext:
+        raise InvalidImage(f'Bildformat {fmt} wird nicht unterstützt (JPEG, PNG, GIF, WebP).')
+
+    save_kwargs = {}
+    icc = img.info.get('icc_profile')
+    if icc:
+        save_kwargs['icc_profile'] = icc  # colour profile only, no location data
+    if fmt == 'GIF' and getattr(img, 'n_frames', 1) > 1:
+        frames_out = img  # keep animation; GIF carries no EXIF
+        save_kwargs.update(save_all=True, loop=img.info.get('loop', 0),
+                           duration=img.info.get('duration', 100))
+    else:
+        frames_out = ImageOps.exif_transpose(img)
+        if fmt == 'JPEG':
+            if frames_out.mode not in ('RGB', 'L', 'CMYK'):
+                frames_out = frames_out.convert('RGB')
+            save_kwargs.update(quality=90, optimize=True)
+        elif fmt == 'WEBP':
+            save_kwargs.update(quality=90)
+
+    filename = f'{filename_stem or uuid.uuid4().hex}.{ext}'
+    out = io.BytesIO()
+    frames_out.save(out, format=fmt, **save_kwargs)
+    with open(os.path.join(get_upload_path(), filename), 'wb') as f:
+        f.write(out.getvalue())
+    return filename
 
 
 def allowed_image_file(filename):

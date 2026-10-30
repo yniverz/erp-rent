@@ -33,20 +33,20 @@
 
 <form method="GET" action="{{ url_for('admin.inventory_list') }}" class="inventory-filter-bar" id="filter-form">
     <input type="text" id="inventory-search" placeholder="Suche nach Name, Kategorie, Lieferant, Lagerort…" class="search-input-inline flex-1">
-    <select name="category" onchange="document.getElementById('filter-form').submit()">
+    <select name="category" data-change="autosubmit">
         <option value="">Alle Kategorien</option>
         {% for cat, depth in category_tree %}
             <option value="{{ cat.id }}" {{ 'selected' if filter_category == cat.id }}>{{ '\u00A0\u00A0\u00A0\u00A0' * depth }}{{ '↳ ' if depth > 0 }}{{ cat.name }}</option>
         {% endfor %}
     </select>
-    <select name="supplier" onchange="document.getElementById('filter-form').submit()">
+    <select name="supplier" data-change="autosubmit">
         <option value="">Alle Lieferanten</option>
         <option value="own" {{ 'selected' if filter_supplier == 'own' }}>Eigener Bestand</option>
         {% for s in suppliers %}
             <option value="{{ s.id }}" {{ 'selected' if filter_supplier == s.id|string }}>{{ s.name }}</option>
         {% endfor %}
     </select>
-    <select name="status" onchange="document.getElementById('filter-form').submit()">
+    <select name="status" data-change="autosubmit">
         <option value="">Alle Artikel</option>
         <option value="defect" {{ 'selected' if filter_status == 'defect' }}>Mit Defekten</option>
         <option value="inspection_due" {{ 'selected' if filter_status == 'inspection_due' }}>Prüfung fällig</option>
@@ -188,7 +188,7 @@
             <td>
                 {% if current_user.can_edit_item(item) %}
                     <a href="{{ url_for('admin.inventory_edit', item_id=item.id) }}" class="btn btn-sm btn-outline">Bearbeiten</a>
-                    <form method="POST" action="{{ url_for('admin.inventory_delete', item_id=item.id) }}" class="d-inline" onsubmit="return confirm('{{ item.name }} löschen?');">
+                    <form method="POST" action="{{ url_for('admin.inventory_delete', item_id=item.id) }}" class="d-inline" data-confirm="{{ item.name }} löschen?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-danger">Löschen</button>
                     </form>
                 {% else %}
@@ -210,9 +210,9 @@
 </table>
 
 <!-- ── Bulk action bar ── -->
-<form method="POST" action="{{ url_for('admin.inventory_bulk') }}" id="bulk-bar" class="bulk-bar d-none">
+<form method="POST" action="{{ url_for('admin.inventory_bulk') }}" id="bulk-bar" class="bulk-bar d-none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <span class="bulk-count"><strong id="bulk-count-num">0</strong> ausgewählt</span>
-    <button type="button" class="btn btn-sm btn-outline" onclick="clearSelection()">Aufheben</button>
+    <button type="button" class="btn btn-sm btn-outline" data-click="clear-selection">Aufheben</button>
     <span class="bulk-sep"></span>
 
     <div class="bulk-group">
@@ -251,7 +251,7 @@
     <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger" id="bulk-delete-btn">Löschen</button>
 </form>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
     const input = document.getElementById('inventory-search');
     const table = document.getElementById('inventory-table');
@@ -375,11 +375,11 @@
         updateSelectionUI();
     });
 
-    window.clearSelection = function() {
+    Actions.register({'clear-selection': function() {
         itemChecks().forEach(cb => { cb.checked = false; });
         lastChecked = null;
         updateSelectionUI();
-    };
+    }});
 
     // ══════════ Bulk form submit ══════════
     let submitAction = null;

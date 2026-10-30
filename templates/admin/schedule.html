@@ -8,8 +8,8 @@
 <h1>Mietplan</h1>
 
 <div class="view-toggle">
-    <button class="btn btn-outline active-view" onclick="switchView('calendar')" id="btn-calendar">Kalender</button>
-    <button class="btn btn-outline" onclick="switchView('table')" id="btn-table">Tabelle</button>
+    <button class="btn btn-outline active-view" data-click="switch-view" data-view="calendar" id="btn-calendar">Kalender</button>
+    <button class="btn btn-outline" data-click="switch-view" data-view="table" id="btn-table">Tabelle</button>
 </div>
 
 <!-- ========== CALENDAR VIEW ========== -->
@@ -114,7 +114,8 @@
     </table>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
+Actions.register({'switch-view': el => switchView(el.dataset.view)});
 function switchView(view) {
     document.getElementById('calendar-view').classList.toggle('show', view === 'calendar');
     document.getElementById('table-view').classList.toggle('show', view === 'table');

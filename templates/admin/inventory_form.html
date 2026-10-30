@@ -6,7 +6,7 @@
 <h1>{{ 'Bearbeiten' if item else 'Neuen' }} Inventar-Artikel{{ '' if item else ' hinzufügen' }}</h1>
 
 <div class="card">
-    <form method="POST" enctype="multipart/form-data">
+    <form method="POST" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
             <div class="form-group">
                 <label>Artikelname *</label>
@@ -72,7 +72,7 @@
 
         <div class="form-group">
             <div class="checkbox-group">
-                <input type="checkbox" name="is_package" id="is_package" {{ 'checked' if item and item.is_package }} onchange="togglePackageFields()">
+                <input type="checkbox" name="is_package" id="is_package" {{ 'checked' if item and item.is_package }} data-change="toggle-package-fields">
                 <label for="is_package" class="m-0 font-normal">Paket / Bundle</label>
             </div>
             <small class="help-text">Aktivieren, um diesen Artikel als Paket aus mehreren Komponenten zusammenzustellen</small>
@@ -83,7 +83,7 @@
             <div class="d-flex gap-10 align-center">
                 <input type="number" name="default_rental_price" id="rental_price_input" step="0.01" min="0" value="{{ item.default_rental_price_per_day if item else '' }}" required class="flex-1">
                 {% if effective_tax_mode == 'regular' %}
-                <select name="rental_price_mode" id="rental_price_mode" class="rental-price-mode" onchange="updateRentalPriceHint()">
+                <select name="rental_price_mode" id="rental_price_mode" class="rental-price-mode" data-change="update-price-hint">
                     <option value="brutto" selected>Brutto</option>
                     <option value="netto">Netto</option>
                 </select>
@@ -145,7 +145,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label>Gerätewert ohne Zubehör (&euro;, {{ value_basis }})</label>
-                    <input type="number" name="replacement_value" id="device_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="Wiederbeschaffungswert pro Stück, {{ value_basis }}" oninput="updateAccessoryTotal()">
+                    <input type="number" name="replacement_value" id="device_value" step="0.01" min="0" value="{{ item.replacement_value if item and item.replacement_value is not none else '' }}" placeholder="Wiederbeschaffungswert pro Stück, {{ value_basis }}" data-input="update-accessory-total">
                 </div>
                 <div class="form-group">
                     <label>Gesamtwert pro Gerät inkl. Zubehör ({{ value_basis }})</label>
@@ -169,7 +169,7 @@
                         {% for a in item.accessories %}
                     <tr class="accessory-row">
                         <td>
-                            <select name="acc_linked_ids" class="w-full" onchange="onAccessoryLinkChange(this)">
+                            <select name="acc_linked_ids" class="w-full" data-change="accessory-link-change">
                                 <option value="">— frei —</option>
                                 {% for ai in all_items %}
                                     <option value="{{ ai.id }}" data-name="{{ ai.name }}" data-value="{{ ai.replacement_value_total if ai.replacement_value_total is not none else '' }}" {{ 'selected' if ai.id == a.linked_item_id }}>{{ ai.name }}</option>
@@ -177,22 +177,22 @@
                             </select>
                         </td>
                         <td><input type="text" name="acc_names" value="{{ a.name }}" class="w-full" placeholder="z.B. Superclamp"></td>
-                        <td><input type="number" name="acc_quantities" value="{{ a.quantity }}" min="1" class="w-full" oninput="updateAccessoryTotal()"></td>
-                        <td><input type="number" name="acc_per_units" value="{{ a.per_units }}" min="1" class="w-full" title="Menge gilt je so viele Geräte" oninput="updateAccessoryTotal()"></td>
-                        <td><input type="number" name="acc_values" step="0.01" min="0" value="{{ a.value if a.value is not none else '' }}" class="w-full" placeholder="{{ a.linked_item.replacement_value_total if a.linked_item and a.linked_item.replacement_value_total is not none else '' }}" oninput="updateAccessoryTotal()"></td>
+                        <td><input type="number" name="acc_quantities" value="{{ a.quantity }}" min="1" class="w-full" data-input="update-accessory-total"></td>
+                        <td><input type="number" name="acc_per_units" value="{{ a.per_units }}" min="1" class="w-full" title="Menge gilt je so viele Geräte" data-input="update-accessory-total"></td>
+                        <td><input type="number" name="acc_values" step="0.01" min="0" value="{{ a.value if a.value is not none else '' }}" class="w-full" placeholder="{{ a.linked_item.replacement_value_total if a.linked_item and a.linked_item.replacement_value_total is not none else '' }}" data-input="update-accessory-total"></td>
                         <td>
                             <select name="acc_show_in_shop" class="w-full">
                                 <option value="1" {{ 'selected' if a.show_in_shop }}>Ja</option>
                                 <option value="0" {{ 'selected' if not a.show_in_shop }}>Nein</option>
                             </select>
                         </td>
-                        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove(); updateAccessoryTotal()">✕</button></td>
+                        <td><button type="button" class="btn btn-sm btn-danger" data-click="remove-row update-accessory-total">✕</button></td>
                     </tr>
                         {% endfor %}
                     {% endif %}
                 </tbody>
             </table>
-            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addAccessoryRow()">+ Zubehör hinzufügen</button>
+            <button type="button" class="btn btn-sm btn-outline mt-10" data-click="add-accessory-row">+ Zubehör hinzufügen</button>
             <div class="form-group mt-16">
                 <label>Hinweis zum Lieferumfang</label>
                 <textarea name="accessories_note" rows="2" placeholder="z.B. inkl. Safety-Seil und Netzkabel">{{ item.accessories_note or '' if item else '' }}</textarea>
@@ -246,13 +246,13 @@
                             </select>
                         </td>
                         {% endif %}
-                        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+                        <td><button type="button" class="btn btn-sm btn-danger" data-click="remove-row">✕</button></td>
                     </tr>
                         {% endfor %}
                     {% endif %}
                 </tbody>
             </table>
-            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addSupplyRow()">+ Lieferant hinzufügen</button>
+            <button type="button" class="btn btn-sm btn-outline mt-10" data-click="add-supply-row">+ Lieferant hinzufügen</button>
             {% endif %}
         </div>
 
@@ -282,13 +282,13 @@
                                 </select>
                             </td>
                             <td><input type="number" name="component_quantities" value="{{ pc.quantity }}" min="1" class="w-80"></td>
-                            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+                            <td><button type="button" class="btn btn-sm btn-danger" data-click="remove-row">✕</button></td>
                         </tr>
                         {% endfor %}
                     {% endif %}
                 </tbody>
             </table>
-            <button type="button" class="btn btn-sm btn-outline mt-10" onclick="addComponentRow()">+ Komponente hinzufügen</button>
+            <button type="button" class="btn btn-sm btn-outline mt-10" data-click="add-component-row">+ Komponente hinzufügen</button>
         </div>
     </form>
 </div>
@@ -351,12 +351,12 @@
         </tbody>
     </table>
     {% for u in item.units %}
-        <form id="unit-form-{{ u.id }}" method="POST" action="{{ url_for('admin.unit_update', unit_id=u.id) }}"></form>
-        <form id="unit-del-{{ u.id }}" method="POST" action="{{ url_for('admin.unit_delete', unit_id=u.id) }}" onsubmit="return confirm('Einheit {{ u.asset_tag or u.id }} löschen?');"></form>
+        <form id="unit-form-{{ u.id }}" method="POST" action="{{ url_for('admin.unit_update', unit_id=u.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+        <form id="unit-del-{{ u.id }}" method="POST" action="{{ url_for('admin.unit_delete', unit_id=u.id) }}" data-confirm="Einheit {{ u.asset_tag or u.id }} löschen?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
     {% endfor %}
     {% endif %}
 
-    <form method="POST" action="{{ url_for('admin.unit_add', item_id=item.id) }}" class="d-flex gap-10 align-center mt-10 flex-wrap">
+    <form method="POST" action="{{ url_for('admin.unit_add', item_id=item.id) }}" class="d-flex gap-10 align-center mt-10 flex-wrap"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="serial_number" placeholder="Seriennummer (optional)" class="min-w-180">
         <input type="number" name="count" value="1" min="1" max="100" class="w-80" title="Anzahl neuer Einheiten">
         <button type="submit" class="btn btn-sm btn-outline">+ Einheit(en) hinzufügen</button>
@@ -370,7 +370,7 @@
         <input type="date" id="avail-start" class="dialog-input-sm">
         <span>–</span>
         <input type="date" id="avail-end" class="dialog-input-sm">
-        <button type="button" class="btn btn-sm btn-outline" onclick="checkAvailability()">Prüfen</button>
+        <button type="button" class="btn btn-sm btn-outline" data-click="check-availability">Prüfen</button>
         <span id="avail-result"></span>
     </div>
 
@@ -397,12 +397,22 @@
 </div>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 var _isRegularTax = {{ 'true' if effective_tax_mode == 'regular' else 'false' }};
 var _taxRateUnit = _isRegularTax ? {{ tax_rate|default(19) }} : 0;
 var _isEdit = {{ 'true' if item else 'false' }};
 
 // ── Toggle package / ownership ──
+Actions.register({
+    'toggle-package-fields': () => togglePackageFields(),
+    'update-price-hint': () => updateRentalPriceHint(),
+    'update-accessory-total': () => updateAccessoryTotal(),
+    'accessory-link-change': el => onAccessoryLinkChange(el),
+    'add-accessory-row': () => addAccessoryRow(),
+    'add-supply-row': () => addSupplyRow(),
+    'add-component-row': () => addComponentRow(),
+    'check-availability': () => checkAvailability(),
+});
 function togglePackageFields() {
     var isPackage = document.getElementById('is_package').checked;
     document.getElementById('package-components-section').classList.toggle('d-none', !isPackage);
@@ -433,7 +443,7 @@ function addSupplyRow() {
         <td><input type="number" name="supply_quantities" value="0" min="-1" class="w-full" title="-1 = unbegrenzt"></td>
         <td><input type="number" name="supply_prices" step="0.01" min="0" class="w-full" required></td>
         ${_isRegularTax ? '<td><select name="supply_price_is_brutto" class="w-full"><option value="1" selected>Brutto</option><option value="0">Netto</option></select></td>' : ''}
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+        <td><button type="button" class="btn btn-sm btn-danger" data-click="remove-row">✕</button></td>
     `;
     tbody.appendChild(tr);
 }
@@ -445,7 +455,7 @@ function addAccessoryRow() {
     tr.className = 'accessory-row';
     tr.innerHTML = `
         <td>
-            <select name="acc_linked_ids" class="w-full" onchange="onAccessoryLinkChange(this)">
+            <select name="acc_linked_ids" class="w-full" data-change="accessory-link-change">
                 <option value="">— frei —</option>
                 {% for ai in all_items %}
                 <option value="{{ ai.id }}" data-name="{{ ai.name }}" data-value="{{ ai.replacement_value_total if ai.replacement_value_total is not none else '' }}">{{ ai.name }}</option>
@@ -453,11 +463,11 @@ function addAccessoryRow() {
             </select>
         </td>
         <td><input type="text" name="acc_names" class="w-full" placeholder="z.B. Superclamp"></td>
-        <td><input type="number" name="acc_quantities" value="1" min="1" class="w-full" oninput="updateAccessoryTotal()"></td>
-        <td><input type="number" name="acc_per_units" value="1" min="1" class="w-full" title="Menge gilt je so viele Geräte" oninput="updateAccessoryTotal()"></td>
-        <td><input type="number" name="acc_values" step="0.01" min="0" class="w-full" oninput="updateAccessoryTotal()"></td>
+        <td><input type="number" name="acc_quantities" value="1" min="1" class="w-full" data-input="update-accessory-total"></td>
+        <td><input type="number" name="acc_per_units" value="1" min="1" class="w-full" title="Menge gilt je so viele Geräte" data-input="update-accessory-total"></td>
+        <td><input type="number" name="acc_values" step="0.01" min="0" class="w-full" data-input="update-accessory-total"></td>
         <td><select name="acc_show_in_shop" class="w-full"><option value="1" selected>Ja</option><option value="0">Nein</option></select></td>
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove(); updateAccessoryTotal()">✕</button></td>
+        <td><button type="button" class="btn btn-sm btn-danger" data-click="remove-row update-accessory-total">✕</button></td>
     `;
     tbody.appendChild(tr);
 }
@@ -504,7 +514,7 @@ function addComponentRow() {
             </select>
         </td>
         <td><input type="number" name="component_quantities" value="1" min="1" class="w-80"></td>
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✕</button></td>
+        <td><button type="button" class="btn btn-sm btn-danger" data-click="remove-row">✕</button></td>
     `;
     tbody.appendChild(row);
 }

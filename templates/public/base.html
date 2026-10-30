@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css', v=asset_v) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css', v=asset_v) }}">
     {% block extra_head %}{% endblock %}
+    <script src="{{ url_for('static', filename='js/actions.js', v=asset_v) }}"></script>
 </head>
 <body>
     {% set endpoint = request.endpoint or '' %}
@@ -59,7 +60,7 @@
             {% if site_settings and site_settings.tax_mode == 'regular' %}
                 <div class="footer-tax-note">
                     <span>Alle Preise verstehen sich {{ 'zzgl.' if show_netto else 'inkl.' }} {{ "%g"|format(tax_rate) }}% MwSt.</span>
-                    <form method="POST" action="{{ url_for('public.toggle_price_mode') }}" class="footer-toggle-form">
+                    <form method="POST" action="{{ url_for('public.toggle_price_mode') }}" class="footer-toggle-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn-price-toggle">{{ 'Brutto anzeigen' if show_netto else 'Netto anzeigen' }}</button>
                     </form>
                 </div>
@@ -77,7 +78,7 @@
         </div>
     </footer>
 
-    <script>
+    <script nonce="{{ csp_nonce }}">
     (function() {
         // Hairline under the header once the page is scrolled
         const header = document.getElementById('site-header');
@@ -134,7 +135,7 @@
     })();
     </script>
     {% block extra_js %}{% endblock %}
-    <script>
+    <script nonce="{{ csp_nonce }}">
     // Scroll position persistence per path
     (function() {
         const key = 'scrollPos:' + window.location.pathname;

@@ -22,7 +22,7 @@
         <div class="tree-item">
             <a href="{{ url_for('public.catalog_category', cat_path=cat.url_path) }}" class="{% if is_active %}active{% endif %}">{{ cat.name }}</a>
             {% if has_children %}
-            <button type="button" class="tree-toggle{% if is_active or is_ancestor or is_misc_parent %} open{% endif %}" aria-label="{{ cat.name }} aufklappen" onclick="this.classList.toggle('open');this.closest('li').querySelector(':scope > .category-tree').classList.toggle('collapsed')">
+            <button type="button" class="tree-toggle{% if is_active or is_ancestor or is_misc_parent %} open{% endif %}" aria-label="{{ cat.name }} aufklappen" data-click="tree-toggle">
                 <span class="toggle-icon"></span>
             </button>
             {% endif %}
@@ -173,7 +173,7 @@
                     {% else %}
                         <div class="item-price on-request">Preis auf Anfrage</div>
                     {% endif %}
-                    <form class="add-to-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart>
+                    <form class="add-to-cart-form" method="POST" action="{{ url_for('public.cart_add') }}" data-ajax-cart><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="item_id" value="{{ item.id }}">
                         <div class="qty">
                             <button type="button" data-step="-1" aria-label="Weniger">&minus;</button>
@@ -198,7 +198,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // Auto-collapse non-active branches
 document.querySelectorAll('.category-tree li').forEach(li => {
     const subtree = li.querySelector(':scope > .category-tree');

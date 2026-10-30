@@ -6,7 +6,7 @@
 <h1>Seiteneinstellungen</h1>
 
 <div class="card">
-    <form method="POST" enctype="multipart/form-data">
+    <form method="POST" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <h2>Unternehmensinformationen</h2>
         <p class="text-muted mb-16">Wird in PDFs und der öffentlichen Storefront verwendet.</p>
 
@@ -48,7 +48,7 @@
 
         <div class="form-group">
             <label>Umsatzsteuer-Modus</label>
-            <select name="tax_mode" id="tax_mode_select" onchange="toggleTaxRate()">
+            <select name="tax_mode" id="tax_mode_select" data-change="toggle-tax-rate">
                 <option value="kleinunternehmer" {{ 'selected' if (settings.tax_mode or 'kleinunternehmer') == 'kleinunternehmer' }}>Kleinunternehmer (&sect;19 UStG) &ndash; keine MwSt</option>
                 <option value="regular" {{ 'selected' if settings.tax_mode == 'regular' }}>Regul&auml;r &ndash; MwSt ausweisen</option>
             </select>
@@ -169,7 +169,7 @@
         </div>
         <div class="form-group">
             <label>Connector-URL</label>
-            <input type="text" value="{{ mcp_url }}" readonly onclick="this.select()">
+            <input type="text" value="{{ mcp_url }}" readonly data-click="select-text">
             <small class="help-text">In claude.ai unter Einstellungen → Connectors → „Benutzerdefinierten Connector hinzufügen“ eintragen. Die App muss per HTTPS öffentlich erreichbar sein; hinter einem Reverse-Proxy <code>PUBLIC_URL</code> setzen.</small>
         </div>
 
@@ -191,7 +191,7 @@
                 <td>{{ t.user.display_name or t.user.username if t.user else '–' }}</td>
                 <td>{{ t.last_used_at.strftime('%d.%m.%Y %H:%M') if t.last_used_at else '–' }} <small class="text-muted">(UTC)</small></td>
                 <td>
-                    <form method="POST" action="{{ url_for('admin.mcp_revoke_token', token_id=t.id) }}" onsubmit="return confirm('Verbindung widerrufen?');">
+                    <form method="POST" action="{{ url_for('admin.mcp_revoke_token', token_id=t.id) }}" data-confirm="Verbindung widerrufen?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-danger">Widerrufen</button>
                     </form>
                 </td>
@@ -202,7 +202,8 @@
 </div>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
+Actions.register({'toggle-tax-rate': () => toggleTaxRate()});
 function toggleTaxRate() {
     var mode = document.getElementById('tax_mode_select');
     var group = document.getElementById('tax_rate_group');

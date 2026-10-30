@@ -10,7 +10,7 @@
 
 <div class="card mb-16">
     <h3>Neuen Lieferanten anlegen</h3>
-    <form method="POST" action="{{ url_for('admin.suppliers') }}" class="d-flex gap-10 flex-wrap align-center">
+    <form method="POST" action="{{ url_for('admin.suppliers') }}" class="d-flex gap-10 flex-wrap align-center"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="name" placeholder="Name *" required class="min-w-180">
         <input type="email" name="email" placeholder="E-Mail" class="min-w-180">
         <input type="text" name="phone" placeholder="Telefon" class="min-w-150">
@@ -56,7 +56,7 @@
     </tbody>
 </table>
 {% for s in suppliers %}
-    <form id="sup-{{ s.id }}" method="POST" action="{{ url_for('admin.supplier_update', supplier_id=s.id) }}"></form>
-    <form id="sup-del-{{ s.id }}" method="POST" action="{{ url_for('admin.supplier_delete', supplier_id=s.id) }}" onsubmit="return confirm('Lieferant {{ s.name }} löschen? Seine Angebote werden von allen Artikeln entfernt. Bestehende Angebote/Rechnungen behalten den Namen.');"></form>
+    <form id="sup-{{ s.id }}" method="POST" action="{{ url_for('admin.supplier_update', supplier_id=s.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+    <form id="sup-del-{{ s.id }}" method="POST" action="{{ url_for('admin.supplier_delete', supplier_id=s.id) }}" data-confirm="Lieferant {{ s.name }} löschen? Seine Angebote werden von allen Artikeln entfernt. Bestehende Angebote/Rechnungen behalten den Namen."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 {% endfor %}
 {% endblock %}

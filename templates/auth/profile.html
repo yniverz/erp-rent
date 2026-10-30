@@ -7,7 +7,7 @@
 
 <div class="card">
     <h2>Profildaten</h2>
-    <form method="POST">
+    <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="update_profile">
 
         <div class="form-group">
@@ -35,7 +35,7 @@
 
 <div class="card mt-24">
     <h2>Passwort ändern</h2>
-    <form method="POST">
+    <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="change_password">
 
         <div class="form-group">
@@ -46,11 +46,11 @@
         <div class="form-row">
             <div class="form-group">
                 <label>Neues Passwort *</label>
-                <input type="password" name="new_password" required minlength="4">
+                <input type="password" name="new_password" required minlength="10">
             </div>
             <div class="form-group">
                 <label>Neues Passwort bestätigen *</label>
-                <input type="password" name="confirm_password" required minlength="4">
+                <input type="password" name="confirm_password" required minlength="10">
             </div>
         </div>
 
@@ -58,5 +58,48 @@
             <button type="submit" class="btn btn-primary">Passwort ändern</button>
         </div>
     </form>
+</div>
+
+<div class="card mt-24">
+    <h2>Zwei-Faktor-Anmeldung</h2>
+    {% if user.has_totp %}
+    <p><span class="badge badge-success">Aktiv</span> Bei der Anmeldung wird zusätzlich ein Code aus Ihrer Authenticator-App abgefragt.</p>
+    <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="totp_disable">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Aktuelles Passwort *</label>
+                <input type="password" name="current_password" autocomplete="current-password" required>
+            </div>
+            <div class="form-group">
+                <label>Aktueller Code *</label>
+                <input type="text" name="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" required>
+            </div>
+        </div>
+        <div class="d-flex gap-10 mt-24">
+            <button type="submit" class="btn btn-danger" data-confirm="Zwei-Faktor-Anmeldung wirklich deaktivieren?">Deaktivieren</button>
+        </div>
+    </form>
+    {% elif totp_setup %}
+    <p>Scannen Sie den QR-Code mit einer Authenticator-App (z. B. Google Authenticator, Aegis, 1Password) und geben Sie den angezeigten Code ein.</p>
+    <img src="{{ totp_setup.qr }}" alt="QR-Code für die Authenticator-App" class="totp-qr">
+    <p class="help-text">Manuelle Eingabe: <code class="totp-secret">{{ totp_setup.secret }}</code></p>
+    <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label>Code aus der App *</label>
+            <input type="text" name="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" required autofocus>
+        </div>
+        <div class="d-flex gap-10 mt-24">
+            <button type="submit" name="action" value="totp_confirm" class="btn btn-primary">Aktivieren</button>
+            <button type="submit" name="action" value="totp_cancel" formnovalidate class="btn btn-outline">Abbrechen</button>
+        </div>
+    </form>
+    {% else %}
+    <p>Optional: Schützen Sie Ihr Konto zusätzlich mit einem 6-stelligen Code aus einer Authenticator-App. Wer Ihr Passwort kennt, kann sich dann ohne Ihr Handy nicht anmelden.</p>
+    <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="totp_start">
+        <button type="submit" class="btn btn-primary">Einrichten</button>
+    </form>
+    {% endif %}
 </div>
 {% endblock %}

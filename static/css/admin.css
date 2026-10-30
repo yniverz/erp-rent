@@ -90,6 +90,8 @@ nav {
 .nav-user:hover     { color: white; }
 .nav-logout         { color: white; background: var(--color-danger); text-decoration: none; padding: 7px 16px; border-radius: var(--radius-sm); font-size: 0.85em; transition: background 0.2s; }
 .nav-logout:hover   { background: var(--color-danger-hover); }
+.nav-logout-form    { display: inline; margin: 0; }
+button.nav-logout   { border: 0; cursor: pointer; font-family: inherit; line-height: inherit; }
 
 .nav-shop-link      { color: white; border-color: rgba(255,255,255,0.3); }
 
@@ -261,3 +263,7 @@ textarea, select {
     .nav-links  { flex-wrap: wrap; justify-content: center; }
     .form-row   { grid-template-columns: 1fr; }
 }
+
+/* ── Two-factor setup ── */
+.totp-qr     { display: block; width: 200px; height: 200px; margin: 12px 0; border-radius: var(--radius-sm); image-rendering: pixelated; }
+.totp-secret { font-family: ui-monospace, Menlo, monospace; letter-spacing: 0.05em; user-select: all; }

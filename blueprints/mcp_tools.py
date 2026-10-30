@@ -8,7 +8,6 @@ enabled in the MCP settings.
 """
 import io
 import os
-import uuid
 from datetime import datetime, date, timedelta
 
 import requests as http_requests
@@ -19,7 +18,8 @@ from blueprints import api as quote_ops
 from blueprints.api import ApiError, _serialize_quote
 from blueprints.admin import convert_inquiry_to_quote
 from helpers import (get_available_quantity, get_package_available_quantity,
-                     get_upload_path, public_base_url, replacement_value_basis)
+                     get_upload_path, public_base_url, replacement_value_basis,
+                     save_clean_image, InvalidImage)
 from models import (db, Category, Inquiry, Item, ItemAccessory, ItemSupply, ItemUnit, PackageComponent,
                     Quote, QuoteItem, SiteSettings, Supplier)
 
@@ -177,13 +177,11 @@ def _paginate(rows, limit, offset, default=100):
     return rows[offset:offset + limit]
 
 
-IMAGE_FORMATS = {'JPEG': 'jpg', 'PNG': 'png', 'GIF': 'gif', 'WEBP': 'webp'}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 def _download_image(image_url):
     """Download an image from a public http(s) URL into uploads/. Returns the filename."""
-    from PIL import Image
     from blueprints.oauth import _is_public_host
     parts = urlparse(image_url or '')
     if parts.scheme not in ('http', 'https') or not parts.hostname:
@@ -200,17 +198,9 @@ def _download_image(image_url):
     if len(data) > MAX_IMAGE_BYTES:
         raise ToolError('Bild ist größer als 10 MB.')
     try:
-        img = Image.open(io.BytesIO(data))
-        img.verify()
-    except Exception:
-        raise ToolError('Die URL liefert kein gültiges Bild.')
-    ext = IMAGE_FORMATS.get(img.format)
-    if not ext:
-        raise ToolError(f'Bildformat {img.format} wird nicht unterstützt (JPEG, PNG, GIF, WebP).')
-    filename = f'{uuid.uuid4().hex}.{ext}'
-    with open(os.path.join(get_upload_path(), filename), 'wb') as f:
-        f.write(data)
-    return filename
+        return save_clean_image(data)
+    except InvalidImage as e:
+        raise ToolError(str(e))
 
 
 def _remove_upload(filename):

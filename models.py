@@ -7,6 +7,8 @@ import unicodedata
 
 db = SQLAlchemy()
 
+MIN_PASSWORD_LENGTH = 10
+
 
 def slugify(value):
     """Turn a name into a URL slug: lowercase, umlaut transliteration, hyphens."""
@@ -27,6 +29,14 @@ class User(UserMixin, db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Optional TOTP second factor: base32 secret (None = 2FA off) and last accepted
+    # time step, so a code can't be replayed within its validity window
+    totp_secret = db.Column(db.String(64), nullable=True)
+    totp_last_step = db.Column(db.Integer, nullable=True)
+
+    @property
+    def has_totp(self):
+        return bool(self.totp_secret)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -48,6 +58,16 @@ item_subcategories = db.Table('item_subcategories',
     db.Column('item_id', db.Integer, db.ForeignKey('item.id'), primary_key=True),
     db.Column('category_id', db.Integer, db.ForeignKey('category.id'), primary_key=True)
 )
+
+
+class ThrottleEvent(db.Model):
+    """Short-lived rate-limit record (failed logins, inquiries), shared across workers.
+    Rows are pruned once older than their window, so client IPs are kept at most ~1 hour."""
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False, index=True)  # 'login' | 'inquiry'
+    ip = db.Column(db.String(64), nullable=False, index=True)
+    subject = db.Column(db.String(80), nullable=False, default='')  # e.g. attempted username
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class PackageComponent(db.Model):
