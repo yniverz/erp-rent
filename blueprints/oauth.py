@@ -23,7 +23,7 @@ import requests as http_requests
 from flask import Blueprint, jsonify, request, redirect, render_template, session, url_for
 from flask_login import current_user
 
-from helpers import public_base_url
+from helpers import public_base_url, throttle_count, throttle_record
 from models import db, User, SiteSettings, OAuthClient, OAuthAuthorizationCode, OAuthToken
 
 oauth_bp = Blueprint('oauth', __name__)
@@ -33,6 +33,11 @@ CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=90)
 CLIENT_METADATA_TTL = timedelta(hours=24)
+# Abuse limits per client IP
+REGISTER_WINDOW = timedelta(hours=1)
+MAX_REGISTRATIONS_PER_IP = 10
+TOKEN_FAIL_WINDOW = timedelta(minutes=15)
+MAX_TOKEN_FAILS_PER_IP = 20
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -214,6 +219,16 @@ def validate_access_token(raw_token):
     return tok
 
 
+def _client_ip():
+    return request.remote_addr or 'unknown'
+
+
+def _too_many(description):
+    resp = _oauth_error('slow_down', description, 429)
+    resp.headers['Retry-After'] = '900'
+    return resp
+
+
 def _with_query(uri, params):
     parts = urlsplit(uri)
     query = parse_qsl(parts.query, keep_blank_values=True) + list(params.items())
@@ -267,6 +282,8 @@ def authorization_server_metadata():
 def register():
     if not mcp_enabled():
         return _disabled()
+    if throttle_count('oauth_register', REGISTER_WINDOW, ip=_client_ip()) >= MAX_REGISTRATIONS_PER_IP:
+        return _too_many('Zu viele Client-Registrierungen. Bitte später erneut versuchen.')
     data = request.get_json(silent=True) or {}
     uris = data.get('redirect_uris')
     if not isinstance(uris, list) or not uris or len(uris) > 10:
@@ -287,6 +304,7 @@ def register():
     )
     db.session.add(client)
     db.session.commit()
+    throttle_record('oauth_register', _client_ip())
 
     body = {
         'client_id': client_id,
@@ -386,6 +404,16 @@ def authorize():
 def token():
     if not mcp_enabled():
         return _disabled()
+    ip = _client_ip()
+    if throttle_count('oauth_token', TOKEN_FAIL_WINDOW, ip=ip) >= MAX_TOKEN_FAILS_PER_IP:
+        return _too_many('Zu viele fehlgeschlagene Token-Anfragen. Bitte in 15 Minuten erneut versuchen.')
+    resp = _token_grant()
+    if resp.status_code in (400, 401):
+        throttle_record('oauth_token', ip, request.form.get('client_id') or '')
+    return resp
+
+
+def _token_grant():
     client, err = _authenticate_client()
     if err:
         return err
