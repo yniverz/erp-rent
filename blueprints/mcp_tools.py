@@ -966,7 +966,10 @@ def add_quote_line(quote_id, **data):
 
 
 @tool('update_quote_line', 'Angebotsposition bearbeiten',
-      'Ändert Menge, Preis, Einkaufskosten, Name (nur custom/heading), Rabattausnahme oder Optional-Status einer Position.',
+      'Ändert Menge, Preis, Einkaufskosten, Name (nur custom/heading), Rabattausnahme, Optional-Status oder '
+      'Lieferanten-Beschaffung einer Position. Mit sources wird festgelegt, welcher Lieferant wie viele Einheiten '
+      'liefert und optional zu welchem Sonderpreis nur für dieses Angebot (der Listenpreis des Lieferanten bleibt '
+      'unverändert). Der Rest wird aus dem Eigenbestand gedeckt.',
       {'quote_id': ID('des Angebots'), 'line_id': ID('der Position'),
        'quantity': _s('integer', 'Menge', minimum=1),
        'price_per_day': _s('number', 'Preis pro Einheit und Tag (bei eigenen Positionen: einmaliger Preis pro Einheit)', minimum=0),
@@ -974,7 +977,17 @@ def add_quote_line(quote_id, **data):
        'name': _s('string', 'Text (nur custom/heading)'),
        'discount_exempt': _s('boolean', 'Vom Rabatt ausgenommen'),
        'is_optional': _s('boolean', 'Optionale Position (nicht in Summe)'),
-       'auto_sources': _s('boolean', 'Lieferanten-Beschaffung automatisch neu verteilen')},
+       'auto_sources': _s('boolean', 'Lieferanten-Beschaffung automatisch neu verteilen (Eigenbestand zuerst, dann günstigste Lieferanten zum Listenpreis)'),
+       'sources': {'type': 'array', 'description':
+                   'Beschaffung manuell setzen; ersetzt die bisherige komplett (nicht genannte Lieferanten = 0). '
+                   'Nur bei Artikeln mit Lieferanten-Angeboten (supplier_offers in get_item). Aktuelle Werte stehen '
+                   'in lines[].sources von get_quote.',
+                   'items': {'type': 'object', 'properties': {
+                       'supplier_id': ID('des Lieferanten'),
+                       'quantity': _s('integer', 'Einheiten von diesem Lieferanten', minimum=0),
+                       'price_per_day': _s('number', 'Optional: Sonderpreis pro Einheit/Tag nur für dieses Angebot; '
+                                           'ohne Angabe bleibt der bisher gespeicherte Preis bzw. der Listenpreis', minimum=0)},
+                       'required': ['supplier_id', 'quantity']}}},
       ['quote_id', 'line_id'], idempotent=True)
 def update_quote_line(quote_id, line_id, **data):
     quote, warnings = quote_ops.update_line(int(quote_id), int(line_id), data)

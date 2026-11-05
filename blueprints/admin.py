@@ -1175,6 +1175,45 @@ def _apply_default_sources(qi, item, quote):
     qi.recalc_cost_from_sources()
 
 
+def _apply_manual_sources(qi, src_map, price_map=None):
+    """Replace a line's supplier sourcing with manually chosen quantities.
+
+    src_map: {supplier_id: quantity}; suppliers not listed get 0.
+    price_map: optional {supplier_id: price_per_day} override for this quote only
+    (special arrangement with the supplier). Without an override, keep the price
+    already saved on this line, falling back to the supplier's list price.
+    Returns a list of warnings. Caller must run qi.recalc_cost_from_sources()."""
+    price_map = {str(k): v for k, v in (price_map or {}).items()}
+    src_map = {str(k): v for k, v in (src_map or {}).items()}
+    prev_prices = {src.supplier_id: src.price_per_day for src in qi.sources if src.supplier_id}
+    warnings = []
+    new_sources = []
+    for supply in qi.item.supplies:
+        key = str(supply.supplier_id)
+        try:
+            src_qty = int(src_map.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            src_qty = 0
+        if src_qty <= 0:
+            continue
+        if supply.quantity != -1 and src_qty > supply.quantity:
+            warnings.append(f'{qi.item.name}: {supply.supplier.name} kann max. {supply.quantity} liefern ({src_qty} zugewiesen).')
+        price = prev_prices.get(supply.supplier_id, supply.price_per_day or 0)
+        if price_map.get(key) not in (None, ''):
+            try:
+                price = max(0.0, round(float(price_map[key]), 2))
+            except (TypeError, ValueError):
+                pass
+        new_sources.append(QuoteItemSource(
+            supplier_id=supply.supplier_id,
+            supplier_name=supply.supplier.name,
+            quantity=src_qty,
+            price_per_day=price,
+        ))
+    qi.sources = new_sources
+    return warnings
+
+
 @admin_bp.route('/quotes')
 @login_required
 def quote_list():
@@ -1561,36 +1600,8 @@ def quote_api_line_update(quote_id, line_id):
             if data.get('auto_sources'):
                 _apply_default_sources(qi, qi.item, quote)
             elif 'sources' in data:
-                src_map = data.get('sources') or {}
-                # Optional per-quote price overrides (special arrangement with the supplier
-                # for this Angebot only). Without an override, keep the price already saved
-                # on this line, falling back to the supplier's list price.
-                price_map = data.get('source_prices') or {}
-                prev_prices = {src.supplier_id: src.price_per_day for src in qi.sources if src.supplier_id}
-                new_sources = []
-                for supply in qi.item.supplies:
-                    key = str(supply.supplier_id)
-                    try:
-                        src_qty = int(src_map.get(key, 0) or 0)
-                    except (TypeError, ValueError):
-                        src_qty = 0
-                    if src_qty <= 0:
-                        continue
-                    if supply.quantity != -1 and src_qty > supply.quantity:
-                        warnings.append(f'{qi.item.name}: {supply.supplier.name} kann max. {supply.quantity} liefern ({src_qty} zugewiesen).')
-                    price = prev_prices.get(supply.supplier_id, supply.price_per_day or 0)
-                    if price_map.get(key) not in (None, ''):
-                        try:
-                            price = max(0.0, round(float(price_map[key]), 2))
-                        except (TypeError, ValueError):
-                            pass
-                    new_sources.append(QuoteItemSource(
-                        supplier_id=supply.supplier_id,
-                        supplier_name=supply.supplier.name,
-                        quantity=src_qty,
-                        price_per_day=price,
-                    ))
-                qi.sources = new_sources
+                warnings.extend(_apply_manual_sources(qi, data.get('sources') or {},
+                                                      data.get('source_prices') or {}))
             qi.recalc_cost_from_sources()
 
         # Availability / coverage warnings

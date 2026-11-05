@@ -15,7 +15,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request
 from models import db, Item, Quote, QuoteItem
 from helpers import get_available_quantity
-from blueprints.admin import _apply_default_sources
+from blueprints.admin import _apply_default_sources, _apply_manual_sources
 
 api_bp = Blueprint('api', __name__)
 
@@ -96,6 +96,15 @@ def _serialize_line(qi):
         'quantity': qi.quantity,
         'price_per_day': round(qi.rental_price_per_day or 0, 2),
         'cost_per_day': round(qi.rental_cost_per_day or 0, 2),
+        'sources': [
+            {
+                'supplier_id': src.supplier_id,
+                'supplier_name': src.supplier_name,
+                'quantity': src.quantity,
+                'price_per_day': round(src.price_per_day or 0, 2),
+            }
+            for src in qi.sources
+        ],
         'discount_exempt': bool(qi.discount_exempt),
         'is_optional': bool(qi.is_optional),
         'position': qi.position or 0,
@@ -333,11 +342,14 @@ def add_line(quote_id, data):
 @transactional
 def update_line(quote_id, line_id, data):
     """Update a line: name (custom/heading), quantity, price_per_day,
-    cost_per_day, discount_exempt, is_optional, auto_sources. Returns (quote, warnings)."""
+    cost_per_day, discount_exempt, is_optional, auto_sources, sources.
+    sources = [{supplier_id, quantity, price_per_day?}] replaces the supplier
+    sourcing; price_per_day is a price for this quote only. Returns (quote, warnings)."""
     quote = _editable_quote(quote_id)
     qi = db.session.get(QuoteItem, line_id)
     if not qi or qi.quote_id != quote.id:
         raise ApiError('Position nicht gefunden.', 404)
+    source_warnings = []
     if 'name' in data:
         if not (qi.is_custom or qi.is_heading):
             raise ApiError('name kann nur bei eigenen Positionen/Überschriften geändert werden.')
@@ -360,10 +372,37 @@ def update_line(quote_id, line_id, data):
 
     if not qi.is_custom and not qi.is_heading and qi.item and qi.item.supplies:
         if data.get('auto_sources'):
+            if data.get('sources') is not None:
+                raise ApiError('auto_sources und sources nicht gleichzeitig angeben.')
             _apply_default_sources(qi, qi.item, quote)
+        elif data.get('sources') is not None:
+            src_map, price_map = _parse_sources(qi, data['sources'])
+            source_warnings = _apply_manual_sources(qi, src_map, price_map)
         qi.recalc_cost_from_sources()
+    elif data.get('sources') is not None or data.get('auto_sources'):
+        raise ApiError('Beschaffung gibt es nur bei Artikeln mit Lieferanten (sonst cost_per_day setzen).')
 
-    return quote, _availability_warnings(quote, qi)
+    return quote, source_warnings + _availability_warnings(quote, qi)
+
+
+def _parse_sources(qi, sources):
+    if not isinstance(sources, list):
+        raise ApiError('sources muss eine Liste sein.')
+    offered = {s.supplier_id for s in qi.item.supplies}
+    src_map, price_map = {}, {}
+    for entry in sources:
+        if not isinstance(entry, dict) or entry.get('supplier_id') is None:
+            raise ApiError('Jeder Eintrag in sources braucht supplier_id und quantity.')
+        sid = int(entry['supplier_id'])
+        if sid not in offered:
+            raise ApiError(f'Lieferant {sid} bietet diesen Artikel nicht an (siehe supplier_offers in get_item).')
+        src_map[sid] = max(0, int(entry.get('quantity') or 0))
+        if entry.get('price_per_day') is not None:
+            price = float(entry['price_per_day'])
+            if price < 0:
+                raise ApiError('price_per_day darf nicht negativ sein.')
+            price_map[sid] = price
+    return src_map, price_map
 
 
 @transactional
