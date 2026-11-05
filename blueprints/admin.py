@@ -1314,6 +1314,8 @@ def _serialize_quote_state(quote):
                     'price_per_day': round(s.price_per_day or 0, 2),
                 } for s in item.supplies_sorted],
                 'sources': {str(src.supplier_id): src.quantity for src in qi.sources if src.supplier_id},
+                'source_prices': {str(src.supplier_id): round(src.price_per_day or 0, 2)
+                                  for src in qi.sources if src.supplier_id},
             })
         lines.append(line)
 
@@ -1560,21 +1562,33 @@ def quote_api_line_update(quote_id, line_id):
                 _apply_default_sources(qi, qi.item, quote)
             elif 'sources' in data:
                 src_map = data.get('sources') or {}
+                # Optional per-quote price overrides (special arrangement with the supplier
+                # for this Angebot only). Without an override, keep the price already saved
+                # on this line, falling back to the supplier's list price.
+                price_map = data.get('source_prices') or {}
+                prev_prices = {src.supplier_id: src.price_per_day for src in qi.sources if src.supplier_id}
                 new_sources = []
                 for supply in qi.item.supplies:
+                    key = str(supply.supplier_id)
                     try:
-                        src_qty = int(src_map.get(str(supply.supplier_id), 0) or 0)
+                        src_qty = int(src_map.get(key, 0) or 0)
                     except (TypeError, ValueError):
                         src_qty = 0
                     if src_qty <= 0:
                         continue
                     if supply.quantity != -1 and src_qty > supply.quantity:
                         warnings.append(f'{qi.item.name}: {supply.supplier.name} kann max. {supply.quantity} liefern ({src_qty} zugewiesen).')
+                    price = prev_prices.get(supply.supplier_id, supply.price_per_day or 0)
+                    if price_map.get(key) not in (None, ''):
+                        try:
+                            price = max(0.0, round(float(price_map[key]), 2))
+                        except (TypeError, ValueError):
+                            pass
                     new_sources.append(QuoteItemSource(
                         supplier_id=supply.supplier_id,
                         supplier_name=supply.supplier.name,
                         quantity=src_qty,
-                        price_per_day=supply.price_per_day or 0,
+                        price_per_day=price,
                     ))
                 qi.sources = new_sources
             qi.recalc_cost_from_sources()

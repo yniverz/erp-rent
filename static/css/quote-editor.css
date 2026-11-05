@@ -174,6 +174,7 @@ tr.qe-drop-below td { border-bottom: 2px solid var(--color-accent); }
 .qe-src-col { display: flex; flex-direction: column; gap: 5px; }
 .qe-src-col label { display: flex; align-items: center; gap: 7px; margin: 0; white-space: nowrap; }
 .qe-src-col input { width: 62px; padding: 3px 6px; text-align: center; }
+.qe-src-col input.qe-src-price { width: 76px; text-align: right; }
 .qe-src-summary { font-size: 0.85em; color: var(--color-text-muted); }
 .qe-src-warn { color: var(--color-danger); font-weight: 600; }
 

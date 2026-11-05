@@ -360,9 +360,16 @@ const QE = (function() {
                 + '</div><div class="qe-src-col">'
                 + l.supplies.map(s => {
                     const cur = (l.sources || {})[String(s.supplier_id)] || 0;
+                    const saved = (l.source_prices || {})[String(s.supplier_id)];
+                    const price = saved !== undefined ? saved : s.price_per_day;
+                    const special = saved !== undefined && Math.abs(saved - s.price_per_day) > 0.005;
                     const max = s.max_quantity === -1 ? '' : ' max="' + s.max_quantity + '"';
                     return '<label><input type="number" min="0"' + max + ' value="' + cur + '" data-fkey="src-' + l.id + '-' + s.supplier_id + '">'
-                        + esc(s.supplier_name) + ' <small class="text-muted">@' + eur(s.price_per_day) + '/Tag'
+                        + esc(s.supplier_name) + ' @'
+                        + '<input type="number" step="0.01" min="0" class="qe-src-price" value="' + price.toFixed(2) + '" data-fkey="srcp-' + l.id + '-' + s.supplier_id + '"'
+                        + ' title="Preis für dieses Angebot (Listenpreis: ' + eur(s.price_per_day) + ')">'
+                        + ' <small class="text-muted">€/Tag'
+                        + (special ? ' · Sonderpreis (Liste ' + eur(s.price_per_day) + ')' : '')
                         + (s.max_quantity !== -1 ? ' · max. ' + s.max_quantity : '') + '</small></label>';
                 }).join('')
                 + '</div><div class="qe-src-col">'
@@ -449,15 +456,17 @@ const QE = (function() {
                 inp.addEventListener('input', () => queueLineUpdate(id, {name: inp.value}, 600));
             } else if (kind === 'cost') {
                 inp.addEventListener('input', () => queueLineUpdate(id, {cost_per_day: num(inp.value)}, 600));
-            } else if (kind === 'src') {
+            } else if (kind === 'src' || kind === 'srcp') {
                 inp.addEventListener('input', () => {
-                    // collect all sourcing inputs of this line
-                    const sources = {};
+                    // collect all sourcing inputs (quantity + per-quote price) of this line
+                    const sources = {}, prices = {};
                     tbody.querySelectorAll('[data-fkey^="src-' + id + '-"]').forEach(si => {
-                        const supplierId = si.dataset.fkey.split('-')[2];
-                        sources[supplierId] = parseInt(si.value, 10) || 0;
+                        sources[si.dataset.fkey.split('-')[2]] = parseInt(si.value, 10) || 0;
                     });
-                    queueLineUpdate(id, {sources: sources}, 600);
+                    tbody.querySelectorAll('[data-fkey^="srcp-' + id + '-"]').forEach(si => {
+                        if (si.value !== '') prices[si.dataset.fkey.split('-')[2]] = num(si.value);
+                    });
+                    queueLineUpdate(id, {sources: sources, source_prices: prices}, 600);
                 });
             }
         });
