@@ -25,12 +25,10 @@ A JSON API for programmatic quote management, mounted at `/api/v1`.
 
 ## Authentication
 
-The API uses static bearer tokens. Configure one or more tokens via the
-`API_TOKENS` environment variable (comma-separated):
-
-```env
-API_TOKENS=my-secret-token,another-token
-```
+The API uses static bearer tokens. Create them in the admin area under
+**Einstellungen → API-Tokens**: give the token a name (e.g. "Chrome-Erweiterung"),
+copy it right away — it is shown only once and stored as a SHA-256 hash.
+The list shows each token's prefix and when it was last used.
 
 Every request must include the header:
 
@@ -40,11 +38,10 @@ Authorization: Bearer <token>
 
 | Condition | Response |
 |---|---|
-| `API_TOKENS` not set | `503` — API is disabled |
-| Missing / invalid token | `401` |
+| Missing / invalid / revoked token | `401` |
 
-> **Note:** Treat tokens like passwords. Use HTTPS in production and rotate
-> tokens by updating `API_TOKENS` and restarting the app.
+> **Note:** Treat tokens like passwords. Use HTTPS in production. To rotate,
+> create a new token and revoke the old one in the settings — no restart needed.
 
 ## Conventions
 
@@ -408,7 +405,6 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | `401` | Missing or invalid API token |
 | `404` | Quote, line or item not found |
 | `409` | Conflict — the package is already in the quote |
-| `503` | API disabled (`API_TOKENS` not configured) |
 | `500` | Unexpected server error |
 
 All error bodies have the shape:

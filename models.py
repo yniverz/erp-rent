@@ -775,3 +775,50 @@ class OAuthToken(db.Model):
     @property
     def client(self):
         return OAuthClient.query.filter_by(client_id=self.client_id).first()
+
+
+class ApiToken(db.Model):
+    """Static bearer token for the REST API (/api/v1) and the MCP endpoint,
+    created in Admin → Einstellungen. Only the SHA-256 hash is stored; the
+    plaintext is shown once on creation."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False)
+    token_prefix = db.Column(db.String(12), nullable=False)  # for recognising a token in the list
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+
+    created_by = db.relationship('User')
+
+    PREFIX = 'erp_'
+
+    @staticmethod
+    def hash(value):
+        import hashlib
+        return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+    @classmethod
+    def generate(cls, name, user=None):
+        """Create a token row; returns (row, plaintext). Caller commits."""
+        import secrets
+        plaintext = cls.PREFIX + secrets.token_urlsafe(32)
+        row = cls(name=name, token_hash=cls.hash(plaintext),
+                  token_prefix=plaintext[:len(cls.PREFIX) + 4],
+                  created_by_id=user.id if user else None)
+        db.session.add(row)
+        return row, plaintext
+
+    @classmethod
+    def verify(cls, plaintext):
+        """Return the matching token row (and stamp last_used_at) or None."""
+        if not plaintext:
+            return None
+        row = cls.query.filter_by(token_hash=cls.hash(plaintext)).first()
+        if row:
+            now = datetime.utcnow()
+            # Avoid a write on every request; minute resolution is plenty
+            if not row.last_used_at or (now - row.last_used_at).total_seconds() > 60:
+                row.last_used_at = now
+                db.session.commit()
+        return row

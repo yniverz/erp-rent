@@ -1,5 +1,5 @@
 from io import BytesIO
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort, make_response
 from flask_login import login_required, current_user
 from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
 from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, save_clean_image, clean_svg, InvalidImage
@@ -2219,14 +2219,52 @@ def settings():
             db.session.rollback()
             flash(f'Fehler: {str(e)}', 'error')
 
-    from models import OAuthToken
+    return _render_settings(settings_record)
+
+
+def _render_settings(settings_record, new_api_token=None):
+    from models import OAuthToken, ApiToken
     from helpers import public_base_url
     mcp_tokens = OAuthToken.query.filter(
         OAuthToken.revoked == False,  # noqa: E712
         OAuthToken.refresh_expires_at > datetime.utcnow(),
     ).order_by(OAuthToken.created_at.desc()).all()
+    api_tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
     return render_template('admin/settings.html', settings=settings_record,
-                           mcp_url=public_base_url() + '/mcp', mcp_tokens=mcp_tokens)
+                           mcp_url=public_base_url() + '/mcp', mcp_tokens=mcp_tokens,
+                           api_tokens=api_tokens, new_api_token=new_api_token,
+                           api_url=public_base_url() + '/api/v1')
+
+
+@admin_bp.route('/settings/api-tokens', methods=['POST'])
+@admin_required
+def api_token_create():
+    """Create a REST/MCP API token; the plaintext is shown exactly once"""
+    from models import ApiToken
+    name = request.form.get('name', '').strip()[:100]
+    if not name:
+        flash('Bitte einen Namen für den Token angeben.', 'error')
+        return redirect(url_for('admin.settings') + '#api-tokens')
+    row, plaintext = ApiToken.generate(name, current_user)
+    db.session.commit()
+    # Rendered directly (not via redirect/session) so the plaintext never lands in a cookie
+    resp = make_response(_render_settings(
+        SiteSettings.query.first(),
+        new_api_token={'id': row.id, 'name': row.name, 'token': plaintext}))
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
+@admin_bp.route('/settings/api-tokens/<int:token_id>/delete', methods=['POST'])
+@admin_required
+def api_token_delete(token_id):
+    """Revoke (delete) an API token"""
+    from models import ApiToken
+    row = ApiToken.query.get_or_404(token_id)
+    db.session.delete(row)
+    db.session.commit()
+    flash(f'API-Token „{row.name}“ widerrufen.', 'success')
+    return redirect(url_for('admin.settings') + '#api-tokens')
 
 
 @admin_bp.route('/settings/mcp/revoke/<int:token_id>', methods=['POST'])

@@ -1,18 +1,17 @@
 """MCP server endpoint (Streamable HTTP transport, stateless, JSON responses).
 
 Mounted at /mcp. Authentication: OAuth access token (see blueprints/oauth.py)
-or one of the static API_TOKENS (handy for Claude Code). Tools live in
+or a static API token from Admin → Einstellungen (handy for Claude Code). Tools live in
 blueprints/mcp_tools.py.
 """
-import hmac
 import json
 
 from flask import Blueprint, Response, g, jsonify, request
 
-from blueprints.api import ApiError, _configured_tokens
+from blueprints.api import ApiError, bearer_token
 from blueprints.mcp_tools import TOOLS, ToolError, delete_allowed
 from blueprints.oauth import mcp_enabled, protected_resource_metadata_url, validate_access_token
-from models import db, SiteSettings
+from models import db, ApiToken, SiteSettings
 
 mcp_bp = Blueprint('mcp', __name__)
 
@@ -56,13 +55,13 @@ def _unauthorized(description):
 
 def _authenticate():
     """Set g.mcp_user (None for static API tokens). Returns an error response or None."""
-    auth = request.headers.get('Authorization', '')
-    supplied = auth[7:].strip() if auth.startswith('Bearer ') else ''
+    supplied = bearer_token()
     if not supplied:
         return _unauthorized('Anmeldung erforderlich.')
-    if any(hmac.compare_digest(supplied, t) for t in _configured_tokens()):
+    api_token = ApiToken.verify(supplied)
+    if api_token:
         g.mcp_user = None
-        g.mcp_actor = 'API-Token'
+        g.mcp_actor = f'API-Token „{api_token.name}“'
         return None
     tok = validate_access_token(supplied)
     if not tok:

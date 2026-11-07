@@ -84,7 +84,6 @@ All configuration is done through environment variables (or a `.env` file in the
 | `SMTP_PASSWORD` | No | — | SMTP login password. |
 | `SMTP_FROM` | No | Same as `SMTP_USER` | Sender address for notification emails. |
 | `FAVICON_URL` | No | — | Fallback favicon URL. Prefer setting it in Admin → Settings, which takes precedence. |
-| `API_TOKENS` | No | — | Comma-separated static token(s) for the REST API (`/api/v1`). If unset, the API is disabled. Also accepted as bearer token by the MCP endpoint. |
 | `PUBLIC_URL` | No | request URL | Public base URL, e.g. `https://verleih.example.com`. Set this behind a reverse proxy so the OAuth/MCP metadata advertises the correct https URLs. |
 
 > **Email notifications:** When a customer submits an inquiry through the public shop, a notification email is sent to the address configured in Admin → Settings. For this to work, the SMTP variables must be set.
@@ -93,7 +92,7 @@ All configuration is done through environment variables (or a `.env` file in the
 
 ## REST API (v1)
 
-A token-authenticated JSON API for quote management is available under `/api/v1`. Enable it by setting `API_TOKENS` and authenticate every request with `Authorization: Bearer <token>`. Full documentation: [docs/API.md](docs/API.md).
+A token-authenticated JSON API for quote management is available under `/api/v1`. Create a token under Admin → Settings → **API-Tokens** (shown once, stored hashed, revocable there) and authenticate every request with `Authorization: Bearer <token>`. Full documentation: [docs/API.md](docs/API.md).
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -129,7 +128,7 @@ ERP-Rent includes a [Model Context Protocol](https://modelcontextprotocol.io) se
 1. Admin → Settings → **Claude / MCP**: check *MCP-Schnittstelle aktivieren* and save. Optionally check *Löschen erlauben* (otherwise Claude cannot delete items, units, categories, suppliers, quotes or inquiries; removing lines from a quote is always allowed).
 2. The app must be reachable via HTTPS. Behind a reverse proxy, set `PUBLIC_URL`.
 3. In claude.ai (or Claude Desktop): Settings → Connectors → *Add custom connector* → enter `https://<your-domain>/mcp`. Claude opens the login page; sign in with your ERP-Rent account and allow access. Changes made by Claude are attributed to that user.
-4. Claude Code works too, either via OAuth or with a static token from `API_TOKENS`:
+4. Claude Code works too, either via OAuth or with an API token from Admin → Settings → API-Tokens:
    ```bash
    claude mcp add --transport http erp-rent https://<your-domain>/mcp --header "Authorization: Bearer <API_TOKEN>"
    ```

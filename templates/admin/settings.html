@@ -6,7 +6,7 @@
 <h1>Seiteneinstellungen</h1>
 
 <div class="card">
-    <form method="POST" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <form method="POST" action="{{ url_for('admin.settings') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <h2>Unternehmensinformationen</h2>
         <p class="text-muted mb-16">Wird in PDFs und der öffentlichen Storefront verwendet.</p>
 
@@ -177,6 +177,49 @@
     </form>
 </div>
 
+<div class="card" id="api-tokens">
+    <h2>API-Tokens</h2>
+    <p class="text-muted mb-16">Tokens für die REST-API (<code>{{ api_url }}</code>, z.&nbsp;B. für die Browser-Erweiterung) und für Claude Code über die MCP-Schnittstelle. Anfragen senden den Token als <code>Authorization: Bearer &lt;Token&gt;</code>. Ohne Token ist die API geschlossen.</p>
+
+    {% if new_api_token %}
+    <div class="alert alert-success">
+        <strong>Token „{{ new_api_token.name }}“ erstellt.</strong> Jetzt kopieren – er wird nur dieses eine Mal angezeigt.
+        <div class="d-flex gap-8 mt-10">
+            <input type="text" id="new_api_token" class="flex-1" value="{{ new_api_token.token }}" readonly data-click="select-text" autocomplete="off">
+            <button type="button" class="btn btn-secondary" data-click="copy-api-token">Kopieren</button>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if api_tokens %}
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Token</th><th>Erstellt</th><th>Zuletzt verwendet</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for t in api_tokens %}
+            <tr>
+                <td>{{ t.name }}</td>
+                <td><code>{{ t.token_prefix }}…</code></td>
+                <td>{{ t.created_at.strftime('%d.%m.%Y') if t.created_at else '–' }}{% if t.created_by %} <small class="text-muted">({{ t.created_by.display_name or t.created_by.username }})</small>{% endif %}</td>
+                <td>{{ t.last_used_at.strftime('%d.%m.%Y %H:%M') if t.last_used_at else 'nie' }}{% if t.last_used_at %} <small class="text-muted">(UTC)</small>{% endif %}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.api_token_delete', token_id=t.id) }}" data-confirm="Token „{{ t.name }}“ widerrufen? Programme, die ihn nutzen, verlieren sofort den Zugriff."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-danger">Widerrufen</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin.api_token_create') }}" class="d-flex gap-8 mt-10"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" class="flex-1" placeholder="Name, z. B. Chrome-Erweiterung" maxlength="100" required>
+        <button type="submit" class="btn btn-primary">Token erstellen</button>
+    </form>
+</div>
+
 {% if mcp_tokens %}
 <div class="card">
     <h2>Aktive Claude-Verbindungen</h2>
@@ -203,7 +246,14 @@
 {% endif %}
 
 <script nonce="{{ csp_nonce }}">
-Actions.register({'toggle-tax-rate': () => toggleTaxRate()});
+Actions.register({
+    'toggle-tax-rate': () => toggleTaxRate(),
+    'copy-api-token': (el) => {
+        const input = document.getElementById('new_api_token');
+        input.select();
+        navigator.clipboard.writeText(input.value).then(() => { el.textContent = 'Kopiert'; });
+    },
+});
 function toggleTaxRate() {
     var mode = document.getElementById('tax_mode_select');
     var group = document.getElementById('tax_rate_group');

@@ -1,19 +1,17 @@
 """External REST API (v1) for quote management.
 
 Authentication: static token(s) via `Authorization: Bearer <token>`.
-Tokens are configured through the API_TOKENS env var (comma-separated;
-API_TOKEN works as well). If no token is configured the API is disabled.
+Tokens are created in Admin → Einstellungen → API-Tokens (stored hashed,
+see models.ApiToken). Without any token the API is effectively closed.
 
 Core operations (list_quotes, create_quote, add_line, ...) raise ApiError and
 are reused by the MCP server (blueprints/mcp_tools.py).
 """
-import hmac
-import os
 from datetime import datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
-from models import db, Item, Quote, QuoteItem
+from models import db, ApiToken, Item, Quote, QuoteItem
 from helpers import get_available_quantity
 from blueprints.admin import _apply_default_sources, _apply_manual_sources
 
@@ -22,20 +20,16 @@ api_bp = Blueprint('api', __name__)
 
 # ── Auth ──────────────────────────────────────────────────────────────
 
-def _configured_tokens():
-    raw = os.getenv('API_TOKENS') or os.getenv('API_TOKEN') or ''
-    return [t.strip() for t in raw.split(',') if t.strip()]
+def bearer_token():
+    auth = request.headers.get('Authorization', '')
+    return auth[7:].strip() if auth.startswith('Bearer ') else ''
 
 def require_api_token(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        tokens = _configured_tokens()
-        if not tokens:
-            return _error('API ist deaktiviert (kein API_TOKENS konfiguriert).', 503)
-        auth = request.headers.get('Authorization', '')
-        supplied = auth[7:].strip() if auth.startswith('Bearer ') else ''
-        if not supplied or not any(hmac.compare_digest(supplied, t) for t in tokens):
-            return _error('Ungültiger oder fehlender API-Token.', 401)
+        if not ApiToken.verify(bearer_token()):
+            return _error('Ungültiger oder fehlender API-Token '
+                          '(Tokens unter Admin → Einstellungen → API-Tokens erstellen).', 401)
         return f(*args, **kwargs)
     return wrapper
 
