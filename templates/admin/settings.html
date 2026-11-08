@@ -138,6 +138,10 @@
             <label>AGB-Text</label>
             <textarea name="terms_and_conditions_text" rows="12" placeholder="# Allgemeine Geschäftsbedingungen&#10;&#10;## §1 Geltungsbereich&#10;Diese AGB gelten für...">{{ settings.terms_and_conditions_text or '' }}</textarea>
         </div>
+        {% if settings.terms_and_conditions_text %}
+        <a href="{{ url_for('admin.agb_pdf') }}" class="btn btn-secondary" target="_blank" rel="noopener">AGB als PDF exportieren</a>
+        <small class="help-text">Exportiert den gespeicherten Stand. Ungespeicherte Änderungen vorher speichern.</small>
+        {% endif %}
 
         <hr class="section-divider">
 

@@ -2236,6 +2236,22 @@ def _render_settings(settings_record, new_api_token=None):
                            api_url=public_base_url() + '/api/v1')
 
 
+@admin_bp.route('/settings/agb.pdf')
+@admin_required
+def agb_pdf():
+    """Standalone AGB PDF, e.g. to attach to Angebote in the accounting tool"""
+    from generators.preisuebersicht import build_agb_pdf
+
+    site_settings = SiteSettings.query.first()
+    text = site_settings.terms_and_conditions_text if site_settings else None
+    if not text:
+        flash('Es ist noch kein AGB-Text hinterlegt.', 'error')
+        return redirect(url_for('admin.settings'))
+    pdf_bytes = build_agb_pdf(terms_and_conditions_text=text,
+                              issuer_name=site_settings.business_name or '')
+    return _send_pdf_response(pdf_bytes, 'AGB.pdf')
+
+
 @admin_bp.route('/settings/api-tokens', methods=['POST'])
 @admin_required
 def api_token_create():

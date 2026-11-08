@@ -529,6 +529,28 @@ def build_preisuebersicht_pdf(
     return buf.getvalue()
 
 
+def build_agb_pdf(*, terms_and_conditions_text: str, issuer_name: str = "") -> bytes:
+    """Build a standalone AGB PDF in the same two-column layout as the
+    Preisübersicht appendix, e.g. to attach to Angebote from the accounting tool."""
+    from reportlab.platypus import BaseDocTemplate
+
+    buf = BytesIO()
+    doc = BaseDocTemplate(buf, pagesize=(PAGE_W, PAGE_H),
+                          title="Allgemeine Geschäftsbedingungen", author=issuer_name,
+                          pageTemplates=[_build_agb_page_template()])
+    # A leading "# …" heading becomes the title instead of being printed twice
+    title = "Allgemeine Geschäftsbedingungen"
+    text = terms_and_conditions_text.strip()
+    first, _, rest = text.partition("\n")
+    if first.strip().startswith("# "):
+        title, text = first.strip()[2:].strip(), rest
+
+    story: list = []
+    _render_agb_markdown(story, text, _base_styles(), title=title)
+    doc.build(story)
+    return buf.getvalue()
+
+
 def _build_agb_page_template():
     """Create a two-column page template with reduced margins for AGB pages."""
     from reportlab.platypus import Frame, PageTemplate
@@ -570,7 +592,8 @@ def _build_agb_page_template():
                         onPage=_draw_agb_page)
 
 
-def _render_agb_markdown(story: list, text: str, styles: dict):
+def _render_agb_markdown(story: list, text: str, styles: dict,
+                         title: str = "Anlage: Allgemeine Geschäftsbedingungen"):
     """Parse basic markdown (# headings, paragraphs) into reportlab flowables."""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Spacer, Paragraph
@@ -586,7 +609,7 @@ def _render_agb_markdown(story: list, text: str, styles: dict):
     agb_body = ParagraphStyle("AGBBody", parent=styles["base"], fontSize=6.5, leading=8.5,
                                spaceAfter=2)
 
-    story.append(Paragraph("Anlage: Allgemeine Geschäftsbedingungen", agb_title))
+    story.append(Paragraph(title, agb_title))
     story.append(Spacer(1, 4))
 
     lines = text.split("\n")
