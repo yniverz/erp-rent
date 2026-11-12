@@ -45,7 +45,7 @@ def _misc_category_ids(all_categories):
         return set()
     parent_cat_ids = [c.id for c in parent_cats]
     direct_item_cats = db.session.query(Item.category_id).filter(
-        Item.visible_in_shop == True,
+        Item.in_shop,
         Item.category_id.in_(parent_cat_ids)
     ).distinct().all()
     return {row[0] for row in direct_item_cats}
@@ -113,7 +113,7 @@ def catalog():
     if search_query:
         # Search across all visible items by name, description, and category
         terms = search_query.lower().split()
-        query = Item.query.filter_by(visible_in_shop=True)
+        query = Item.query.filter(Item.in_shop)
         for term in terms:
             term_filter = db.or_(
                 Item.name.ilike(f'%{term}%'),
@@ -186,7 +186,7 @@ def catalog_category(cat_path):
 
     if misc and cat.children:
         # "Sonstiges" virtual category: only items directly in this category
-        query = Item.query.filter_by(visible_in_shop=True).filter(
+        query = Item.query.filter(Item.in_shop).filter(
             db.or_(
                 Item.category_id == cat.id,
                 Item.subcategories.any(Category.id == cat.id)
@@ -194,7 +194,7 @@ def catalog_category(cat_path):
         )
     else:
         descendant_ids = cat.all_descendant_ids()
-        query = Item.query.filter_by(visible_in_shop=True).filter(
+        query = Item.query.filter(Item.in_shop).filter(
             db.or_(
                 Item.category_id.in_(descendant_ids),
                 Item.subcategories.any(Category.id.in_(descendant_ids))
@@ -205,7 +205,7 @@ def catalog_category(cat_path):
     # Check if the category has items directly assigned (not only via children)
     has_direct_items = False
     if cat.children:
-        has_direct_items = Item.query.filter_by(visible_in_shop=True).filter(
+        has_direct_items = Item.query.filter(Item.in_shop).filter(
             db.or_(
                 Item.category_id == cat.id,
                 Item.subcategories.any(Category.id == cat.id)
@@ -246,7 +246,7 @@ def catalog_category(cat_path):
 def item_detail(item_id):
     """Public item detail page"""
     item = Item.query.get_or_404(item_id)
-    if not item.visible_in_shop:
+    if not item.in_shop:
         abort(404)  # same answer as unknown ids, so hidden items can't be enumerated
 
     cart = session.get('cart', {})
@@ -271,7 +271,7 @@ def cart():
     # Drop items that were deleted or hidden from the shop since they were added
     for item_id_str in list(cart_data.keys()):
         item = Item.query.get(int(item_id_str))
-        if not item or not item.visible_in_shop:
+        if not item or not item.in_shop:
             del cart_data[item_id_str]
             session['cart'] = cart_data
             session.modified = True
@@ -314,7 +314,7 @@ def cart_add():
         return redirect(url_for('public.catalog'))
 
     item = Item.query.get(item_id)
-    if not item or not item.visible_in_shop:
+    if not item or not item.in_shop:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'error': 'Item not found'}), 404
         flash('Artikel nicht gefunden.', 'error')
@@ -449,7 +449,7 @@ def submit_inquiry():
     # Validate cart item quantities
     for item_id_str, quantity in cart_data.items():
         item = Item.query.get(int(item_id_str))
-        if not item or not item.visible_in_shop:
+        if not item or not item.in_shop:
             errors.append(f'Artikel (ID {item_id_str}) ist nicht mehr verfügbar.')
         elif quantity < 1 or quantity > MAX_ITEM_QUANTITY:
             errors.append(f'Ungültige Menge für {item.name}.')
@@ -524,7 +524,7 @@ def sitemap_xml():
     urls = [base + url_for('public.catalog')]
     for cat in Category.query.order_by(Category.display_order, Category.name).all():
         urls.append(base + url_for('public.catalog_category', cat_path=cat.url_path))
-    for item in sorted(Item.query.filter_by(visible_in_shop=True).all(), key=Item.shop_sort_key):
+    for item in sorted(Item.query.filter(Item.in_shop).all(), key=Item.shop_sort_key):
         urls.append(base + url_for('public.item_detail', item_id=item.id))
     body = ['<?xml version="1.0" encoding="UTF-8"?>',
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']

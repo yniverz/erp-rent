@@ -26,6 +26,10 @@ Hinweise:
   Markdown/HTML; die ersten ~120 Zeichen werden in der Katalogübersicht angezeigt).
 - Preise sind Mietpreise in EUR pro Einheit und Tag (brutto, außer prices_are_net ist gesetzt).
 - Bestand -1 bedeutet unbegrenzt. Daten im Format YYYY-MM-DD.
+- Der eigene Bestand ergibt sich aus Zugängen (record_purchase) und Abgängen (record_disposal:
+  verkauft/defekt/verloren). Einkaufs- und Verkaufspreise pro Stück, netto/brutto wie
+  replacement_value. Artikel ohne eigenen Bestand nach einem Abgang werden standardmäßig aus dem
+  Sortiment genommen (retired: nicht im Shop, in Angeboten nicht wählbar).
 - Lieferumfang (Zubehör wie Superclamps, Cases, Kabel) über set_item_accessories pflegen, nicht in
   die Beschreibung schreiben. replacement_value ist der Gerätewert ohne Zubehör; der Gesamtwert
   (replacement_value_total) wird aus Gerätewert + Zubehör berechnet. Werte sind der heutige

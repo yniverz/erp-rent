@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+from sqlalchemy.ext.hybrid import hybrid_property
 import re
 import unicodedata
 
@@ -220,6 +221,8 @@ class Item(db.Model):
     storage_location = db.Column(db.String(200), nullable=True)  # Lagerort / Case
     replacement_value = db.Column(db.Float, nullable=True)  # Gerätewert ohne Zubehör (per unit)
     accessories_note = db.Column(db.Text, nullable=True)  # Hinweis zum Lieferumfang (Shop + Lieferschein)
+    # Taken out of the range (sold off / broken): hidden from shop, quote picker and stock
+    retired_at = db.Column(db.DateTime, nullable=True)
 
     category = db.relationship('Category', back_populates='items')
     subcategories = db.relationship('Category', secondary=item_subcategories, lazy='selectin')
@@ -238,9 +241,57 @@ class Item(db.Model):
                                   foreign_keys='ItemAccessory.item_id',
                                   cascade='all, delete-orphan', lazy='selectin',
                                   order_by='ItemAccessory.position, ItemAccessory.id')
+    # Stock ledger: purchases (Zugänge) and disposals (Abgänge). Own stock = sum of both.
+    purchases = db.relationship('ItemPurchase', back_populates='item',
+                                cascade='all, delete-orphan', lazy='selectin',
+                                order_by='ItemPurchase.id')
+    disposals = db.relationship('ItemDisposal', back_populates='item',
+                                cascade='all, delete-orphan', lazy='selectin',
+                                order_by='ItemDisposal.disposal_date, ItemDisposal.id')
     # Accessory rows of other items that link to this item (unlinked on delete)
     accessory_links = db.relationship('ItemAccessory', foreign_keys='ItemAccessory.linked_item_id',
                                       back_populates='linked_item')
+
+    @hybrid_property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    @is_retired.expression
+    def is_retired(cls):
+        return cls.retired_at.isnot(None)
+
+    @hybrid_property
+    def in_shop(self):
+        """Publicly listed: visible in the shop and not taken out of the range."""
+        return bool(self.visible_in_shop) and self.retired_at is None
+
+    @in_shop.expression
+    def in_shop(cls):
+        return db.and_(cls.visible_in_shop == True, cls.retired_at.is_(None))
+
+    @property
+    def is_unlimited(self):
+        return self.stock_quantity == -1
+
+    @property
+    def ledger_stock(self):
+        """Own stock according to the ledger: purchased minus disposed pieces."""
+        return sum(p.quantity for p in self.purchases) - sum(d.quantity for d in self.disposals)
+
+    def sync_stock(self):
+        """Recompute stock_quantity from the ledger (unlimited items stay -1)."""
+        if not self.is_unlimited:
+            self.stock_quantity = max(0, self.ledger_stock)
+
+    @property
+    def purchases_sorted(self):
+        """Oldest first; undated entries (e.g. Anfangsbestand) count as oldest."""
+        from datetime import date as _d
+        return sorted(self.purchases, key=lambda p: (p.purchase_date or _d.min, p.id or 0))
+
+    @property
+    def purchases_with_unknown_price(self):
+        return [p for p in self.purchases if p.unit_price is None]
 
     @property
     def total_quantity(self):
@@ -302,7 +353,8 @@ class Item(db.Model):
     @property
     def out_of_service_count(self):
         """Number of tracked units that are not operational (defect/repair/retired)."""
-        return sum(1 for u in self.units if u.status != ItemUnit.STATUS_AVAILABLE)
+        return sum(1 for u in self.units
+                   if u.status != ItemUnit.STATUS_AVAILABLE and u.disposal_id is None)
 
     @property
     def defect_count(self):
@@ -312,6 +364,8 @@ class Item(db.Model):
     @property
     def operational_stock(self):
         """Own stock minus out-of-service tracked units. -1 = unlimited."""
+        if self.retired_at is not None:
+            return 0
         if self.stock_quantity == -1:
             return -1
         return max(0, (self.stock_quantity or 0) - self.out_of_service_count)
@@ -319,6 +373,8 @@ class Item(db.Model):
     @property
     def operational_quantity(self):
         """Operational own stock plus supplier quantities. -1 = unlimited."""
+        if self.retired_at is not None:
+            return 0
         own = self.operational_stock
         if own == -1:
             return -1
@@ -459,11 +515,18 @@ class ItemUnit(db.Model):
     last_inspection_date = db.Column(db.Date, nullable=True)  # letzte Prüfung (z.B. DGUV V3)
     next_inspection_date = db.Column(db.Date, nullable=True)  # nächste fällige Prüfung
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    purchase_id = db.Column(db.Integer, db.ForeignKey('item_purchase.id', ondelete='SET NULL'), nullable=True)
+    # Set when the unit left the company (sold/broken); status is then 'retired'
+    disposal_id = db.Column(db.Integer, db.ForeignKey('item_disposal.id', ondelete='SET NULL'), nullable=True)
 
     item = db.relationship('Item', back_populates='units')
+    purchase = db.relationship('ItemPurchase', back_populates='units')
+    disposal = db.relationship('ItemDisposal', back_populates='units')
 
     @property
     def status_label(self):
+        if self.disposal_id:
+            return 'Abgegangen'
         return self.STATUS_LABELS.get(self.status, self.status)
 
     @property
@@ -481,6 +544,160 @@ class ItemUnit(db.Model):
         """Generate a stable, human-readable asset tag from the unit id."""
         if not self.asset_tag and self.id:
             self.asset_tag = f"U{self.id:05d}"
+
+
+class ItemPurchase(db.Model):
+    """A purchase (Zugang) of own stock. Prices are per piece in the value basis
+    (netto/brutto) that applied when the entry was saved; None = unknown."""
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price = db.Column(db.Float, nullable=True)
+    purchase_date = db.Column(db.Date, nullable=True)
+    value_basis = db.Column(db.String(10), nullable=False, default='brutto')  # 'netto' | 'brutto'
+    note = db.Column(db.Text, nullable=True)
+    is_opening = db.Column(db.Boolean, default=False)  # created from the stock before the ledger existed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    item = db.relationship('Item', back_populates='purchases')
+    disposals = db.relationship('ItemDisposal', back_populates='purchase')
+    units = db.relationship('ItemUnit', back_populates='purchase')
+
+    @property
+    def disposed_quantity(self):
+        return sum(d.quantity for d in self.disposals)
+
+    @property
+    def remaining_quantity(self):
+        return self.quantity - self.disposed_quantity
+
+    @property
+    def label(self):
+        parts = [self.purchase_date.strftime('%d.%m.%Y') if self.purchase_date
+                 else ('Anfangsbestand' if self.is_opening else 'ohne Datum')]
+        parts.append(f'{self.quantity} Stk.')
+        if self.unit_price is not None:
+            parts.append(f'{self.unit_price:.2f} €'.replace('.', ','))
+        return ' · '.join(parts)
+
+
+class ItemDisposal(db.Model):
+    """Pieces that left the company (Abgang). Prices per piece in value_basis;
+    sale_price 0 = total loss (e.g. broken). Draws from exactly one purchase."""
+    REASON_LABELS = {
+        'sold': 'Verkauft',
+        'broken': 'Defekt / entsorgt',
+        'lost': 'Verloren / gestohlen',
+        'other': 'Sonstiges',
+    }
+
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    purchase_id = db.Column(db.Integer, db.ForeignKey('item_purchase.id'), nullable=True)
+    quantity = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.String(20), nullable=False, default='sold')
+    disposal_date = db.Column(db.Date, nullable=True)
+    sale_price = db.Column(db.Float, nullable=True)  # per piece
+    value_basis = db.Column(db.String(10), nullable=False, default='brutto')
+    note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    item = db.relationship('Item', back_populates='disposals')
+    purchase = db.relationship('ItemPurchase', back_populates='disposals')
+    units = db.relationship('ItemUnit', back_populates='disposal')
+
+    @property
+    def reason_label(self):
+        return self.REASON_LABELS.get(self.reason, self.reason)
+
+    @property
+    def purchase_price(self):
+        """Purchase price per piece of the pieces that left (None = unknown)."""
+        return self.purchase.unit_price if self.purchase else None
+
+
+class LedgerError(ValueError):
+    """Invalid stock ledger operation (message is user-facing, German)."""
+
+
+def record_disposal(item, quantity, reason, value_basis, disposal_date=None, sale_price=None,
+                    note=None, purchase=None, units=(), retire=False):
+    """Record pieces leaving the company. Without an explicit *purchase* the pieces are
+    drawn from the oldest purchases first (one ItemDisposal row per purchase touched).
+    Returns the created rows. Caller commits."""
+    if item.is_package:
+        raise LedgerError('Pakete haben keinen eigenen Bestand.')
+    if reason not in ItemDisposal.REASON_LABELS:
+        raise LedgerError('Ungültiger Grund.')
+    if quantity is None or quantity < 1:
+        raise LedgerError('Menge muss mindestens 1 sein.')
+    if sale_price is not None and sale_price < 0:
+        raise LedgerError('Verkaufspreis darf nicht negativ sein.')
+    units = list(units)
+    for u in units:
+        if u.item_id != item.id or u.disposal_id:
+            raise LedgerError(f'Einheit {u.asset_tag or u.id} kann nicht ausgebucht werden.')
+    if units and len(units) != quantity:
+        raise LedgerError('Anzahl der gewählten Einheiten muss der Menge entsprechen.')
+    # Units linked to one purchase pin the pieces (and thus the purchase price) to it
+    if purchase is None and units:
+        linked = {u.purchase_id for u in units}
+        if len(linked) == 1 and None not in linked:
+            purchase = db.session.get(ItemPurchase, linked.pop())
+
+    if purchase is not None:
+        if purchase.item_id != item.id:
+            raise LedgerError('Ungültiger Zugang.')
+        if purchase.remaining_quantity < quantity:
+            raise LedgerError(f'Aus diesem Zugang sind nur noch {purchase.remaining_quantity} Stück vorhanden.')
+        plan = [(purchase, quantity)]
+    else:
+        plan, remaining = [], quantity
+        for p in item.purchases_sorted:
+            take = min(remaining, p.remaining_quantity)
+            if take > 0:
+                plan.append((p, take))
+                remaining -= take
+            if remaining == 0:
+                break
+        if remaining:
+            available = quantity - remaining
+            raise LedgerError(f'Laut Zugängen sind nur noch {available} Stück im Bestand.')
+
+    rows = []
+    for p, qty in plan:
+        row = ItemDisposal(item=item, purchase=p, quantity=qty, reason=reason,
+                           disposal_date=disposal_date, sale_price=sale_price,
+                           value_basis=value_basis, note=note)
+        db.session.add(row)
+        rows.append(row)
+    db.session.flush()
+    for u in units:
+        u.disposal_id = rows[0].id
+        u.status = ItemUnit.STATUS_RETIRED
+    item.sync_stock()
+    if retire and not item.is_unlimited and item.stock_quantity == 0:
+        item.retired_at = datetime.utcnow()
+    return rows
+
+
+def delete_disposal(disposal):
+    """Undo an Abgang: pieces return to stock, linked units become available again."""
+    item = disposal.item
+    for u in list(disposal.units):
+        u.disposal_id = None
+        u.status = ItemUnit.STATUS_AVAILABLE
+    item.disposals.remove(disposal)
+    db.session.delete(disposal)
+    item.sync_stock()
+
+
+def check_purchase_quantity(purchase, new_quantity):
+    """Raise LedgerError if a purchase can't be reduced to *new_quantity*."""
+    if new_quantity is None or new_quantity < 1:
+        raise LedgerError('Menge muss mindestens 1 sein.')
+    if new_quantity < purchase.disposed_quantity:
+        raise LedgerError(f'Aus diesem Zugang sind bereits {purchase.disposed_quantity} Stück abgegangen.')
 
 
 class Quote(db.Model):

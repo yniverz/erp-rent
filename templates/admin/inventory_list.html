@@ -54,6 +54,7 @@
         <option value="hidden" {{ 'selected' if filter_status == 'hidden' }}>Nicht im Shop</option>
         <option value="external" {{ 'selected' if filter_status == 'external' }}>Nur extern</option>
         <option value="packages" {{ 'selected' if filter_status == 'packages' }}>Pakete</option>
+        <option value="retired" {{ 'selected' if filter_status == 'retired' }}>Nicht mehr im Sortiment{% if stats.retired_items %} ({{ stats.retired_items }}){% endif %}</option>
     </select>
     {% if filter_category or filter_supplier or filter_status %}
         <a href="{{ url_for('admin.inventory_list') }}" class="btn btn-outline btn-sm">✕ Zurücksetzen</a>
@@ -176,7 +177,9 @@
             </td>
             <td>&euro;{{ "%.2f"|format(item.default_rental_price_per_day) }}</td>
             <td>
-                {% if item.visible_in_shop %}
+                {% if item.is_retired %}
+                    <span class="text-muted" title="Nicht mehr im Sortiment">Ausgeschieden</span>
+                {% elif item.visible_in_shop %}
                     <span class="text-success" title="Im Shop sichtbar">&#10003;</span>
                     {% if not item.show_price_publicly %}
                         <small class="text-muted d-block">auf Anfrage</small>

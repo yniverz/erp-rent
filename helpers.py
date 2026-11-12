@@ -15,6 +15,14 @@ def replacement_value_basis(tax_mode):
     return 'netto' if tax_mode == 'regular' else 'brutto'
 
 
+def current_value_basis():
+    """Value basis ('netto'/'brutto') of the current tax mode – also used for
+    purchase and sale prices in the stock ledger, snapshotted per entry."""
+    from models import SiteSettings
+    settings = SiteSettings.query.first()
+    return replacement_value_basis((settings.tax_mode if settings else None) or 'kleinunternehmer')
+
+
 def get_upload_path():
     """Get the path for uploaded files"""
     base = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')

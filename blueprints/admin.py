@@ -1,8 +1,8 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort, make_response
 from flask_login import login_required, current_user
-from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory
-from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, save_clean_image, clean_svg, InvalidImage
+from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory, ItemPurchase, ItemDisposal, LedgerError, record_disposal, delete_disposal, check_purchase_quantity
+from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, current_value_basis, save_clean_image, clean_svg, InvalidImage
 from datetime import datetime
 from functools import wraps
 import os
@@ -148,12 +148,18 @@ def inventory_list():
     filter_supplier = request.args.get('supplier', '').strip()
     filter_status = request.args.get('status', '').strip()
 
-    items = Item.query.all()
+    all_items = Item.query.all()
+    retired_count = sum(1 for i in all_items if i.is_retired)
+    # Items taken out of the range only show up under their own filter
+    if filter_status == 'retired':
+        items = [i for i in all_items if i.is_retired]
+    else:
+        items = [i for i in all_items if not i.is_retired]
     categories = Category.query.order_by(Category.display_order, Category.name).all()
     category_tree = Category.get_tree(categories)
     suppliers = Supplier.query.order_by(Supplier.name).all()
 
-    # ── Stats (computed over ALL items, before filtering) ──
+    # ── Stats (computed over ALL items in the range, before filtering) ──
     total_units = sum(i.total_quantity for i in items if not i.is_package and i.total_quantity > 0)
     defect_units = sum(i.defect_count for i in items)
     inspection_due = sum(len(i.inspection_due_units()) for i in items)
@@ -164,6 +170,7 @@ def inventory_list():
         'defect_units': defect_units,
         'inspection_due': inspection_due,
         'hidden_items': hidden_items,
+        'retired_items': retired_count,
     }
 
     # ── Booked quantities for today (single query pass) ──
@@ -336,9 +343,12 @@ def inventory_add():
             visible = request.form.get('visible_in_shop') == 'on'
             is_package = request.form.get('is_package') == 'on'
             show_bundle_discount = request.form.get('show_bundle_discount') == 'on'
-            stock_quantity = request.form.get('stock_quantity', type=int)
-            if stock_quantity is None or stock_quantity < -1:
-                stock_quantity = 0
+            unlimited = request.form.get('stock_unlimited') == 'on'
+            stock_quantity = request.form.get('stock_quantity', type=int) or 0
+            if stock_quantity < 0:
+                raise ValueError('Bestand darf nicht negativ sein.')
+            initial_price = _parse_float_or_none(request.form.get('initial_unit_price'))
+            initial_date = _parse_date_or_none(request.form.get('initial_purchase_date'))
 
             # Handle image upload
             image_filename = None
@@ -360,7 +370,7 @@ def inventory_add():
                 image_filename=image_filename,
                 is_package=is_package,
                 show_bundle_discount=show_bundle_discount,
-                stock_quantity=0 if is_package else stock_quantity,
+                stock_quantity=-1 if (unlimited and not is_package) else 0,
             )
             _apply_item_specs(item, request.form)
 
@@ -388,6 +398,12 @@ def inventory_add():
                 for s in _parse_supplies_form(request.form):
                     db.session.add(ItemSupply(item_id=item.id, **s))
                 item.accessories = _parse_accessories_form(request.form, item.id)
+                # Initial own stock = first purchase entry
+                if stock_quantity > 0:
+                    item.purchases.append(ItemPurchase(
+                        quantity=stock_quantity, unit_price=initial_price,
+                        purchase_date=initial_date, value_basis=current_value_basis()))
+                item.sync_stock()
 
             db.session.commit()
             flash(f'{name} erfolgreich hinzugefügt!', 'success')
@@ -432,6 +448,8 @@ def inventory_edit(item_id):
 
             if item.is_package:
                 # Packages carry no stock, supplier offers or own accessories
+                if item.purchases or item.disposals:
+                    raise ValueError('Artikel mit Zu-/Abgängen kann nicht in ein Paket umgewandelt werden.')
                 item.stock_quantity = 0
                 ItemSupply.query.filter_by(item_id=item.id).delete()
                 item.accessories = []
@@ -449,11 +467,13 @@ def inventory_edit(item_id):
                         )
                         db.session.add(pc)
             else:
-                # Own stock
-                stock_quantity = request.form.get('stock_quantity', type=int)
-                if stock_quantity is None or stock_quantity < -1:
-                    stock_quantity = 0
-                item.stock_quantity = stock_quantity
+                # Own stock comes from the purchase/disposal ledger; only "unlimited" is set here
+                if request.form.get('stock_unlimited') == 'on':
+                    item.stock_quantity = -1
+                else:
+                    if item.stock_quantity == -1:
+                        item.stock_quantity = 0
+                    item.sync_stock()
 
                 # Supplier offers: rebuild from form
                 ItemSupply.query.filter_by(item_id=item.id).delete()
@@ -519,6 +539,8 @@ def inventory_edit(item_id):
                            category_tree=category_tree,
                            suppliers=suppliers,
                            upcoming_bookings=upcoming_bookings,
+                           disposal_reasons=ItemDisposal.REASON_LABELS,
+                           today_iso=_date.today().isoformat(),
                            all_items=Item.query.filter(Item.is_package == False, Item.id != item.id).order_by(Item.name).all())
 
 
@@ -696,9 +718,15 @@ def unit_update(unit_id):
     try:
         unit.serial_number = request.form.get('serial_number', '').strip() or None
         status = request.form.get('status', '').strip()
-        if status in ItemUnit.STATUS_LABELS:
+        if status in ItemUnit.STATUS_LABELS and not unit.disposal_id:
             unit.status = status
         unit.purchase_date = _parse_date_or_none(request.form.get('purchase_date'))
+        if 'purchase_id' in request.form:
+            pid = request.form.get('purchase_id', type=int)
+            purchase = ItemPurchase.query.get(pid) if pid else None
+            unit.purchase_id = purchase.id if purchase and purchase.item_id == item.id else None
+            if purchase and purchase.purchase_date and not unit.purchase_date:
+                unit.purchase_date = purchase.purchase_date
         unit.last_inspection_date = _parse_date_or_none(request.form.get('last_inspection_date'))
         unit.next_inspection_date = _parse_date_or_none(request.form.get('next_inspection_date'))
         unit.notes = request.form.get('notes', '').strip() or None
@@ -730,6 +758,173 @@ def unit_delete(unit_id):
         flash(f'Fehler beim Löschen der Einheit: {str(e)}', 'error')
 
     return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#units')
+
+
+# ============= STOCK LEDGER (Zugänge / Abgänge) =============
+
+def _ledger_item_or_redirect(item):
+    if not current_user.can_edit_item(item):
+        flash('Sie haben keine Berechtigung, diesen Artikel zu bearbeiten.', 'error')
+        return redirect(url_for('admin.inventory_list'))
+    return None
+
+
+def _ledger_back(item):
+    return redirect(url_for('admin.inventory_edit', item_id=item.id) + '#ledger')
+
+
+def _parse_price_field(form, name):
+    val = _parse_float_or_none(form.get(name))
+    if val is not None and val < 0:
+        raise LedgerError('Preise dürfen nicht negativ sein.')
+    return round(val, 2) if val is not None else None
+
+
+@admin_bp.route('/inventory/<int:item_id>/purchases/add', methods=['POST'])
+@login_required
+def purchase_add(item_id):
+    item = Item.query.get_or_404(item_id)
+    denied = _ledger_item_or_redirect(item)
+    if denied:
+        return denied
+    try:
+        if item.is_package:
+            raise LedgerError('Pakete haben keinen eigenen Bestand.')
+        qty = request.form.get('quantity', type=int)
+        if not qty or qty < 1:
+            raise LedgerError('Menge muss mindestens 1 sein.')
+        item.purchases.append(ItemPurchase(
+            quantity=qty,
+            unit_price=_parse_price_field(request.form, 'unit_price'),
+            purchase_date=_parse_date_or_none(request.form.get('purchase_date')),
+            value_basis=current_value_basis(),
+            note=request.form.get('note', '').strip() or None,
+        ))
+        item.sync_stock()
+        db.session.commit()
+        flash(f'Zugang über {qty} Stück erfasst.', 'success')
+    except LedgerError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return _ledger_back(item)
+
+
+@admin_bp.route('/inventory/purchases/<int:purchase_id>/update', methods=['POST'])
+@login_required
+def purchase_update(purchase_id):
+    purchase = ItemPurchase.query.get_or_404(purchase_id)
+    item = purchase.item
+    denied = _ledger_item_or_redirect(item)
+    if denied:
+        return denied
+    try:
+        qty = request.form.get('quantity', type=int)
+        check_purchase_quantity(purchase, qty)
+        purchase.quantity = qty
+        new_price = _parse_price_field(request.form, 'unit_price')
+        if new_price != purchase.unit_price:
+            purchase.unit_price = new_price
+            purchase.value_basis = current_value_basis()  # price entered under today's tax mode
+        purchase.purchase_date = _parse_date_or_none(request.form.get('purchase_date'))
+        purchase.note = request.form.get('note', '').strip() or None
+        item.sync_stock()
+        db.session.commit()
+        flash('Zugang aktualisiert.', 'success')
+    except LedgerError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return _ledger_back(item)
+
+
+@admin_bp.route('/inventory/purchases/<int:purchase_id>/delete', methods=['POST'])
+@login_required
+def purchase_delete(purchase_id):
+    purchase = ItemPurchase.query.get_or_404(purchase_id)
+    item = purchase.item
+    denied = _ledger_item_or_redirect(item)
+    if denied:
+        return denied
+    if purchase.disposals:
+        flash('Aus diesem Zugang sind bereits Stücke abgegangen – erst die Abgänge löschen.', 'error')
+        return _ledger_back(item)
+    for u in list(purchase.units):
+        u.purchase_id = None
+    item.purchases.remove(purchase)
+    db.session.delete(purchase)
+    item.sync_stock()
+    db.session.commit()
+    flash('Zugang gelöscht.', 'success')
+    return _ledger_back(item)
+
+
+@admin_bp.route('/inventory/<int:item_id>/disposals/add', methods=['POST'])
+@login_required
+def disposal_add(item_id):
+    item = Item.query.get_or_404(item_id)
+    denied = _ledger_item_or_redirect(item)
+    if denied:
+        return denied
+    try:
+        unit_ids = request.form.getlist('unit_ids', type=int)
+        units = ItemUnit.query.filter(ItemUnit.id.in_(unit_ids)).all() if unit_ids else []
+        qty = request.form.get('quantity', type=int)
+        if units and not qty:
+            qty = len(units)
+        pid = request.form.get('purchase_id', type=int)
+        purchase = ItemPurchase.query.get(pid) if pid else None
+        if pid and not purchase:
+            raise LedgerError('Zugang nicht gefunden.')
+        rows = record_disposal(
+            item, qty, request.form.get('reason', ''), current_value_basis(),
+            disposal_date=_parse_date_or_none(request.form.get('disposal_date')),
+            sale_price=_parse_price_field(request.form, 'sale_price'),
+            note=request.form.get('note', '').strip() or None,
+            purchase=purchase, units=units,
+            retire=request.form.get('retire') == 'on',
+        )
+        db.session.commit()
+        msg = f'Abgang über {qty} Stück erfasst.'
+        if len(rows) > 1:
+            msg += f' Auf {len(rows)} Zugänge verteilt (älteste zuerst).'
+        if item.is_retired:
+            msg += ' Artikel wurde aus dem Sortiment genommen.'
+        flash(msg, 'success')
+    except LedgerError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return _ledger_back(item)
+
+
+@admin_bp.route('/inventory/disposals/<int:disposal_id>/delete', methods=['POST'])
+@login_required
+def disposal_delete(disposal_id):
+    disposal = ItemDisposal.query.get_or_404(disposal_id)
+    item = disposal.item
+    denied = _ledger_item_or_redirect(item)
+    if denied:
+        return denied
+    delete_disposal(disposal)
+    db.session.commit()
+    flash('Abgang gelöscht – Stücke sind wieder im Bestand.', 'success')
+    return _ledger_back(item)
+
+
+@admin_bp.route('/inventory/<int:item_id>/retire', methods=['POST'])
+@login_required
+def item_retire(item_id):
+    """Take an item out of the range (or back in)."""
+    item = Item.query.get_or_404(item_id)
+    denied = _ledger_item_or_redirect(item)
+    if denied:
+        return denied
+    if request.form.get('action') == 'restore':
+        item.retired_at = None
+        flash(f'{item.name} ist wieder im Sortiment.', 'success')
+    else:
+        item.retired_at = datetime.utcnow()
+        flash(f'{item.name} wurde aus dem Sortiment genommen (nicht mehr im Shop und in Angeboten wählbar).', 'success')
+    db.session.commit()
+    return redirect(url_for('admin.inventory_edit', item_id=item.id))
 
 
 def _unit_qr_data_uri(unit):
@@ -1461,7 +1656,7 @@ def quote_api_picker(quote_id):
     existing_package_ids = {qi.package_id for qi in quote.quote_items if qi.package_id}
 
     results = []
-    for item in Item.query.order_by(Item.name).all():
+    for item in Item.query.filter(Item.retired_at.is_(None)).order_by(Item.name).all():
         if cat_ids is not None:
             item_cat_ids = set()
             if item.category_id:
@@ -1530,6 +1725,8 @@ def quote_api_line_add(quote_id):
             item = Item.query.get(data.get('item_id') or 0)
             if not item:
                 return _api_error('Artikel nicht gefunden.')
+            if item.is_retired:
+                return _api_error(f'{item.name} ist nicht mehr im Sortiment.')
             qty = max(1, int(data.get('quantity') or 1))
             if item.is_package:
                 if any(qi.package_id == item.id for qi in quote.quote_items):

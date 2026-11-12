@@ -5,6 +5,13 @@
 {% block content %}
 <h1>{{ 'Bearbeiten' if item else 'Neuen' }} Inventar-Artikel{{ '' if item else ' hinzufügen' }}</h1>
 
+{% if item and item.is_retired %}
+<div class="alert alert-warning d-flex gap-10 align-center flex-wrap">
+    <span class="flex-1"><strong>Nicht mehr im Sortiment</strong> seit {{ item.retired_at.strftime('%d.%m.%Y') }} – erscheint nicht im Shop und ist in Angeboten nicht wählbar. Bestehende Angebote bleiben unverändert.</span>
+    <form method="POST" action="{{ url_for('admin.item_retire', item_id=item.id) }}" class="m-0"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="restore"><button type="submit" class="btn btn-sm btn-outline">Wieder ins Sortiment</button></form>
+</div>
+{% endif %}
+
 <div class="card">
     <form method="POST" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
@@ -203,11 +210,45 @@
         <!-- Stock & Suppliers Section (hidden when is_package is checked) -->
         <div id="ownership-section">
             <h3>Bestand &amp; Lieferanten</h3>
-            <div class="form-group">
-                <label>Eigener Bestand (Stück)</label>
-                <input type="number" name="stock_quantity" value="{{ item.stock_quantity if item else 0 }}" min="-1" class="w-100" title="-1 = unbegrenzt">
-                <small class="help-text">Firmeneigener Bestand. -1 = unbegrenzt.</small>
+            {% if item %}
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Eigener Bestand (Stück)</label>
+                    <div class="accessory-total">{{ 'unbegrenzt' if item.is_unlimited else item.stock_quantity }}</div>
+                    <small class="help-text">Ergibt sich aus Zu- und Abgängen – <a href="#ledger">unten erfassen</a>.</small>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="checkbox-group">
+                        <input type="checkbox" name="stock_unlimited" id="stock_unlimited" {{ 'checked' if item.is_unlimited }}>
+                        <label for="stock_unlimited" class="m-0 font-normal">Unbegrenzt verfügbar</label>
+                    </div>
+                    <small class="help-text">Z.B. Verbrauchsmaterial. Zu-/Abgänge werden dann nur protokolliert.</small>
+                </div>
             </div>
+            {% else %}
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Eigener Bestand (Stück)</label>
+                    <input type="number" name="stock_quantity" value="0" min="0" class="w-100">
+                    <small class="help-text">Wird als erster Zugang erfasst.</small>
+                </div>
+                <div class="form-group">
+                    <label>Einkaufspreis pro Stück (&euro;, {{ value_basis }})</label>
+                    <input type="number" name="initial_unit_price" step="0.01" min="0" placeholder="unbekannt">
+                </div>
+                <div class="form-group">
+                    <label>Kaufdatum</label>
+                    <input type="date" name="initial_purchase_date">
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" name="stock_unlimited" id="stock_unlimited">
+                    <label for="stock_unlimited" class="m-0 font-normal">Unbegrenzt verfügbar</label>
+                </div>
+            </div>
+            {% endif %}
 
             <h4 class="mt-16">Externe Anbieter (Lieferanten)</h4>
             <p class="help-text mb-10">Optional: Lieferanten, die diesen Artikel liefern können – mit Menge und dem Preis/Tag, den der Lieferant berechnet. <a href="{{ url_for('admin.suppliers') }}" target="_blank">Lieferanten verwalten ↗</a></p>
@@ -315,6 +356,7 @@
                 <th class="col-w-80">Kennung</th>
                 <th>Seriennummer</th>
                 <th class="col-w-130">Status</th>
+                {% if item.purchases %}<th class="col-w-180">Zugang</th>{% endif %}
                 <th class="col-w-130">Kaufdatum</th>
                 <th class="col-w-130">Letzte Prüfung</th>
                 <th class="col-w-130">Nächste Prüfung</th>
@@ -328,12 +370,26 @@
                 <td><strong>{{ u.asset_tag or u.id }}</strong></td>
                 <td><input form="unit-form-{{ u.id }}" type="text" name="serial_number" value="{{ u.serial_number or '' }}" class="w-full" placeholder="—"></td>
                 <td>
+                    {% if u.disposal %}
+                    <span class="text-muted" title="{{ u.disposal.reason_label }}{{ ' am ' ~ u.disposal.disposal_date.strftime('%d.%m.%Y') if u.disposal.disposal_date }}">Abgegangen ({{ u.disposal.reason_label }})</span>
+                    {% else %}
                     <select form="unit-form-{{ u.id }}" name="status" class="w-full unit-status-{{ u.status }}">
                         {% for value, label in {'available': 'Einsatzbereit', 'defect': 'Defekt', 'repair': 'In Reparatur', 'retired': 'Ausgemustert'}.items() %}
                             <option value="{{ value }}" {{ 'selected' if u.status == value }}>{{ label }}</option>
                         {% endfor %}
                     </select>
+                    {% endif %}
                 </td>
+                {% if item.purchases %}
+                <td>
+                    <select form="unit-form-{{ u.id }}" name="purchase_id" class="w-full">
+                        <option value="">—</option>
+                        {% for p in item.purchases_sorted %}
+                            <option value="{{ p.id }}" {{ 'selected' if u.purchase_id == p.id }}>{{ p.label }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                {% endif %}
                 <td><input form="unit-form-{{ u.id }}" type="date" name="purchase_date" value="{{ u.purchase_date.isoformat() if u.purchase_date }}" class="w-full"></td>
                 <td><input form="unit-form-{{ u.id }}" type="date" name="last_inspection_date" value="{{ u.last_inspection_date.isoformat() if u.last_inspection_date }}" class="w-full"></td>
                 <td>
@@ -361,6 +417,170 @@
         <input type="number" name="count" value="1" min="1" max="100" class="w-80" title="Anzahl neuer Einheiten">
         <button type="submit" class="btn btn-sm btn-outline">+ Einheit(en) hinzufügen</button>
     </form>
+</div>
+
+<div class="card mt-24" id="ledger">
+    <div class="d-flex gap-10 align-center">
+        <h3 class="m-0 flex-1">Zu- &amp; Abgänge</h3>
+        {% if not item.is_retired %}
+        <form method="POST" action="{{ url_for('admin.item_retire', item_id=item.id) }}" class="m-0" data-confirm="{{ item.name }} aus dem Sortiment nehmen? Der Artikel verschwindet aus dem Shop und ist in Angeboten nicht mehr wählbar."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-sm btn-outline">Aus dem Sortiment nehmen</button></form>
+        {% endif %}
+    </div>
+    <p class="help-text mb-10">Jeder Kauf ist ein Zugang, jeder Verkauf oder Verlust ein Abgang. Der eigene Bestand ergibt sich daraus. Preise pro Stück, <strong>{{ value_basis }}</strong> (wie der Gerätewert{{ ': ohne MwSt., Vorsteuer wird erstattet' if value_basis == 'netto' else ': inkl. MwSt., Kleinunternehmer' }}). Die Basis wird je Eintrag gespeichert, damit alte Einträge auch nach einem Wechsel der Besteuerung stimmen.</p>
+
+    <h4 class="mt-16 mb-6">Zugänge (Einkauf)</h4>
+    {% if item.purchases %}
+    <table class="units-table">
+        <thead>
+            <tr>
+                <th class="col-w-130">Kaufdatum</th>
+                <th class="col-w-80">Menge</th>
+                <th class="col-w-130">Preis/Stück (&euro;)</th>
+                <th class="col-w-80">Davon weg</th>
+                <th>Notiz</th>
+                <th class="col-w-90"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in item.purchases_sorted %}
+            <tr>
+                <td>
+                    <input form="purchase-form-{{ p.id }}" type="date" name="purchase_date" value="{{ p.purchase_date.isoformat() if p.purchase_date }}" class="w-full">
+                    {% if p.is_opening %}<small class="text-muted">Anfangsbestand</small>{% endif %}
+                </td>
+                <td><input form="purchase-form-{{ p.id }}" type="number" name="quantity" value="{{ p.quantity }}" min="{{ [1, p.disposed_quantity]|max }}" class="w-full" required></td>
+                <td>
+                    <input form="purchase-form-{{ p.id }}" type="number" name="unit_price" step="0.01" min="0" value="{{ '%.2f'|format(p.unit_price) if p.unit_price is not none }}" class="w-full" placeholder="unbekannt">
+                    {% if p.unit_price is none %}<small class="text-warning-strong">Einkaufspreis unbekannt</small>{% elif p.value_basis != value_basis %}<small class="text-muted">{{ p.value_basis }}</small>{% endif %}
+                </td>
+                <td>{{ p.disposed_quantity }}</td>
+                <td><input form="purchase-form-{{ p.id }}" type="text" name="note" value="{{ p.note or '' }}" class="w-full" placeholder="—"></td>
+                <td class="unit-actions">
+                    <button form="purchase-form-{{ p.id }}" type="submit" class="btn btn-sm btn-primary" title="Zugang speichern">✓</button>
+                    <button form="purchase-del-{{ p.id }}" type="submit" class="btn btn-sm btn-danger" title="Zugang löschen" {{ 'disabled' if p.disposals }}>✕</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% for p in item.purchases %}
+        <form id="purchase-form-{{ p.id }}" method="POST" action="{{ url_for('admin.purchase_update', purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+        <form id="purchase-del-{{ p.id }}" method="POST" action="{{ url_for('admin.purchase_delete', purchase_id=p.id) }}" data-confirm="Zugang über {{ p.quantity }} Stück löschen? Der Bestand sinkt entsprechend."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+    {% endfor %}
+    {% else %}
+    <p class="text-muted">Noch keine Zugänge erfasst.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin.purchase_add', item_id=item.id) }}" class="d-flex gap-10 align-center mt-10 flex-wrap"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="date" name="purchase_date" title="Kaufdatum">
+        <input type="number" name="quantity" value="1" min="1" class="w-80" title="Menge" required>
+        <input type="number" name="unit_price" step="0.01" min="0" placeholder="Preis/Stück ({{ value_basis }})" class="min-w-180">
+        <input type="text" name="note" placeholder="Notiz (z.B. Händler)" class="min-w-180">
+        <button type="submit" class="btn btn-sm btn-outline">+ Zugang erfassen</button>
+    </form>
+
+    <h4 class="mt-24 mb-6">Abgänge (Verkauf, Defekt, Verlust)</h4>
+    {% if item.disposals %}
+    <table class="units-table">
+        <thead>
+            <tr>
+                <th class="col-w-130">Datum</th>
+                <th>Grund</th>
+                <th class="col-w-80">Menge</th>
+                <th class="col-w-130">Verkauf/Stück</th>
+                <th class="col-w-130">Einkauf/Stück</th>
+                <th>Aus Zugang</th>
+                <th>Notiz</th>
+                <th class="col-w-50"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in item.disposals %}
+            <tr>
+                <td>{{ d.disposal_date.strftime('%d.%m.%Y') if d.disposal_date else '—' }}</td>
+                <td>{{ d.reason_label }}{% if d.units %}<small class="text-muted d-block">{{ d.units | map(attribute='asset_tag') | select | join(', ') }}</small>{% endif %}</td>
+                <td>{{ d.quantity }}</td>
+                <td>{{ ('%.2f €'|format(d.sale_price)).replace('.', ',') if d.sale_price is not none else '—' }}{% if d.value_basis != value_basis %} <small class="text-muted">{{ d.value_basis }}</small>{% endif %}</td>
+                <td>{% if d.purchase_price is not none %}{{ ('%.2f €'|format(d.purchase_price)).replace('.', ',') }}{% else %}<span class="text-warning-strong">unbekannt</span>{% endif %}</td>
+                <td>{{ d.purchase.label if d.purchase else '—' }}</td>
+                <td>{{ d.note or '' }}</td>
+                <td class="unit-actions">
+                    <form method="POST" action="{{ url_for('admin.disposal_delete', disposal_id=d.id) }}" class="m-0" data-confirm="Abgang löschen? Die {{ d.quantity }} Stück kommen zurück in den Bestand."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-sm btn-danger" title="Abgang löschen">✕</button></form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">Noch keine Abgänge erfasst.</p>
+    {% endif %}
+
+    {% set open_purchases = item.purchases_sorted | selectattr('remaining_quantity', 'gt', 0) | list %}
+    {% if open_purchases %}
+    {% set disposable_units = item.units | rejectattr('disposal_id') | list %}
+    <form method="POST" action="{{ url_for('admin.disposal_add', item_id=item.id) }}" class="mt-10" id="disposal-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Grund</label>
+                <select name="reason" data-change="disposal-reason">
+                    {% for value, label in disposal_reasons.items() %}
+                        <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Datum</label>
+                <input type="date" name="disposal_date" value="{{ today_iso }}">
+            </div>
+            <div class="form-group">
+                <label>Menge</label>
+                <input type="number" name="quantity" id="disposal-qty" value="1" min="1" max="{{ item.ledger_stock }}" required>
+            </div>
+            <div class="form-group">
+                <label>Verkaufspreis pro Stück (&euro;, {{ value_basis }})</label>
+                <input type="number" name="sale_price" id="disposal-price" step="0.01" min="0" placeholder="0 = Totalverlust">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Aus Zugang</label>
+                <select name="purchase_id">
+                    <option value="">Automatisch (älteste zuerst)</option>
+                    {% for p in open_purchases %}
+                        <option value="{{ p.id }}">{{ p.label }} – noch {{ p.remaining_quantity }}</option>
+                    {% endfor %}
+                </select>
+                <small class="help-text">Bestimmt den Einkaufspreis für die spätere Gewinn-/Verlustrechnung.</small>
+            </div>
+            <div class="form-group">
+                <label>Notiz</label>
+                <input type="text" name="note" placeholder="z.B. Käufer, Schadensursache">
+            </div>
+        </div>
+        {% if disposable_units %}
+        <div class="form-group">
+            <label>Einheiten (optional)</label>
+            <div class="d-flex gap-10 flex-wrap">
+                {% for u in disposable_units %}
+                <label class="checkbox-group m-0 font-normal"><input type="checkbox" name="unit_ids" value="{{ u.id }}" data-change="disposal-units"> {{ u.asset_tag or u.id }}{{ ' · ' ~ u.serial_number if u.serial_number }}</label>
+                {% endfor %}
+            </div>
+            <small class="help-text">Gewählte Einheiten werden als „Abgegangen“ markiert; die Menge folgt der Auswahl.</small>
+        </div>
+        {% endif %}
+        <div class="d-flex gap-10 align-center flex-wrap">
+            {% if not item.is_retired %}
+            <div class="checkbox-group">
+                <input type="checkbox" name="retire" id="disposal-retire" checked>
+                <label for="disposal-retire" class="m-0 font-normal">Aus dem Sortiment nehmen, wenn danach kein eigener Bestand mehr übrig ist</label>
+            </div>
+            {% endif %}
+            <button type="submit" class="btn btn-sm btn-outline">− Abgang erfassen</button>
+        </div>
+    </form>
+    {% elif item.purchases %}
+    <p class="text-muted mt-10">Alle Stücke sind abgegangen.</p>
+    {% endif %}
 </div>
 
 <div class="card mt-24" id="availability">
@@ -412,6 +632,15 @@ Actions.register({
     'add-supply-row': () => addSupplyRow(),
     'add-component-row': () => addComponentRow(),
     'check-availability': () => checkAvailability(),
+    'disposal-reason': el => {
+        // Broken / lost = total loss: suggest 0 as sale price
+        var price = document.getElementById('disposal-price');
+        if (price && price.value === '' && (el.value === 'broken' || el.value === 'lost')) price.value = '0';
+    },
+    'disposal-units': () => {
+        var n = document.querySelectorAll('#disposal-form input[name="unit_ids"]:checked').length;
+        if (n) document.getElementById('disposal-qty').value = n;
+    },
 });
 function togglePackageFields() {
     var isPackage = document.getElementById('is_package').checked;

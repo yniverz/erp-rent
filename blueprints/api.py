@@ -289,6 +289,8 @@ def add_line(quote_id, data):
         item = db.session.get(Item, int(data.get('item_id') or 0))
         if not item:
             raise ApiError('Artikel nicht gefunden.', 404)
+        if item.is_retired:
+            raise ApiError(f'{item.name} ist nicht mehr im Sortiment.', 409)
         qty = max(1, int(data.get('quantity') or 1))
         if item.is_package:
             if any(qi.package_id == item.id for qi in quote.quote_items):
@@ -446,7 +448,7 @@ def lookup_items(q='', start=None, end=None):
     from helpers import get_package_available_quantity
     q = (q or '').strip().lower()
     results = []
-    for item in Item.query.order_by(Item.name).all():
+    for item in Item.query.filter(Item.retired_at.is_(None)).order_by(Item.name).all():
         if q:
             hay = ' '.join(filter(None, [
                 item.name, item.manufacturer, item.model_name,

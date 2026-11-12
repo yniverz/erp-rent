@@ -92,7 +92,7 @@
                     {% for pc in item.package_components %}
                         <li>
                             <span class="detail-qty">{{ pc.quantity }}&times;</span>
-                            {% if pc.component_item.visible_in_shop %}
+                            {% if pc.component_item.in_shop %}
                                 <a href="{{ url_for('public.item_detail', item_id=pc.component_item.id) }}">{{ pc.component_item.name }}</a>
                             {% else %}
                                 {{ pc.component_item.name }}

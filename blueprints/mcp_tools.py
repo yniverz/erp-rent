@@ -17,11 +17,12 @@ from urllib.parse import urlparse
 from blueprints import api as quote_ops
 from blueprints.api import ApiError, _serialize_quote
 from blueprints.admin import convert_inquiry_to_quote
-from helpers import (get_available_quantity, get_package_available_quantity,
+from helpers import (get_available_quantity, get_package_available_quantity, current_value_basis,
                      get_upload_path, public_base_url, replacement_value_basis,
                      save_clean_image, InvalidImage)
 from models import (db, Category, Inquiry, Item, ItemAccessory, ItemSupply, ItemUnit, PackageComponent,
-                    Quote, QuoteItem, SiteSettings, Supplier)
+                    Quote, QuoteItem, SiteSettings, Supplier, ItemPurchase, ItemDisposal, LedgerError,
+                    record_disposal, delete_disposal, check_purchase_quantity)
 
 ToolError = ApiError
 
@@ -85,7 +86,10 @@ ITEM_FIELD_PROPS = {
     'price_per_day': _s('number', 'Standard-Mietpreis pro Einheit und Tag in EUR', minimum=0),
     'show_price_publicly': _s('boolean', 'Preis im Shop anzeigen (false = "Preis auf Anfrage")'),
     'visible_in_shop': _s('boolean', 'Im öffentlichen Shop sichtbar'),
-    'stock_quantity': _s('integer', 'Eigener Bestand (-1 = unbegrenzt). Nicht für Pakete.', minimum=-1),
+    'stock_quantity': _s('integer', 'Eigener Bestand. -1 = unbegrenzt. Sonst ergibt sich der Bestand aus Zu-/Abgängen '
+                         '(record_purchase/record_disposal): bei create_item wird ein Wert > 0 als erster Zugang '
+                         '(Einkaufspreis unbekannt) erfasst, bei update_items ist nur -1 bzw. das Aufheben von '
+                         '"unbegrenzt" (aktueller Zugangsbestand) erlaubt. Nicht für Pakete.', minimum=-1),
     'manufacturer': _s('string', 'Hersteller', True),
     'model_name': _s('string', 'Modellbezeichnung', True),
     'weight_kg': _s('number', 'Gewicht in kg', True),
@@ -224,6 +228,8 @@ def _unit_dict(u, with_item=False):
         'next_inspection_date': _iso(u.next_inspection_date),
         'inspection_overdue': u.inspection_overdue,
         'notes': u.notes,
+        'purchase_id': u.purchase_id,
+        'disposal_id': u.disposal_id,
     }
     if with_item:
         d['item_id'] = u.item_id
@@ -242,6 +248,7 @@ def _item_summary(item):
         'available_total': item.operational_quantity if not item.is_package else None,
         'is_package': item.is_package,
         'visible_in_shop': item.visible_in_shop,
+        'retired': item.is_retired,
         'manufacturer': item.manufacturer,
         'model_name': item.model_name,
         'description_preview': (desc[:100] + '…') if len(desc) > 100 else (desc or None),
@@ -256,6 +263,20 @@ def _accessory_dict(a):
         'value': a.value, 'effective_value': a.effective_value(),
         'linked_item_id': a.linked_item_id, 'show_in_shop': a.show_in_shop,
     }
+
+
+def _purchase_dict(p):
+    return {'id': p.id, 'quantity': p.quantity, 'unit_price': p.unit_price, 'purchase_date': _iso(p.purchase_date),
+            'value_basis': p.value_basis, 'note': p.note, 'is_opening': bool(p.is_opening),
+            'disposed_quantity': p.disposed_quantity, 'remaining_quantity': p.remaining_quantity}
+
+
+def _disposal_dict(d):
+    return {'id': d.id, 'quantity': d.quantity, 'reason': d.reason, 'reason_label': d.reason_label,
+            'disposal_date': _iso(d.disposal_date), 'sale_price': d.sale_price,
+            'purchase_id': d.purchase_id, 'purchase_price': d.purchase_price,
+            'value_basis': d.value_basis, 'note': d.note,
+            'unit_asset_tags': [u.asset_tag for u in d.units]}
 
 
 def _value_basis():
@@ -291,6 +312,11 @@ def _item_detail(item):
         'show_bundle_discount': item.show_bundle_discount,
         'stock_quantity': item.stock_quantity,
         'operational_quantity': item.operational_quantity,
+        'retired_at': _iso(item.retired_at),
+        'in_shop': item.in_shop,
+        'purchases': [_purchase_dict(p) for p in item.purchases_sorted],
+        'disposals': [_disposal_dict(d) for d in item.disposals],
+        'ledger_value_basis_now': current_value_basis(),
         'manufacturer': item.manufacturer,
         'model_name': item.model_name,
         'weight_kg': item.weight_kg,
@@ -385,14 +411,15 @@ MISSING_FIELDS = {
                       'description': 'Nur Artikel, bei denen mindestens eines dieser Felder leer ist'},
           'is_package': _s('boolean', 'true = nur Pakete, false = nur Einzelartikel'),
           'visible_in_shop': _s('boolean', 'Nach Shop-Sichtbarkeit filtern'),
+          'retired': _s('boolean', 'Standard false = nur Artikel im Sortiment; true = nur aus dem Sortiment genommene'),
           'start_date': DATE('Verfügbarkeit ab', False),
           'end_date': DATE('Verfügbarkeit bis', False),
           'limit': _s('integer', 'Max. Anzahl (Standard 100, max 500)'),
           'offset': _s('integer', 'Offset für Paginierung'),
       }, read_only=True)
 def list_items(query=None, category_id=None, missing=None, is_package=None, visible_in_shop=None,
-               start_date=None, end_date=None, limit=None, offset=None):
-    items = Item.query.order_by(Item.name).all()
+               retired=False, start_date=None, end_date=None, limit=None, offset=None):
+    items = [i for i in Item.query.order_by(Item.name).all() if i.is_retired == bool(retired)]
     if query:
         tokens = query.lower().split()
         def hay(i):
@@ -463,7 +490,18 @@ def _apply_item_fields(item, data):
         qty = int(data['stock_quantity'])
         if qty < -1:
             raise ToolError('stock_quantity muss >= -1 sein.')
-        item.stock_quantity = qty
+        if qty == -1:
+            item.stock_quantity = -1
+        elif item.id is None:  # create_item: initial stock = first purchase
+            if qty > 0:
+                item.purchases.append(ItemPurchase(quantity=qty, value_basis=current_value_basis()))
+            item.stock_quantity = qty
+        elif item.is_unlimited and qty == item.ledger_stock:
+            item.stock_quantity = 0
+            item.sync_stock()
+        elif qty != item.stock_quantity:
+            raise ToolError(f'Bestand ergibt sich aus Zu-/Abgängen (aktuell {item.ledger_stock}). '
+                            'Käufe mit record_purchase, Verkäufe/Verluste mit record_disposal erfassen.')
     for field in ('manufacturer', 'model_name', 'dimensions', 'storage_location'):
         if field in data:
             setattr(item, field, _text(data[field], 200))
@@ -698,6 +736,8 @@ def _apply_unit_fields(unit, data):
     if data.get('status') is not None:
         if data['status'] not in ItemUnit.STATUS_LABELS:
             raise ToolError(f'Ungültiger Status {data["status"]!r}.')
+        if unit.disposal_id and data['status'] != unit.status:
+            raise ToolError(f'Einheit {unit.asset_tag or unit.id} ist abgegangen – erst den Abgang löschen.')
         unit.status = data['status']
     for field in ('purchase_date', 'last_inspection_date', 'next_inspection_date'):
         if field in data:
@@ -767,6 +807,141 @@ def delete_unit(unit_id):
     db.session.delete(unit)
     db.session.commit()
     return f'Einheit {label} gelöscht.'
+
+
+
+# ═══════════════════════ STOCK LEDGER (Zu-/Abgänge) ═══════════════════════
+
+LEDGER_PRICE_NOTE = ('pro Stück in EUR, netto bei Regelbesteuerung bzw. brutto bei Kleinunternehmer '
+                     '(wie replacement_value; die Basis wird je Eintrag gespeichert)')
+
+
+def _ledger(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except LedgerError as e:
+        raise ToolError(str(e))
+
+
+@tool('record_purchase', 'Zugang erfassen',
+      'Erfasst einen Einkauf (Zugang) eines Artikels. Der eigene Bestand steigt um quantity.',
+      {'item_id': ID('des Artikels'),
+       'quantity': _s('integer', 'Gekaufte Stückzahl', minimum=1),
+       'unit_price': _s('number', f'Einkaufspreis {LEDGER_PRICE_NOTE}. null = unbekannt.', True, minimum=0),
+       'purchase_date': DATE('Kaufdatum'),
+       'note': _s('string', 'Notiz, z.B. Händler', True)},
+      ['item_id', 'quantity'])
+def record_purchase(item_id, quantity, unit_price=None, purchase_date=None, note=None):
+    item = _get(Item, item_id, 'Artikel')
+    if item.is_package:
+        raise ToolError('Pakete haben keinen eigenen Bestand.')
+    if int(quantity) < 1:
+        raise ToolError('quantity muss >= 1 sein.')
+    p = ItemPurchase(quantity=int(quantity), unit_price=_num(unit_price, 'unit_price', 0),
+                     purchase_date=_parse_day(purchase_date, 'purchase_date'),
+                     value_basis=current_value_basis(), note=_text(note))
+    item.purchases.append(p)
+    item.sync_stock()
+    db.session.commit()
+    return {'purchase': _purchase_dict(p), 'stock_quantity': item.stock_quantity}
+
+
+@tool('update_purchase', 'Zugang bearbeiten',
+      'Ändert einen Zugang (z.B. Preis/Datum beim automatisch angelegten Anfangsbestand nachtragen). '
+      'Nur angegebene Felder werden geändert. Die Menge kann nicht unter die bereits abgegangene Menge fallen.',
+      {'purchase_id': ID('des Zugangs'),
+       'quantity': _s('integer', 'Stückzahl', minimum=1),
+       'unit_price': _s('number', f'Einkaufspreis {LEDGER_PRICE_NOTE}. null = unbekannt.', True, minimum=0),
+       'purchase_date': DATE('Kaufdatum'),
+       'note': _s('string', 'Notiz', True)},
+      ['purchase_id'], idempotent=True)
+def update_purchase(purchase_id, **data):
+    p = _get(ItemPurchase, purchase_id, 'Zugang')
+    if data.get('quantity') is not None:
+        _ledger(check_purchase_quantity, p, int(data['quantity']))
+        p.quantity = int(data['quantity'])
+    if 'unit_price' in data:
+        price = _num(data['unit_price'], 'unit_price', 0)
+        if price != p.unit_price:
+            p.unit_price = price
+            p.value_basis = current_value_basis()
+    if 'purchase_date' in data:
+        p.purchase_date = _parse_day(data['purchase_date'], 'purchase_date')
+    if 'note' in data:
+        p.note = _text(data['note'])
+    p.item.sync_stock()
+    db.session.commit()
+    return {'purchase': _purchase_dict(p), 'stock_quantity': p.item.stock_quantity}
+
+
+@tool('delete_purchase', 'Zugang löschen',
+      'Löscht einen Zugang ohne Abgänge (z.B. Fehleingabe). Der Bestand sinkt entsprechend.',
+      {'purchase_id': ID('des Zugangs')}, ['purchase_id'], deletes=True)
+def delete_purchase(purchase_id):
+    p = _get(ItemPurchase, purchase_id, 'Zugang')
+    if p.disposals:
+        raise ToolError('Aus diesem Zugang sind bereits Stücke abgegangen – erst die Abgänge löschen.')
+    item = p.item
+    for u in list(p.units):
+        u.purchase_id = None
+    item.purchases.remove(p)
+    db.session.delete(p)
+    item.sync_stock()
+    db.session.commit()
+    return {'deleted': purchase_id, 'stock_quantity': item.stock_quantity}
+
+
+@tool('record_disposal', 'Abgang erfassen',
+      'Erfasst Stücke, die die Firma verlassen (verkauft, defekt/entsorgt, verloren, sonstiges). Der Bestand sinkt. '
+      'Ohne purchase_id werden die ältesten Zugänge zuerst verwendet (ggf. mehrere Einträge). '
+      'Defekt/Verlust: sale_price 0 = Totalverlust.',
+      {'item_id': ID('des Artikels'),
+       'quantity': _s('integer', 'Stückzahl (bei unit_ids = deren Anzahl)', minimum=1),
+       'reason': _s('string', 'Grund', enum=list(ItemDisposal.REASON_LABELS)),
+       'sale_price': _s('number', f'Verkaufserlös {LEDGER_PRICE_NOTE}', True, minimum=0),
+       'disposal_date': DATE('Datum des Abgangs'),
+       'purchase_id': _s('integer', 'Optional: aus welchem Zugang die Stücke stammen'),
+       'unit_ids': {'type': 'array', 'items': {'type': 'integer'},
+                    'description': 'Optional: konkrete Einheiten, die als abgegangen markiert werden'},
+       'note': _s('string', 'Notiz', True),
+       'retire_if_empty': _s('boolean', 'Artikel aus dem Sortiment nehmen, wenn danach kein eigener Bestand übrig ist (Standard true)')},
+      ['item_id', 'quantity', 'reason'])
+def record_disposal_tool(item_id, quantity, reason, sale_price=None, disposal_date=None, purchase_id=None,
+                         unit_ids=None, note=None, retire_if_empty=True):
+    item = _get(Item, item_id, 'Artikel')
+    purchase = _get(ItemPurchase, purchase_id, 'Zugang') if purchase_id is not None else None
+    units = [_get(ItemUnit, uid, 'Einheit') for uid in (unit_ids or [])]
+    rows = _ledger(record_disposal, item, int(quantity), reason, current_value_basis(),
+                   disposal_date=_parse_day(disposal_date, 'disposal_date'),
+                   sale_price=_num(sale_price, 'sale_price', 0), note=_text(note),
+                   purchase=purchase, units=units, retire=bool(retire_if_empty))
+    db.session.commit()
+    return {'disposals': [_disposal_dict(d) for d in rows], 'stock_quantity': item.stock_quantity,
+            'retired': item.is_retired}
+
+
+@tool('delete_disposal', 'Abgang löschen',
+      'Macht einen Abgang rückgängig: Stücke kommen zurück in den Bestand, verknüpfte Einheiten werden wieder einsatzbereit.',
+      {'disposal_id': ID('des Abgangs')}, ['disposal_id'], deletes=True)
+def delete_disposal_tool(disposal_id):
+    d = _get(ItemDisposal, disposal_id, 'Abgang')
+    item = d.item
+    delete_disposal(d)
+    db.session.commit()
+    return {'deleted': disposal_id, 'stock_quantity': item.stock_quantity}
+
+
+@tool('set_item_retired', 'Sortiment-Status setzen',
+      'Nimmt einen Artikel aus dem Sortiment (nicht mehr im Shop, in Angeboten nicht wählbar; bestehende Angebote '
+      'bleiben unverändert) oder holt ihn zurück.',
+      {'item_id': ID('des Artikels'), 'retired': _s('boolean', 'true = aus dem Sortiment, false = wieder aufnehmen')},
+      ['item_id', 'retired'], idempotent=True)
+def set_item_retired(item_id, retired):
+    item = _get(Item, item_id, 'Artikel')
+    if bool(retired) != item.is_retired:
+        item.retired_at = datetime.utcnow() if retired else None
+        db.session.commit()
+    return {'id': item.id, 'name': item.name, 'retired': item.is_retired}
 
 
 # ═══════════════════════════ CATEGORIES ═══════════════════════════════

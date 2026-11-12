@@ -305,6 +305,9 @@ with app.app_context():
         and _insp.has_table('item_ownership')
     )
 
+    # Stock ledger (purchases/disposals) introduced: seed opening stock once
+    _needs_ledger_init = _insp.has_table('item') and not _insp.has_table('item_purchase')
+
     db.create_all()
 
     # ── Auto-migrate helper: add missing columns to existing tables ───
@@ -330,6 +333,10 @@ with app.app_context():
     _add_column_if_missing('item', 'accessories_note', 'TEXT')
     # Single-company stock model
     _add_column_if_missing('item', 'stock_quantity', 'INTEGER NOT NULL DEFAULT 0')
+    # Stock ledger: retired items and unit ↔ purchase/disposal links
+    _add_column_if_missing('item', 'retired_at', 'DATETIME')
+    _add_column_if_missing('item_unit', 'purchase_id', 'INTEGER REFERENCES item_purchase(id)')
+    _add_column_if_missing('item_unit', 'disposal_id', 'INTEGER REFERENCES item_disposal(id)')
     # Quote editor v2: line ordering, headings, optional positions
     _needs_position_backfill = 'position' not in {c['name'] for c in _sa_inspect(db.engine).get_columns('quote_item')}
     _add_column_if_missing('quote_item', 'position', 'INTEGER NOT NULL DEFAULT 0')
@@ -455,6 +462,20 @@ with app.app_context():
         db.session.commit()
         print(f"  converted ownerships: {len(suppliers_by_name)} Lieferanten, "
               f"{supply_count} Angebote, Bestand für {len(stock)} Artikel übernommen")
+
+    # ── One-time: current own stock becomes an "Anfangsbestand" purchase (price/date unknown) ──
+    if _needs_ledger_init:
+        from models import Item, ItemPurchase
+        from helpers import current_value_basis
+        _basis = current_value_basis()
+        _seeded = 0
+        for item in Item.query.filter(Item.is_package == False, Item.stock_quantity > 0).all():
+            db.session.add(ItemPurchase(item_id=item.id, quantity=item.stock_quantity,
+                                        unit_price=None, purchase_date=None, value_basis=_basis,
+                                        is_opening=True, note='Automatisch aus dem bisherigen Bestand übernommen'))
+            _seeded += 1
+        db.session.commit()
+        print(f'  migrated: Anfangsbestand für {_seeded} Artikel angelegt')
 
     # Create uploads directory
     uploads_dir = os.path.join(os.path.dirname(__file__), 'instance', 'uploads')
