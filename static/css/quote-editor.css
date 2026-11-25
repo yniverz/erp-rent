@@ -202,6 +202,20 @@ tr.qe-overstock td { background: var(--color-danger-light); }
 .qe-summary .price-row.total { font-weight: 700; font-size: 1.08em; border-top: 2px solid var(--color-gray-300); margin-top: 6px; padding-top: 9px; }
 .qe-summary .price-row-muted { color: var(--color-text-muted); font-size: 0.9em; }
 
+/* ── Preisübersicht export with appendix picker ── */
+.pdf-export-group { display: inline-flex; gap: 0; }
+.pdf-export-group > .btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pdf-attachments { position: relative; }
+.pdf-attachments > summary { list-style: none; border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; height: 100%; }
+.pdf-attachments > summary::-webkit-details-marker { display: none; }
+.pdf-attachments-menu {
+    position: absolute; left: 0; top: calc(100% + 4px); z-index: 50;
+    min-width: 240px; padding: 10px 12px; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+.pdf-attachments-menu label { cursor: pointer; }
+
 /* ── Responsive ── */
 @media (max-width: 1100px) {
     .qe-layout { flex-direction: column-reverse; }

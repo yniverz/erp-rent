@@ -1,7 +1,7 @@
 from io import BytesIO
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, abort, make_response
 from flask_login import login_required, current_user
-from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory, ItemPurchase, ItemDisposal, LedgerError, record_disposal, delete_disposal, check_purchase_quantity
+from models import db, MIN_PASSWORD_LENGTH, User, Item, Category, Quote, QuoteItem, Inquiry, InquiryItem, SiteSettings, DocumentAttachment, PackageComponent, ItemUnit, Supplier, ItemSupply, QuoteItemSource, QuoteItemUnit, ItemAccessory, ItemPurchase, ItemDisposal, LedgerError, record_disposal, delete_disposal, check_purchase_quantity
 from helpers import get_available_quantity, get_package_available_quantity, get_own_stock_available, get_upload_path, allowed_image_file, replacement_value_basis, current_value_basis, save_clean_image, clean_svg, InvalidImage
 from datetime import datetime
 from functools import wraps
@@ -1479,7 +1479,8 @@ def quote_edit(quote_id):
     _eff_mode, _eff_rate = _effective_tax_mode_and_rate(_ss)
     return render_template('admin/quote_edit.html', quote=quote,
                            category_tree=category_tree,
-                           site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode)
+                           site_settings=_ss, tax_rate=_eff_rate, tax_mode=_eff_mode,
+                           attachments=DocumentAttachment.ordered())
 
 
 # ── Quote editor JSON API ──
@@ -2367,12 +2368,14 @@ def settings():
             settings_record.label_extra_text = request.form.get('label_extra_text', '').replace('\r', '').strip() or None
             settings_record.imprint_url = request.form.get('imprint_url', '').strip()
             settings_record.privacy_url = request.form.get('privacy_url', '').strip()
-            settings_record.terms_and_conditions_text = request.form.get('terms_and_conditions_text', '').strip() or None
             settings_record.notification_email = request.form.get('notification_email', '').strip()
             settings_record.mcp_enabled = request.form.get('mcp_enabled') == 'on'
             settings_record.mcp_allow_delete = request.form.get('mcp_allow_delete') == 'on'
 
             settings_record.updated_at = datetime.utcnow()
+
+            if request.form.get('attachments_submitted'):
+                _save_document_attachments(request.form)
 
             # Handle logo upload
             if request.form.get('remove_logo'):
@@ -2419,6 +2422,34 @@ def settings():
     return _render_settings(settings_record)
 
 
+def _save_document_attachments(form):
+    """Sync appendix documents with the settings form: cards are submitted in
+    display order as ``attachment_key`` (id, or ``new…`` for added ones);
+    existing documents whose card was removed are deleted."""
+    existing = {a.id: a for a in DocumentAttachment.query.all()}
+    kept = set()
+    position = 0
+    for key in form.getlist('attachment_key'):
+        title = form.get(f'attachment_title_{key}', '').strip()[:200]
+        content = form.get(f'attachment_content_{key}', '').replace('\r', '').strip()
+        if not title and not content:
+            continue  # empty card: dropped (deletes an existing document)
+        att = existing.get(int(key)) if key.isdigit() else None
+        if att is None:
+            att = DocumentAttachment()
+            db.session.add(att)
+        att.title = title or 'Anlage'
+        att.content = content or None
+        att.attach_by_default = bool(form.get(f'attachment_default_{key}'))
+        att.position = position
+        position += 1
+        if att.id:
+            kept.add(att.id)
+    for att_id, att in existing.items():
+        if att_id not in kept:
+            db.session.delete(att)
+
+
 def _render_settings(settings_record, new_api_token=None):
     from models import OAuthToken, ApiToken
     from helpers import public_base_url
@@ -2428,25 +2459,25 @@ def _render_settings(settings_record, new_api_token=None):
     ).order_by(OAuthToken.created_at.desc()).all()
     api_tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
     return render_template('admin/settings.html', settings=settings_record,
+                           attachments=DocumentAttachment.ordered(),
                            mcp_url=public_base_url() + '/mcp', mcp_tokens=mcp_tokens,
                            api_tokens=api_tokens, new_api_token=new_api_token,
                            api_url=public_base_url() + '/api/v1')
 
 
-@admin_bp.route('/settings/agb.pdf')
+@admin_bp.route('/settings/attachments/<int:attachment_id>.pdf')
 @admin_required
-def agb_pdf():
-    """Standalone AGB PDF, e.g. to attach to Angebote in the accounting tool"""
-    from generators.preisuebersicht import build_agb_pdf
+def attachment_pdf(attachment_id):
+    """Standalone PDF of one appendix document (AGB, …), e.g. to attach to
+    Angebote in the accounting tool"""
+    from generators.preisuebersicht import build_attachment_pdf
 
+    att = DocumentAttachment.query.get_or_404(attachment_id)
     site_settings = SiteSettings.query.first()
-    text = site_settings.terms_and_conditions_text if site_settings else None
-    if not text:
-        flash('Es ist noch kein AGB-Text hinterlegt.', 'error')
-        return redirect(url_for('admin.settings'))
-    pdf_bytes = build_agb_pdf(terms_and_conditions_text=text,
-                              issuer_name=site_settings.business_name or '')
-    return _send_pdf_response(pdf_bytes, 'AGB.pdf')
+    pdf_bytes = build_attachment_pdf(title=att.title, content=att.content or '',
+                                     issuer_name=(site_settings.business_name if site_settings else '') or '')
+    filename = re.sub(r'[\x00-\x1f\\/:*?"<>|]+', '', att.title).strip(' .') or 'Anlage'
+    return _send_pdf_response(pdf_bytes, filename + '.pdf')
 
 
 @admin_bp.route('/settings/api-tokens', methods=['POST'])
@@ -2879,9 +2910,20 @@ def preisuebersicht_pdf(quote_id):
         value_incomplete=value_missing > 0,
         value_basis=replacement_value_basis(data['tax_mode']),
         notes=quote.public_notes,
-        terms_and_conditions_text=site_settings.terms_and_conditions_text if site_settings else None,
+        attachments=[(a.title, a.content) for a in _selected_attachments()],
     )
     return _send_pdf_response(pdf_bytes, f"preisuebersicht_{quote.reference_number}.pdf")
+
+
+def _selected_attachments():
+    """Appendix documents for a PDF export: the ``att`` ids picked in the
+    export form (``att_select`` marks a submitted selection, which may be
+    empty), otherwise those attached by default."""
+    attachments = DocumentAttachment.ordered()
+    if request.args.get('att_select'):
+        chosen = {int(v) for v in request.args.getlist('att') if v.isdigit()}
+        return [a for a in attachments if a.id in chosen]
+    return [a for a in attachments if a.attach_by_default]
 
 
 # ── Lieferschein PDF ──

@@ -923,14 +923,29 @@ class SiteSettings(db.Model):
     # Legal links
     imprint_url = db.Column(db.String(500), nullable=True)
     privacy_url = db.Column(db.String(500), nullable=True)
-    # AGB / Terms & Conditions (basic markdown)
-    terms_and_conditions_text = db.Column(db.Text, nullable=True)
     # Notification
     notification_email = db.Column(db.String(200), nullable=True)
     # MCP server (Claude connector)
     mcp_enabled = db.Column(db.Boolean, default=False)
     mcp_allow_delete = db.Column(db.Boolean, default=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DocumentAttachment(db.Model):
+    """Text document in basic markdown (AGB, Mietbedingungen, …) that can be
+    appended to the Preisübersicht or exported as a standalone PDF."""
+    __tablename__ = 'document_attachment'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=True)
+    attach_by_default = db.Column(db.Boolean, default=True, nullable=False)  # pre-checked when exporting
+    position = db.Column(db.Integer, default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @staticmethod
+    def ordered():
+        return DocumentAttachment.query.order_by(DocumentAttachment.position, DocumentAttachment.id).all()
 
 
 # ── OAuth 2.1 (authorization server for the MCP endpoint) ─────────────

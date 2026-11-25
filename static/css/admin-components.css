@@ -330,6 +330,10 @@ body.has-bulk-bar       { padding-bottom: 90px; }
 
 /* ── Settings ── */
 .logo-preview           { max-height: 80px; max-width: 300px; }
+.attachment-card        { padding: 16px; margin-bottom: 12px; }
+.attachment-card-head   { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.attachment-card-head .form-group { flex: 1 1 260px; }
+.attachment-card-tools  { display: flex; gap: 6px; margin-bottom: 16px; }
 
 /* ── Public: footer toggle form ── */
 .footer-toggle-form     { display: inline; margin-left: 8px; }

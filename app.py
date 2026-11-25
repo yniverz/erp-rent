@@ -381,6 +381,20 @@ with app.app_context():
     # ── Invoicing moved to external tool: drop invoice-only settings ──
     _drop_column_if_exists('site_settings', 'bank_lines')
     _drop_column_if_exists('site_settings', 'payment_terms_days')
+    # AGB text moved into generic document attachments (several, selectable per export)
+    if 'terms_and_conditions_text' in {c['name'] for c in _sa_inspect(db.engine).get_columns('site_settings')}:
+        from models import DocumentAttachment
+        _agb = db.session.execute(_sql_text(
+            'SELECT terms_and_conditions_text FROM site_settings ORDER BY id LIMIT 1')).scalar()
+        if _agb and _agb.strip() and not DocumentAttachment.query.count():
+            _title, _body = 'Allgemeine Geschäftsbedingungen', _agb.replace('\r', '').strip()
+            _first, _, _rest = _body.partition('\n')
+            if _first.strip().startswith('# '):  # leading heading becomes the title
+                _title, _body = _first.strip()[2:].strip() or _title, _rest.strip()
+            db.session.add(DocumentAttachment(title=_title[:200], content=_body, attach_by_default=True))
+            db.session.commit()
+            print('  migrated: AGB text -> document attachment')
+        _drop_column_if_exists('site_settings', 'terms_and_conditions_text')
     # Extra text printed on unit labels
     _add_column_if_missing('site_settings', 'label_extra_text', 'TEXT')
     # MCP server (Claude connector)

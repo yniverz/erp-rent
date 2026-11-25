@@ -183,7 +183,7 @@ Quotes can be edited or deleted at any time.
 #### PDF Documents
 Generate professional German-language PDF documents directly from any quote:
 
-- **Unverbindliche Preisübersicht (Price Overview)** — Non-binding overview with positions, quantities, daily rates, estimated totals, discount and tax handling, plus the total replacement value of the rented goods (incl. accessories) for insurance / loss purposes. Explicitly states that it is not an offer and does not become part of a contract — the binding Angebot is created in the accounting tool. Includes AGB (terms & conditions) as an informational appendix if configured.
+- **Unverbindliche Preisübersicht (Price Overview)** — Non-binding overview with positions, quantities, daily rates, estimated totals, discount and tax handling, plus the total replacement value of the rented goods (incl. accessories) for insurance / loss purposes. Explicitly states that it is not an offer and does not become part of a contract — the binding Angebot is created in the accounting tool. Appendix documents (AGB etc.) can be attached for information; which ones is picked per export.
 - **Wertaufstellung (Value Statement)** — Replacement values of all items in a quote including their accessories, e.g. for insurance.
 - **Lieferschein / Übergabeprotokoll (Delivery Note)** — Lists items and quantities without prices. Includes a condition/comment column for handwritten notes, a deposit field, and signature sections for both handover and return.
 
@@ -221,7 +221,7 @@ Financial overview of your inventory:
 - **Payment & quote terms** — Configurable payment deadline and quote validity period in days.
 - **Shop description** — Text shown on the public storefront.
 - **Legal links** — Impressum and Datenschutz (privacy) URLs for the shop footer.
-- **AGB (Terms & Conditions)** — Markdown-formatted text that is appended as an annex to quote PDFs. Supports headings (`#`, `##`, `###`), bold (`**text**`), and paragraphs.
+- **Anlagen (Appendix documents)** — Any number of markdown texts (AGB, Mietbedingungen, …) that can be appended to the Preisübersicht. Each has a title and a "attach by default" flag; the actual selection is made in the quote editor when exporting. Each can also be exported as a standalone PDF. Supports headings (`#`, `##`, `###`), bold (`**text**`), and paragraphs. An existing AGB text is migrated into the first attachment automatically.
 - **Notification email** — Address that receives email alerts when customers submit inquiries.
 
 ---

@@ -81,8 +81,8 @@ def build_preisuebersicht_pdf(
     # Notes
     notes: str | None = None,
 
-    # AGB (Terms & Conditions) – basic markdown
-    terms_and_conditions_text: str | None = None,
+    # Appendix documents (AGB, Mietbedingungen, …) as (title, basic markdown) pairs
+    attachments: list[tuple[str, str]] | None = None,
 ) -> bytes:
     """Build and return the Preisübersicht PDF bytes."""
     buf = BytesIO()
@@ -122,9 +122,11 @@ def build_preisuebersicht_pdf(
     doc, cw = build_base_doc(buf, title="Unverbindliche Preisübersicht", author=issuer_name,
                              on_page_callback=on_page)
 
-    # Register AGB two-column template (used via NextPageTemplate if AGB present)
-    if terms_and_conditions_text:
-        doc.addPageTemplates([_build_agb_page_template()])
+    attachments = [(t, c) for t, c in (attachments or []) if (c or "").strip()]
+
+    # Register the two-column appendix template (used via NextPageTemplate)
+    if attachments:
+        doc.addPageTemplates([_build_appendix_page_template(page_numbers=False)])
 
     story: list = []
 
@@ -504,11 +506,14 @@ def build_preisuebersicht_pdf(
         styles["normal"]
     ))
     story.append(Spacer(1, 14))
-    if terms_and_conditions_text:
-        story.append(Paragraph(
-            "Unsere Allgemeinen Geschäftsbedingungen finden Sie zur Information in der Anlage.",
-            styles["normal"]
-        ))
+    if attachments:
+        titles = [_esc(t) for t, _ in attachments]
+        if len(titles) == 1:
+            hint = f"Zur Information finden Sie in der Anlage: {titles[0]}."
+        else:
+            hint = ("Zur Information finden Sie in der Anlage:<br/>"
+                    + "<br/>".join(f"{i}. {t}" for i, t in enumerate(titles, 1)))
+        story.append(Paragraph(hint, styles["normal"]))
         story.append(Spacer(1, 8))
 
     story.append(Paragraph("Wir freuen uns auf Ihre Rückmeldung.", styles["normal"]))
@@ -517,132 +522,139 @@ def build_preisuebersicht_pdf(
     story.append(Spacer(1, 16))
     story.append(Paragraph(issuer_name, styles["bold"]))
 
-    # ── AGB appendix ──
-    if terms_and_conditions_text:
-        from reportlab.platypus import NextPageTemplate
-        story.append(NextPageTemplate("agb"))
-        from reportlab.platypus import PageBreak
-        story.append(PageBreak())
-        _render_agb_markdown(story, terms_and_conditions_text, styles)
+    # ── Appendix: each document starts on its own two-column page ──
+    if attachments:
+        from reportlab.platypus import NextPageTemplate, PageBreak
+        story.append(NextPageTemplate("appendix"))
+        numbered = len(attachments) > 1
+        for i, (title, content) in enumerate(attachments, 1):
+            story.append(PageBreak())
+            label = f"Anlage {i}" if numbered else "Anlage"
+            _render_markdown_document(story, content, styles, title=f"{label}: {_esc(title)}",
+                                      skip_heading=title)
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return buf.getvalue()
 
 
-def build_agb_pdf(*, terms_and_conditions_text: str, issuer_name: str = "") -> bytes:
-    """Build a standalone AGB PDF in the same two-column layout as the
-    Preisübersicht appendix, e.g. to attach to Angebote from the accounting tool."""
+def build_attachment_pdf(*, title: str, content: str, issuer_name: str = "") -> bytes:
+    """Build a standalone PDF of one appendix document in the same two-column
+    layout as the Preisübersicht appendix, e.g. to attach to Angebote from the
+    accounting tool."""
     from reportlab.platypus import BaseDocTemplate
 
     buf = BytesIO()
-    doc = BaseDocTemplate(buf, pagesize=(PAGE_W, PAGE_H),
-                          title="Allgemeine Geschäftsbedingungen", author=issuer_name,
-                          pageTemplates=[_build_agb_page_template()])
-    # A leading "# …" heading becomes the title instead of being printed twice
-    title = "Allgemeine Geschäftsbedingungen"
-    text = terms_and_conditions_text.strip()
-    first, _, rest = text.partition("\n")
-    if first.strip().startswith("# "):
-        title, text = first.strip()[2:].strip(), rest
-
+    doc = BaseDocTemplate(buf, pagesize=(PAGE_W, PAGE_H), title=title, author=issuer_name,
+                          pageTemplates=[_build_appendix_page_template()])
     story: list = []
-    _render_agb_markdown(story, text, _base_styles(), title=title)
+    _render_markdown_document(story, content or "", _base_styles(), title=_esc(title),
+                              skip_heading=title)
     doc.build(story)
     return buf.getvalue()
 
 
-def _build_agb_page_template():
-    """Create a two-column page template with reduced margins for AGB pages."""
+def _build_appendix_page_template(page_numbers: bool = True):
+    """Create a two-column page template with reduced margins for appendix pages.
+    ``page_numbers=False`` when the document's canvas already numbers pages."""
     from reportlab.platypus import Frame, PageTemplate
     from reportlab.lib.units import mm
 
-    agb_margin_left = 12 * mm
-    agb_margin_right = 12 * mm
-    agb_margin_top = 12 * mm
-    agb_margin_bottom = 14 * mm
+    margin_left = 12 * mm
+    margin_right = 12 * mm
+    margin_top = 12 * mm
+    margin_bottom = 14 * mm
     col_gap = 8 * mm
 
-    content_w = PAGE_W - agb_margin_left - agb_margin_right
+    content_w = PAGE_W - margin_left - margin_right
     col_w = (content_w - col_gap) / 2
-    frame_h = PAGE_H - agb_margin_top - agb_margin_bottom
+    frame_h = PAGE_H - margin_top - margin_bottom
 
     frame_left = Frame(
-        agb_margin_left, agb_margin_bottom,
+        margin_left, margin_bottom,
         col_w, frame_h,
         leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-        id="agb_left",
+        id="appendix_left",
     )
     frame_right = Frame(
-        agb_margin_left + col_w + col_gap, agb_margin_bottom,
+        margin_left + col_w + col_gap, margin_bottom,
         col_w, frame_h,
         leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-        id="agb_right",
+        id="appendix_right",
     )
 
-    def _draw_agb_page(canvas, doc):
+    def _draw_appendix_page(canvas, doc):
         """Minimal page callback – just page number, no header/footer."""
         canvas.saveState()
         canvas.setFont("Helvetica", 6.5)
         canvas.setFillColor(CLR_GREY_DARK)
-        canvas.drawRightString(PAGE_W - agb_margin_right, 6 * mm,
+        canvas.drawRightString(PAGE_W - margin_right, 6 * mm,
                                f"Seite {canvas.getPageNumber()}")
         canvas.restoreState()
 
-    return PageTemplate(id="agb", frames=[frame_left, frame_right],
-                        onPage=_draw_agb_page)
+    return PageTemplate(id="appendix", frames=[frame_left, frame_right],
+                        onPage=_draw_appendix_page if page_numbers else (lambda canvas, doc: None))
 
 
-def _render_agb_markdown(story: list, text: str, styles: dict,
-                         title: str = "Anlage: Allgemeine Geschäftsbedingungen"):
-    """Parse basic markdown (# headings, paragraphs) into reportlab flowables."""
+def _esc(text: str) -> str:
+    """Escape text for reportlab Paragraph markup."""
+    from xml.sax.saxutils import escape
+    return escape(text or "")
+
+
+def _render_markdown_document(story: list, text: str, styles: dict, *, title: str,
+                              skip_heading: str | None = None):
+    """Parse basic markdown (# headings, **bold**, paragraphs) into reportlab
+    flowables. ``title`` is Paragraph markup; a leading ``# …`` heading equal to
+    ``skip_heading`` is dropped so the title isn't printed twice."""
+    import re
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Spacer, Paragraph
 
-    agb_title = ParagraphStyle("AGBTitle", parent=styles["base"], fontName="Helvetica-Bold",
-                                fontSize=10, leading=12, spaceAfter=6, spaceBefore=0)
-    agb_h1 = ParagraphStyle("AGBH1", parent=styles["base"], fontName="Helvetica-Bold",
-                             fontSize=8.5, leading=10.5, spaceAfter=2, spaceBefore=6)
-    agb_h2 = ParagraphStyle("AGBH2", parent=styles["base"], fontName="Helvetica-Bold",
-                             fontSize=7.5, leading=9.5, spaceAfter=2, spaceBefore=5)
-    agb_h3 = ParagraphStyle("AGBH3", parent=styles["base"], fontName="Helvetica-Bold",
-                             fontSize=7, leading=9, spaceAfter=1, spaceBefore=4)
-    agb_body = ParagraphStyle("AGBBody", parent=styles["base"], fontSize=6.5, leading=8.5,
-                               spaceAfter=2)
+    doc_title = ParagraphStyle("DocTitle", parent=styles["base"], fontName="Helvetica-Bold",
+                               fontSize=10, leading=12, spaceAfter=6, spaceBefore=0)
+    doc_h1 = ParagraphStyle("DocH1", parent=styles["base"], fontName="Helvetica-Bold",
+                            fontSize=8.5, leading=10.5, spaceAfter=2, spaceBefore=6)
+    doc_h2 = ParagraphStyle("DocH2", parent=styles["base"], fontName="Helvetica-Bold",
+                            fontSize=7.5, leading=9.5, spaceAfter=2, spaceBefore=5)
+    doc_h3 = ParagraphStyle("DocH3", parent=styles["base"], fontName="Helvetica-Bold",
+                            fontSize=7, leading=9, spaceAfter=1, spaceBefore=4)
+    doc_body = ParagraphStyle("DocBody", parent=styles["base"], fontSize=6.5, leading=8.5,
+                              spaceAfter=2)
 
-    story.append(Paragraph(title, agb_title))
+    story.append(Paragraph(title, doc_title))
     story.append(Spacer(1, 4))
 
-    lines = text.split("\n")
+    text = (text or "").replace("\r", "").strip()
+    if skip_heading:
+        first, _, rest = text.partition("\n")
+        if first.strip().startswith("# ") and first.strip()[2:].strip() == skip_heading.strip():
+            text = rest
+
     paragraph_buf: list[str] = []
+
+    def inline(s: str) -> str:
+        return re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', _esc(s))
 
     def flush_paragraph():
         if paragraph_buf:
-            body = "<br/>".join(paragraph_buf)
-            story.append(Paragraph(body, agb_body))
+            story.append(Paragraph("<br/>".join(paragraph_buf), doc_body))
             paragraph_buf.clear()
 
-    for line in lines:
+    for line in text.split("\n"):
         stripped = line.strip()
 
-        # Empty line → flush paragraph
-        if not stripped:
+        if not stripped:  # empty line ends the paragraph
             flush_paragraph()
-            continue
-
-        # Headings
-        if stripped.startswith("### "):
+        elif stripped.startswith("### "):
             flush_paragraph()
-            story.append(Paragraph(stripped[4:], agb_h3))
+            story.append(Paragraph(inline(stripped[4:]), doc_h3))
         elif stripped.startswith("## "):
             flush_paragraph()
-            story.append(Paragraph(stripped[3:], agb_h2))
+            story.append(Paragraph(inline(stripped[3:]), doc_h2))
         elif stripped.startswith("# "):
             flush_paragraph()
-            story.append(Paragraph(stripped[2:], agb_h1))
+            story.append(Paragraph(inline(stripped[2:]), doc_h1))
         else:
-            # Bold: **text** → <b>text</b>
-            import re
-            formatted = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', stripped)
-            paragraph_buf.append(formatted)
+            paragraph_buf.append(inline(stripped))
 
     flush_paragraph()

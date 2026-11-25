@@ -152,7 +152,25 @@
         <div class="d-flex gap-10 flex-wrap">
             <a href="{{ url_for('admin.quote_packliste', quote_id=quote.id) }}" class="btn btn-outline">📦 Packliste</a>
             <a href="{{ url_for('admin.quote_list') }}" class="btn btn-outline">Zurück zu Angeboten</a>
+            {% if attachments %}
+            <form method="GET" action="{{ url_for('admin.preisuebersicht_pdf', quote_id=quote.id) }}" target="_blank" class="pdf-export-group">
+                <input type="hidden" name="att_select" value="1">
+                <button type="submit" class="btn btn-outline" title="Unverbindliche Vorabinformation für den Kunden – kein Angebot, das kommt aus der Buchhaltung">Preisübersicht PDF</button>
+                <details class="pdf-attachments">
+                    <summary class="btn btn-outline" title="Anlagen auswählen">Anlagen (<span data-att-count>{{ attachments|selectattr('attach_by_default')|list|length }}</span>) ▾</summary>
+                    <div class="pdf-attachments-menu card">
+                        {% for a in attachments %}
+                        <div class="checkbox-group">
+                            <input type="checkbox" name="att" value="{{ a.id }}" id="pdf_att_{{ a.id }}" data-change="pdf-att-count" {{ 'checked' if a.attach_by_default }}>
+                            <label for="pdf_att_{{ a.id }}" class="m-0 font-normal">{{ a.title }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+            </form>
+            {% else %}
             <a href="{{ url_for('admin.preisuebersicht_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank" title="Unverbindliche Vorabinformation für den Kunden – kein Angebot, das kommt aus der Buchhaltung">Preisübersicht PDF</a>
+            {% endif %}
             <a href="{{ url_for('admin.lieferschein_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank">Lieferschein PDF</a>
             <a href="{{ url_for('admin.wertaufstellung_pdf', quote_id=quote.id) }}" class="btn btn-outline" target="_blank" title="Wiederbeschaffungswerte inkl. Zubehör, z.B. für die Versicherung">Wertaufstellung PDF</a>
             <button type="button" class="btn btn-outline" id="pk-save-quote-btn">In Papierkram speichern</button>
@@ -715,11 +733,21 @@ const QE = (function() {
         loadPicker();
     }
     document.addEventListener('DOMContentLoaded', init);
+    // Close the attachment picker when clicking elsewhere
+    document.addEventListener('click', e => {
+        document.querySelectorAll('details.pdf-attachments[open]').forEach(d => {
+            if (!d.contains(e.target)) d.removeAttribute('open');
+        });
+    });
 
     // exposed for papierkram export
     function currentState() { return S; }
 
     Actions.register({
+        'pdf-att-count': el => {
+            const form = el.closest('form');
+            form.querySelector('[data-att-count]').textContent = form.querySelectorAll('input[name="att"]:checked').length;
+        },
         'qe-toggle-form': el => toggleInlineForm(el.dataset.form),
         'qe-add-heading': () => addHeading(),
         'qe-add-custom': () => addCustom(),

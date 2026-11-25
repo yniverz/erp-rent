@@ -131,17 +131,64 @@
 
         <hr class="section-divider">
 
-        <h2>Allgemeine Geschäftsbedingungen (AGB)</h2>
-        <p class="text-muted mb-16">Werden der Preisübersicht zur Information als Anlage angehängt. Einfaches Markdown: <code>#</code> für Überschriften, <code>##</code> für Unterüberschriften, Leerzeile für Absätze.</p>
+        <h2>Anlagen (AGB u.&nbsp;Ä.)</h2>
+        <p class="text-muted mb-16">Texte wie AGB oder Mietbedingungen, die der Preisübersicht als Anlage angehängt werden können. Beim Export wählst du im Angebot aus, welche mitkommen. Einfaches Markdown: <code>#</code> für Überschriften, <code>##</code> für Unterüberschriften, <code>**fett**</code>, Leerzeile für Absätze. Änderungen, Reihenfolge und Entfernen werden erst mit „Einstellungen speichern“ übernommen; der PDF-Export zeigt den gespeicherten Stand.</p>
 
-        <div class="form-group">
-            <label>AGB-Text</label>
-            <textarea name="terms_and_conditions_text" rows="12" placeholder="# Allgemeine Geschäftsbedingungen&#10;&#10;## §1 Geltungsbereich&#10;Diese AGB gelten für...">{{ settings.terms_and_conditions_text or '' }}</textarea>
+        <input type="hidden" name="attachments_submitted" value="1">
+        <div id="attachment-list">
+        {% for a in attachments %}
+        <div class="attachment-card card" data-attachment>
+            <input type="hidden" name="attachment_key" value="{{ a.id }}">
+            <div class="attachment-card-head">
+                <div class="form-group">
+                    <label for="attachment_title_{{ a.id }}">Titel</label>
+                    <input type="text" id="attachment_title_{{ a.id }}" name="attachment_title_{{ a.id }}" value="{{ a.title }}" maxlength="200" placeholder="z.B. Allgemeine Geschäftsbedingungen">
+                </div>
+                <div class="attachment-card-tools">
+                    <button type="button" class="btn btn-sm btn-outline" data-click="attachment-up" title="Nach oben">↑</button>
+                    <button type="button" class="btn btn-sm btn-outline" data-click="attachment-down" title="Nach unten">↓</button>
+                    <a href="{{ url_for('admin.attachment_pdf', attachment_id=a.id) }}" class="btn btn-sm btn-secondary" target="_blank" rel="noopener" title="Gespeicherten Stand als PDF exportieren">PDF</a>
+                    <button type="button" class="btn btn-sm btn-danger" data-click="attachment-remove">Entfernen</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="attachment_content_{{ a.id }}">Text</label>
+                <textarea id="attachment_content_{{ a.id }}" name="attachment_content_{{ a.id }}" rows="12" placeholder="## §1 Geltungsbereich&#10;Diese AGB gelten für...">{{ a.content or '' }}</textarea>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="attachment_default_{{ a.id }}" name="attachment_default_{{ a.id }}" {{ 'checked' if a.attach_by_default }}>
+                <label for="attachment_default_{{ a.id }}" class="m-0 font-normal">Beim Export standardmäßig anhängen</label>
+            </div>
         </div>
-        {% if settings.terms_and_conditions_text %}
-        <a href="{{ url_for('admin.agb_pdf') }}" class="btn btn-secondary" target="_blank" rel="noopener">AGB als PDF exportieren</a>
-        <small class="help-text">Exportiert den gespeicherten Stand. Ungespeicherte Änderungen vorher speichern.</small>
-        {% endif %}
+        {% endfor %}
+        </div>
+        <p id="attachment-empty" class="text-muted{{ ' d-none' if attachments }}">Noch keine Anlagen.</p>
+        <button type="button" class="btn btn-outline" data-click="attachment-add">+ Anlage hinzufügen</button>
+        <template id="attachment-template">
+        <div class="attachment-card card" data-attachment>
+            <input type="hidden" name="attachment_key" value="__KEY__">
+            <div class="attachment-card-head">
+                <div class="form-group">
+                    <label for="attachment_title___KEY__">Titel</label>
+                    <input type="text" id="attachment_title___KEY__" name="attachment_title___KEY__" value="" maxlength="200" placeholder="z.B. Allgemeine Geschäftsbedingungen">
+                </div>
+                <div class="attachment-card-tools">
+                    <button type="button" class="btn btn-sm btn-outline" data-click="attachment-up" title="Nach oben">↑</button>
+                    <button type="button" class="btn btn-sm btn-outline" data-click="attachment-down" title="Nach unten">↓</button>
+                    
+                    <button type="button" class="btn btn-sm btn-danger" data-click="attachment-remove">Entfernen</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="attachment_content___KEY__">Text</label>
+                <textarea id="attachment_content___KEY__" name="attachment_content___KEY__" rows="12" placeholder="## §1 Geltungsbereich&#10;Diese AGB gelten für..."></textarea>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="attachment_default___KEY__" name="attachment_default___KEY__" checked>
+                <label for="attachment_default___KEY__" class="m-0 font-normal">Beim Export standardmäßig anhängen</label>
+            </div>
+        </div>
+        </template>
 
         <hr class="section-divider">
 
@@ -252,6 +299,31 @@
 <script nonce="{{ csp_nonce }}">
 Actions.register({
     'toggle-tax-rate': () => toggleTaxRate(),
+    'attachment-add': () => {
+        const key = 'new' + Date.now();
+        const tpl = document.getElementById('attachment-template');
+        const holder = document.createElement('div');
+        holder.innerHTML = tpl.innerHTML.replaceAll('__KEY__', key);
+        const card = holder.firstElementChild;
+        document.getElementById('attachment-list').appendChild(card);
+        document.getElementById('attachment-empty').classList.add('d-none');
+        card.querySelector('input[type="text"]').focus();
+    },
+    'attachment-remove': (el) => {
+        const card = el.closest('[data-attachment]');
+        const title = card.querySelector('input[type="text"]').value.trim();
+        if (!confirm('Anlage' + (title ? ' „' + title + '“' : '') + ' entfernen? Wird erst beim Speichern übernommen.')) return;
+        card.remove();
+        document.getElementById('attachment-empty').classList.toggle('d-none', !!document.querySelector('[data-attachment]'));
+    },
+    'attachment-up': (el) => {
+        const card = el.closest('[data-attachment]');
+        if (card.previousElementSibling) card.parentNode.insertBefore(card, card.previousElementSibling);
+    },
+    'attachment-down': (el) => {
+        const card = el.closest('[data-attachment]');
+        if (card.nextElementSibling) card.parentNode.insertBefore(card.nextElementSibling, card);
+    },
     'copy-api-token': (el) => {
         const input = document.getElementById('new_api_token');
         input.select();
