@@ -2749,7 +2749,8 @@ def _accessory_rows(item, quantity):
 
 def _extract_items_for_lieferschein(quote):
     """Extract items for the Lieferschein (no prices; includes headings, assigned
-    serial numbers, excludes optional positions)."""
+    serial numbers, excludes optional positions). No item descriptions: the
+    comment column stays empty for notes at handover."""
     items = []
     seen_package_ids = set()
 
@@ -2765,17 +2766,14 @@ def _extract_items_for_lieferschein(quote):
             seen_package_ids.add(qi.package_id)
             components = [q for q in quote.quote_items if q.package_id == qi.package_id]
             pkg_name = qi.package.name if qi.package else "Paket"
-            pkg_description = qi.package.description if qi.package else None
             items.append({
                 'name': pkg_name,
                 'quantity': 1,
                 'is_bundle': True,
-                'description': pkg_description,
                 'bundle_components': [
                     {
                         'name': c.display_name,
                         'quantity': c.quantity,
-                        'description': c.item.description if c.item else None,
                         'units': [au.label for au in c.assigned_units],
                         'accessories': _accessory_rows(c.item, c.quantity),
                         'accessories_note': c.item.accessories_note if c.item else None,
@@ -2788,7 +2786,6 @@ def _extract_items_for_lieferschein(quote):
                 'name': qi.display_name,
                 'quantity': qi.quantity,
                 'is_bundle': False,
-                'description': qi.item.description if qi.item else None,
                 'units': [au.label for au in qi.assigned_units],
                 'accessories': _accessory_rows(qi.item, qi.quantity),
                 'accessories_note': qi.item.accessories_note if qi.item else None,

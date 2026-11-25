@@ -123,7 +123,7 @@ def build_lieferschein_pdf(
     table_data = [header_row]
 
     def _fmt_desc(text):
-        """Format a description for the comment column (preserve line breaks, escape HTML)."""
+        """Format multi-line text for a cell (preserve line breaks, escape HTML)."""
         if not text:
             return ""
         from xml.sax.saxutils import escape as _esc
@@ -175,38 +175,35 @@ def build_lieferschein_pdf(
             continue
         if item.get("is_bundle"):
             # Bundle header
-            desc = _fmt_desc(item.get("description"))
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
                 Paragraph(f"<b>{item['name']}</b>", styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
-                Paragraph(desc, styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),
             ])
-            data_row_heights.append(None if desc else 24)
+            data_row_heights.append(24)
             for comp in item.get("bundle_components", []):
-                cdesc = _fmt_desc(comp.get("description"))
                 table_data.append([
                     Paragraph("", styles["table_cell"]),
                     Paragraph(f"↳ {_name_with_units(comp['name'], comp.get('units'))}", styles["table_cell_indent"]),
                     Paragraph(str(comp["quantity"]), styles["table_cell_indent"]),
-                    Paragraph(cdesc, styles["table_cell_indent"]),
+                    Paragraph("", styles["table_cell_indent"]),
                 ])
-                data_row_heights.append(None if (cdesc or comp.get("units")) else 24)
+                data_row_heights.append(None if comp.get("units") else 24)
                 _add_accessory_rows(comp, "&nbsp;&nbsp;&nbsp;")
         else:
-            desc = _fmt_desc(item.get("description"))
             table_data.append([
                 Paragraph(str(pos_nr), styles["table_cell"]),
                 Paragraph(_name_with_units(item["name"], item.get("units")), styles["table_cell"]),
                 Paragraph(str(item["quantity"]), styles["table_cell"]),
-                Paragraph(desc, styles["table_cell"]),
+                Paragraph("", styles["table_cell"]),  # Zustand / Kommentar: filled in at handover
             ])
-            data_row_heights.append(None if (desc or item.get("units")) else 24)
+            data_row_heights.append(None if item.get("units") else 24)
             _add_accessory_rows(item, "")
         pos_nr += 1
 
-    # Header row auto, data rows fixed-min where empty (room for handwriting)
-    # or auto-grow where description is pre-filled.
+    # Header row auto, data rows fixed-min (room for handwriting); rows with
+    # serial numbers grow with their content.
     row_heights = [None] + data_row_heights
 
     table = Table(table_data, colWidths=col_widths, hAlign="LEFT",
