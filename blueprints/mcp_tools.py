@@ -1093,12 +1093,14 @@ def _actor_id():
     return user.id if user else None
 
 
-@tool('list_quotes', 'Angebote auflisten', 'Angebote, neueste zuerst (ohne Positionen).',
+@tool('list_quotes', 'Angebote auflisten',
+      'Angebote, neueste zuerst (ohne Positionen). Standardmäßig nur aktive, archivierte mit archived=true.',
       {'customer': _s('string', 'Teil des Kundennamens'),
+       'archived': _s('boolean', 'true = nur archivierte Angebote (Standard: nur aktive)'),
        'limit': _s('integer', 'Max. Anzahl (Standard 50)'),
        'offset': _s('integer', 'Offset')}, read_only=True)
-def list_quotes(customer=None, limit=None, offset=None):
-    total, quotes = quote_ops.list_quotes(customer=(customer or '').strip(),
+def list_quotes(customer=None, archived=None, limit=None, offset=None):
+    total, quotes = quote_ops.list_quotes(customer=(customer or '').strip(), archived=bool(archived),
                                           limit=limit or 50, offset=offset or 0)
     return {'total': total, 'quotes': [_serialize_quote(q) for q in quotes]}
 
@@ -1117,8 +1119,11 @@ def create_quote(**fields):
 
 
 @tool('update_quote', 'Angebot bearbeiten',
-      'Ändert Kopfdaten eines Angebots (Kunde, Zeitraum, Notizen, Rabatt, Netto/Brutto).',
-      {'quote_id': ID('des Angebots'), **QUOTE_FIELD_PROPS}, ['quote_id'], idempotent=True)
+      'Ändert Kopfdaten eines Angebots (Kunde, Zeitraum, Notizen, Rabatt, Netto/Brutto) oder archiviert es.',
+      {'quote_id': ID('des Angebots'), **QUOTE_FIELD_PROPS,
+       'archived': _s('boolean', 'Archivieren (z.B. erledigt; aus der normalen Liste ausgeblendet, '
+                      'zählt weiter als Buchung) bzw. mit false wiederherstellen')},
+      ['quote_id'], idempotent=True)
 def update_quote(quote_id, **fields):
     return _quote_dict(quote_ops.update_quote(int(quote_id), fields))
 

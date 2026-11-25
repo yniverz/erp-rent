@@ -1412,14 +1412,20 @@ def _apply_manual_sources(qi, src_map, price_map=None):
 @admin_bp.route('/quotes')
 @login_required
 def quote_list():
-    """List all quotes"""
+    """List quotes: active ones by default, archived ones with ?archived=1"""
+    show_archived = request.args.get('archived') == '1'
+    archived_filter = Quote.archived_at.isnot(None) if show_archived else Quote.archived_at.is_(None)
     # Newest rental period first; quotes without a date go last
-    quotes = Quote.query.order_by(
+    quotes = Quote.query.filter(archived_filter).order_by(
         Quote.start_date.is_(None),
         Quote.start_date.desc(),
         Quote.created_at.desc(),
     ).all()
-    return render_template('admin/quote_list.html', quotes=quotes)
+    other_count = Quote.query.filter(
+        Quote.archived_at.is_(None) if show_archived else Quote.archived_at.isnot(None)).count()
+    return render_template('admin/quote_list.html', quotes=quotes, show_archived=show_archived,
+                           active_count=other_count if show_archived else len(quotes),
+                           archived_count=len(quotes) if show_archived else other_count)
 
 
 @admin_bp.route('/quotes/create', methods=['GET', 'POST'])
@@ -2073,6 +2079,22 @@ def packliste_unassign(quote_id):
             db.session.rollback()
             flash(f'Fehler: {str(e)}', 'error')
     return redirect(url_for('admin.quote_packliste', quote_id=quote.id))
+
+
+@admin_bp.route('/quotes/<int:quote_id>/archive', methods=['POST'])
+@login_required
+def quote_archive(quote_id):
+    """Archive (archived=1) or restore (archived=0) a quote. Only hides it from
+    the normal list; bookings and availability are unaffected."""
+    quote = Quote.query.get_or_404(quote_id)
+    archive = request.form.get('archived') == '1'
+    quote.set_archived(archive)
+    db.session.commit()
+    label = quote.reference_number or quote.customer_name
+    flash(f'Angebot {label} archiviert.' if archive else f'Angebot {label} wiederhergestellt.', 'success')
+    if request.form.get('next') == 'edit':
+        return redirect(url_for('admin.quote_edit', quote_id=quote.id))
+    return redirect(url_for('admin.quote_list', archived=None if archive else '1'))
 
 
 @admin_bp.route('/quotes/<int:quote_id>/delete', methods=['POST'])

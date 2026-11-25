@@ -342,6 +342,8 @@ with app.app_context():
     _add_column_if_missing('quote_item', 'position', 'INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing('quote_item', 'is_heading', 'BOOLEAN DEFAULT 0')
     _add_column_if_missing('quote_item', 'is_optional', 'BOOLEAN DEFAULT 0')
+    # Archived quotes (hidden from the normal list)
+    _add_column_if_missing('quote', 'archived_at', 'DATETIME')
     if _needs_position_backfill:
         # Preserve existing display order (id order keeps package components together)
         db.session.execute(_sql_text('UPDATE quote_item SET position = id'))

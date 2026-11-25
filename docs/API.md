@@ -83,10 +83,13 @@ Query parameters:
 |---|---|---|
 | `status` | string | Filter by status (only `draft` exists) |
 | `customer` | string | Case-insensitive substring match on the customer name |
+| `archived` | string | `false` (default) = only active quotes, `true` = only archived ones, `all` = both |
 | `limit` | int | Page size, default `100`, max `500` |
 | `offset` | int | Pagination offset, default `0` |
 
-Quotes are ordered by creation date, newest first.
+Quotes are ordered by creation date, newest first. Archived quotes are left
+out unless `archived=true` or `archived=all` is given; `GET /quotes/<id>`
+returns any quote, archived or not.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -152,7 +155,9 @@ Returns `201` with the full quote object.
 PATCH /api/v1/quotes/<id>
 ```
 
-Accepts the same fields as [Create a quote](#create-a-quote). Only fields
+Accepts the same fields as [Create a quote](#create-a-quote), plus
+`archived` (bool) to archive or restore the quote. Archiving only hides it
+from the normal list in the admin UI; it still counts as a booking. Only fields
 present in the payload are changed. Setting both dates recalculates
 `rental_days`; `rental_days_override: null` removes an override.
 
@@ -333,6 +338,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   "rental_days": 3,
   "rental_days_override": null,
   "created_at": "2026-08-24",
+  "archived": false,
+  "archived_at": null,
   "prices_are_net": false,
   "subtotal": 450.0,
   "discount_percent": 10.0,

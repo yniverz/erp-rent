@@ -722,11 +722,23 @@ class Quote(db.Model):
     # treated as NET values and VAT is added on top in PDFs / API exports.
     # When False (default), stored prices are GROSS (brutto) – legacy behaviour.
     prices_are_net = db.Column(db.Boolean, default=False, nullable=False)
+    # Archived (e.g. done): hidden from the normal quote list only; still counts as a booking
+    archived_at = db.Column(db.DateTime, nullable=True)
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     quote_items = db.relationship('QuoteItem', back_populates='quote', cascade='all, delete-orphan',
                                   order_by='QuoteItem.position, QuoteItem.id')
     inquiry = db.relationship('Inquiry', foreign_keys=[inquiry_id], back_populates='converted_quote')
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
+    def set_archived(self, archived):
+        if archived and not self.archived_at:
+            self.archived_at = datetime.utcnow()
+        elif not archived:
+            self.archived_at = None
 
     def generate_reference_number(self):
         if not self.reference_number:

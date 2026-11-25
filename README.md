@@ -178,7 +178,7 @@ Quotes are drafts (Entwurf) — there is a single quote type. Finalization and i
 3. **Discounts** — Set a discount percentage or enter a target total and let the system calculate the percentage. Individual items can be marked as discount-exempt. You can also add a label to the discount (e.g., "Loyalty discount").
 4. **Rental days override** — Optionally bill for a different number of days than the actual date range.
 
-Quotes can be edited or deleted at any time.
+Quotes can be edited or deleted at any time. Finished quotes can be **archived**: they move from the normal list into an "Archiviert" tab (and can be restored), but still count as bookings for availability.
 
 #### PDF Documents
 Generate professional German-language PDF documents directly from any quote:

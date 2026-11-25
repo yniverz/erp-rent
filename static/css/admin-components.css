@@ -328,6 +328,9 @@ body.has-bulk-bar       { padding-bottom: 90px; }
 }
 .modal-title            { margin: 0 0 12px 0; }
 
+/* ── Quote list ── */
+.quote-row-actions .btn  { white-space: nowrap; }
+
 /* ── Settings ── */
 .logo-preview           { max-height: 80px; max-width: 300px; }
 .attachment-card        { padding: 16px; margin-bottom: 12px; }

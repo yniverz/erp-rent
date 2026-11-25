@@ -127,6 +127,8 @@ def _serialize_quote(quote, include_lines=False):
         'rental_days': quote.calculate_rental_days(),
         'rental_days_override': quote.rental_days_override,
         'created_at': quote.created_at.strftime('%Y-%m-%d') if quote.created_at else None,
+        'archived': quote.is_archived,
+        'archived_at': quote.archived_at.strftime('%Y-%m-%d') if quote.archived_at else None,
         'prices_are_net': bool(quote.prices_are_net),
         'subtotal': quote.subtotal,
         'discount_percent': round(quote.discount_percent or 0, 4),
@@ -189,6 +191,8 @@ def _apply_details(quote, data):
         quote.discount_percent = max(0.0, min(100.0, float(data.get('discount_percent') or 0)))
     if 'discount_label' in data:
         quote.discount_label = (data.get('discount_label') or '').strip() or None
+    if 'archived' in data:
+        quote.set_archived(bool(data.get('archived')))
 
 
 def transactional(fn):
@@ -213,9 +217,12 @@ def transactional(fn):
 
 # ── Operations (shared by REST views and the MCP server) ──────────────
 
-def list_quotes(status='', customer='', limit=100, offset=0):
-    """Return (total, quotes) ordered newest first."""
+def list_quotes(status='', customer='', limit=100, offset=0, archived=None):
+    """Return (total, quotes) ordered newest first. archived: None = all,
+    True = only archived, False = only active."""
     query = Quote.query.order_by(Quote.created_at.desc())
+    if archived is not None:
+        query = query.filter(Quote.archived_at.isnot(None) if archived else Quote.archived_at.is_(None))
     if status:
         query = query.filter(Quote.status == status)
     if customer:
@@ -495,8 +502,13 @@ def api_view(f):
 @api_bp.route('/quotes')
 @api_view
 def quotes_list():
-    """List quotes. Filters: ?status=draft&customer=<substring>&limit=&offset="""
+    """List quotes. Filters: ?status=draft&customer=<substring>&archived=false|true|all&limit=&offset=
+    Archived quotes are left out unless asked for (archived=true: only those, all: both)."""
+    archived = (request.args.get('archived') or 'false').strip().lower()
+    if archived not in ('true', '1', 'false', '0', 'all'):
+        return _error("archived muss 'false', 'true' oder 'all' sein.", 400)
     total, quotes = list_quotes(
+        archived=None if archived == 'all' else archived in ('true', '1'),
         status=(request.args.get('status') or '').strip(),
         customer=(request.args.get('customer') or '').strip(),
         limit=request.args.get('limit', default=100, type=int),
